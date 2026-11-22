@@ -36,9 +36,14 @@ public class GetTocToolTest {
     @BeforeEach
     public void setUp() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("global-user", "n/a",
-                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
-                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "global-user",
+                                "n/a",
+                                List.of(
+                                        new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                                        new SimpleGrantedAuthority(
+                                                AreaAccessContext.AREA_USER_ALL))));
         documentRepository = mock(DocumentRepository.class);
         tocService = mock(TocService.class);
         collectionService = mock(CollectionService.class);
@@ -53,9 +58,17 @@ public class GetTocToolTest {
     @Test
     public void testGetToc() {
         UUID mockDocId = UUID.randomUUID();
-        DocumentRow mockDoc = new DocumentRow(mockDocId, UUID.randomUUID(), "OIM - Manuals",
-            "manual", "Manual Title", Map.of("tag", "9.3", "source_file", "manual.md"), "completed",
-            Collections.emptyList(), Instant.now());
+        DocumentRow mockDoc =
+                new DocumentRow(
+                        mockDocId,
+                        UUID.randomUUID(),
+                        "OIM - Manuals",
+                        "manual",
+                        "Manual Title",
+                        Map.of("tag", "9.3", "source_file", "manual.md"),
+                        "completed",
+                        Collections.emptyList(),
+                        Instant.now());
         when(documentRepository.findById(eq(mockDocId))).thenReturn(Optional.of(mockDoc));
 
         TocNode node = new TocNode(List.of("Ch1", "SecA"), 10, 5, 4200, null);
@@ -78,19 +91,26 @@ public class GetTocToolTest {
      * to thousands of sections, and top-down browsing playbooks navigate exclusively through this
      * output, so a silent cut removes whole chapters from everything downstream of it.
      *
-     * <p>
-     * No existing test would notice. Both tests in this file stub a single {@link TocNode}, so the
-     * cap branch has never executed at all — the line budget, the off-by-one on the three header
-     * lines ({@code out.size() - 3 >= lineCap}) and the note itself are all unexercised. The
+     * <p>No existing test would notice. Both tests in this file stub a single {@link TocNode}, so
+     * the cap branch has never executed at all — the line budget, the off-by-one on the three
+     * header lines ({@code out.size() - 3 >= lineCap}) and the note itself are all unexercised. The
      * 5-entry half of this test is the control: a TOC that fits must not claim anything is missing,
      * which is what stops the note from being "fixed" by emitting it unconditionally.
      */
     @Test
     public void aTocTruncatedAtTheLineCapSaysHowManyEntriesAreMissing() {
         UUID bigDocId = UUID.randomUUID();
-        DocumentRow bigDoc = new DocumentRow(bigDocId, UUID.randomUUID(), "OIM - Manuals", "manual",
-            "Big Manual", Map.of("tag", "9.3", "source_file", "big.md"), "completed",
-            Collections.emptyList(), Instant.now());
+        DocumentRow bigDoc =
+                new DocumentRow(
+                        bigDocId,
+                        UUID.randomUUID(),
+                        "OIM - Manuals",
+                        "manual",
+                        "Big Manual",
+                        Map.of("tag", "9.3", "source_file", "big.md"),
+                        "completed",
+                        Collections.emptyList(),
+                        Instant.now());
         when(documentRepository.findById(eq(bigDocId))).thenReturn(Optional.of(bigDoc));
         // Summary-less nodes cost exactly one line each, so 450 entries overrun the 400-line cap
         // by 50 — the number the note has to report.
@@ -102,17 +122,28 @@ public class GetTocToolTest {
 
         String output = getTocTool.getToc(bigDocId.toString(), null);
 
-        assertTrue(output.contains("- Section 400  _(1 chunk \u00b7 900 chars)_"),
-            "the 400th entry is the last one that fits the cap, got:\n" + output);
-        assertFalse(output.contains("Section 450"),
-            "the cap must actually bite, otherwise this test proves nothing:\n" + output);
-        assertTrue(output.contains("_[50 more entries not shown]_"),
-            "a truncated TOC that does not say so reads as the whole manual, got:\n" + output);
+        assertTrue(
+                output.contains("- Section 400  _(1 chunk \u00b7 900 chars)_"),
+                "the 400th entry is the last one that fits the cap, got:\n" + output);
+        assertFalse(
+                output.contains("Section 450"),
+                "the cap must actually bite, otherwise this test proves nothing:\n" + output);
+        assertTrue(
+                output.contains("_[50 more entries not shown]_"),
+                "a truncated TOC that does not say so reads as the whole manual, got:\n" + output);
 
         UUID smallDocId = UUID.randomUUID();
-        DocumentRow smallDoc = new DocumentRow(smallDocId, UUID.randomUUID(), "OIM - Manuals",
-            "manual", "Small Manual", Map.of("tag", "9.3", "source_file", "small.md"), "completed",
-            Collections.emptyList(), Instant.now());
+        DocumentRow smallDoc =
+                new DocumentRow(
+                        smallDocId,
+                        UUID.randomUUID(),
+                        "OIM - Manuals",
+                        "manual",
+                        "Small Manual",
+                        Map.of("tag", "9.3", "source_file", "small.md"),
+                        "completed",
+                        Collections.emptyList(),
+                        Instant.now());
         when(documentRepository.findById(eq(smallDocId))).thenReturn(Optional.of(smallDoc));
         List<TocNode> few = new ArrayList<>();
         for (int i = 1; i <= 5; i++) {
@@ -122,10 +153,12 @@ public class GetTocToolTest {
 
         String complete = getTocTool.getToc(smallDocId.toString(), null);
 
-        assertTrue(complete.contains("- Section 5  _(1 chunk \u00b7 900 chars)_"),
-            "the short TOC must render in full, got:\n" + complete);
-        assertFalse(complete.contains("more entr"),
-            "a complete TOC must not carry a truncation note, got:\n" + complete);
+        assertTrue(
+                complete.contains("- Section 5  _(1 chunk \u00b7 900 chars)_"),
+                "the short TOC must render in full, got:\n" + complete);
+        assertFalse(
+                complete.contains("more entr"),
+                "a complete TOC must not carry a truncation note, got:\n" + complete);
     }
 
     /**
@@ -137,18 +170,28 @@ public class GetTocToolTest {
     @Test
     public void aScopedCallForwardsTheParsedPathAndSaysWhatItIsScopedTo() {
         UUID docId = UUID.randomUUID();
-        DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "OIM - Manuals", "manual",
-            "Manual Title", Map.of("tag", "9.3", "source_file", "m.md"), "completed",
-            Collections.emptyList(), Instant.now());
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        UUID.randomUUID(),
+                        "OIM - Manuals",
+                        "manual",
+                        "Manual Title",
+                        Map.of("tag", "9.3", "source_file", "m.md"),
+                        "completed",
+                        Collections.emptyList(),
+                        Instant.now());
         when(documentRepository.findById(eq(docId))).thenReturn(Optional.of(doc));
         when(tocService.getToc(eq(docId), eq(List.of("Ch1", "SecA"))))
-            .thenReturn(List.of(new TocNode(List.of("Ch1", "SecA", "Deep"), 10, 2, 1234, null)));
+                .thenReturn(
+                        List.of(new TocNode(List.of("Ch1", "SecA", "Deep"), 10, 2, 1234, null)));
 
         String out = getTocTool.getToc(docId.toString(), "Ch1 > SecA");
 
         verify(tocService).getToc(eq(docId), eq(List.of("Ch1", "SecA")));
-        assertTrue(out.contains("under: Ch1 > SecA"),
-            "a scoped TOC that reads like a full one sends the agent back to the top:\n" + out);
+        assertTrue(
+                out.contains("under: Ch1 > SecA"),
+                "a scoped TOC that reads like a full one sends the agent back to the top:\n" + out);
         assertTrue(out.contains("- Deep  _(2 chunks · 1,234 chars)_"), out);
     }
 
@@ -160,21 +203,32 @@ public class GetTocToolTest {
     @Test
     public void theOutputTellsTheAgentWhenToReadAndWhenToDescend() {
         UUID docId = UUID.randomUUID();
-        DocumentRow doc = new DocumentRow(docId, UUID.randomUUID(), "OIM - Manuals", "manual",
-            "Manual Title", Map.of("tag", "9.3", "source_file", "m.md"), "completed",
-            Collections.emptyList(), Instant.now());
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        UUID.randomUUID(),
+                        "OIM - Manuals",
+                        "manual",
+                        "Manual Title",
+                        Map.of("tag", "9.3", "source_file", "m.md"),
+                        "completed",
+                        Collections.emptyList(),
+                        Instant.now());
         when(documentRepository.findById(eq(docId))).thenReturn(Optional.of(doc));
         when(tocService.getToc(eq(docId), any()))
-            .thenReturn(List.of(new TocNode(List.of("Ch1"), 10, 1, 500, null)));
+                .thenReturn(List.of(new TocNode(List.of("Ch1"), 10, 1, 500, null)));
 
         String out = getTocTool.getToc(docId.toString(), null);
 
-        assertTrue(out.contains("30,000 chars: read it"),
-            "no size budget means no decision rule:\n" + out);
-        assertTrue(out.contains("go one level deeper first"),
-            "the agent must be told the descend call exists:\n" + out);
-        assertTrue(out.contains("get_toc(document_id=\"" + docId + "\""),
-            "the descend hint must carry the id, or it cannot be acted on:\n" + out);
+        assertTrue(
+                out.contains("30,000 chars: read it"),
+                "no size budget means no decision rule:\n" + out);
+        assertTrue(
+                out.contains("go one level deeper first"),
+                "the agent must be told the descend call exists:\n" + out);
+        assertTrue(
+                out.contains("get_toc(document_id=\"" + docId + "\""),
+                "the descend hint must carry the id, or it cannot be acted on:\n" + out);
     }
 
     @Test
@@ -194,18 +248,39 @@ public class GetTocToolTest {
     @Test
     public void testUnauthorizedDocumentAreaReturnsNotFound() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("oim-user", "n/a",
-                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
-                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "oim-user",
+                                "n/a",
+                                List.of(
+                                        new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                                        new SimpleGrantedAuthority(
+                                                AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
 
         UUID pingColId = UUID.randomUUID();
         UUID pingDocId = UUID.randomUUID();
-        DocumentRow pingDoc = new DocumentRow(pingDocId, pingColId, "PingID - Manuals", "manual",
-            "PingID Manual", Map.of(), "completed", Collections.emptyList(), Instant.now());
+        DocumentRow pingDoc =
+                new DocumentRow(
+                        pingDocId,
+                        pingColId,
+                        "PingID - Manuals",
+                        "manual",
+                        "PingID Manual",
+                        Map.of(),
+                        "completed",
+                        Collections.emptyList(),
+                        Instant.now());
         when(documentRepository.findById(eq(pingDocId))).thenReturn(Optional.of(pingDoc));
         when(collectionService.findById(eq(pingColId)))
-            .thenReturn(Optional.of(new Collection(pingColId, "PingID - Manuals", "desc", List.of(),
-                OffsetDateTime.now(), "PingID")));
+                .thenReturn(
+                        Optional.of(
+                                new Collection(
+                                        pingColId,
+                                        "PingID - Manuals",
+                                        "desc",
+                                        List.of(),
+                                        OffsetDateTime.now(),
+                                        "PingID")));
 
         String output = getTocTool.getToc(pingDocId.toString(), null);
         assertEquals("Error: Document with ID '" + pingDocId + "' not found.", output);

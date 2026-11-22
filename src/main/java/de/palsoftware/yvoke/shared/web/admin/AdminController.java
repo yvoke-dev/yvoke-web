@@ -31,7 +31,6 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
  * Admin landing + cross-cutting infrastructure admin pages (job engine, audit log). Domain-specific
  * admin pages live in each domain's {@code <domain>.web.admin} package.
  */
-
 @Controller
 @RequestMapping("/admin")
 public class AdminController {
@@ -43,8 +42,11 @@ public class AdminController {
     private final AuditLogRepository auditLogRepository;
     private final UserService userService;
 
-    public AdminController(JobRepository jobRepository, JobService jobService,
-        AuditLogRepository auditLogRepository, UserService userService) {
+    public AdminController(
+            JobRepository jobRepository,
+            JobService jobService,
+            AuditLogRepository auditLogRepository,
+            UserService userService) {
         this.jobRepository = jobRepository;
         this.jobService = jobService;
         this.auditLogRepository = auditLogRepository;
@@ -61,15 +63,21 @@ public class AdminController {
     }
 
     @GetMapping("/jobs")
-    public String listJobs(@RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size, Model model) {
+    public String listJobs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Model model) {
         log.info("AdminController: Accessing Jobs view");
-        int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
-            PagingParams.MAX_ADMIN_PAGE_SIZE);
+        int clampedSize =
+                PagingParams.clampSize(
+                        size,
+                        PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+                        PagingParams.MAX_ADMIN_PAGE_SIZE);
         int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
         Set<String> areas = AreaAccessContext.allowedAdminAreasLower().orElse(null);
-        List<IngestionJob> jobs = jobRepository.listJobs(clampedSize,
-            PagingParams.safeOffset(clampedPage, clampedSize), areas);
+        List<IngestionJob> jobs =
+                jobRepository.listJobs(
+                        clampedSize, PagingParams.safeOffset(clampedPage, clampedSize), areas);
         long totalCount = jobRepository.countJobs(areas);
         int totalPages = PagingParams.totalPages(totalCount, clampedSize);
 
@@ -84,8 +92,12 @@ public class AdminController {
 
     @GetMapping("/jobs/{id}")
     public String getJobDetails(@PathVariable UUID id, Model model) {
-        IngestionJob job = jobRepository.findById(id).orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found: " + id));
+        IngestionJob job =
+                jobRepository
+                        .findById(id)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Job not found: " + id));
         Optional<String> area = jobRepository.findJobArea(id);
         if (!AreaAccessContext.canAdministerArea(area.orElse(null))) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found: " + id);
@@ -110,8 +122,9 @@ public class AdminController {
             auditLogRepository.log(getCurrentAdminOid(), "STOP_JOB", id.toString(), Map.of());
             redirectAttributes.addFlashAttribute("success", "Job cancelled.");
         } else {
-            redirectAttributes.addFlashAttribute("error",
-                "Job could not be stopped (it already finished, failed or was cancelled).");
+            redirectAttributes.addFlashAttribute(
+                    "error",
+                    "Job could not be stopped (it already finished, failed or was cancelled).");
         }
         return "redirect:/admin/jobs/" + id;
     }
@@ -121,14 +134,13 @@ public class AdminController {
      * was then repointed leaves a queue an operator otherwise has to wait out; running jobs are
      * left alone (stop those individually).
      *
-     * <p>
-     * {@code /admin/**} admits {@code ROLE_ADMIN} and {@code ROLE_AREA_ADMIN} in the filter chain,
-     * and {@link AreaAccessContext#allowedAdminAreasLower()} scopes cancellation to the caller's
-     * administered areas (all areas for Superadmin).
+     * <p>{@code /admin/**} admits {@code ROLE_ADMIN} and {@code ROLE_AREA_ADMIN} in the filter
+     * chain, and {@link AreaAccessContext#allowedAdminAreasLower()} scopes cancellation to the
+     * caller's administered areas (all areas for Superadmin).
      */
     @PostMapping("/jobs/cancel-queued")
-    public String cancelQueuedJobs(@RequestParam String kind,
-        RedirectAttributes redirectAttributes) {
+    public String cancelQueuedJobs(
+            @RequestParam String kind, RedirectAttributes redirectAttributes) {
         List<UUID> cancelledIds;
         try {
             Set<String> areas = AreaAccessContext.allowedAdminAreasLower().orElse(null);
@@ -146,27 +158,34 @@ public class AdminController {
         // are open right now — exactly the ones showing the stale state.
         cancelledIds.forEach(jobService::publishSnapshot);
 
-        auditLogRepository.log(getCurrentAdminOid(), "CANCEL_QUEUED_JOBS", kind,
-            Map.of("cancelled", cancelled));
+        auditLogRepository.log(
+                getCurrentAdminOid(), "CANCEL_QUEUED_JOBS", kind, Map.of("cancelled", cancelled));
 
         if (cancelled > 0) {
-            redirectAttributes.addFlashAttribute("success",
-                "Cancelled " + cancelled + " queued job(s) of kind '" + kind + "'.");
+            redirectAttributes.addFlashAttribute(
+                    "success", "Cancelled " + cancelled + " queued job(s) of kind '" + kind + "'.");
         } else {
-            redirectAttributes.addFlashAttribute("error",
-                "No queued jobs of kind '" + kind + "' to cancel.");
+            redirectAttributes.addFlashAttribute(
+                    "error", "No queued jobs of kind '" + kind + "' to cancel.");
         }
         return "redirect:/admin/jobs";
     }
 
     @GetMapping("/audit")
-    public String listAuditLogs(@RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size, Model model) {
-        int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
-            PagingParams.MAX_ADMIN_PAGE_SIZE);
+    public String listAuditLogs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Model model) {
+        int clampedSize =
+                PagingParams.clampSize(
+                        size,
+                        PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+                        PagingParams.MAX_ADMIN_PAGE_SIZE);
         int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
-        model.addAttribute("logs", auditLogRepository.listLogs(clampedSize,
-            PagingParams.safeOffset(clampedPage, clampedSize)));
+        model.addAttribute(
+                "logs",
+                auditLogRepository.listLogs(
+                        clampedSize, PagingParams.safeOffset(clampedPage, clampedSize)));
         long totalCount = auditLogRepository.countLogs();
         int totalPages = PagingParams.totalPages(totalCount, clampedSize);
 

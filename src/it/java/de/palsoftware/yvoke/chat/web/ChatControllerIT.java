@@ -38,21 +38,18 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-    properties = "app.security.mock=true")
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = "app.security.mock=true")
 public class ChatControllerIT {
 
-    @Autowired
-    private WebApplicationContext context;
+    @Autowired private WebApplicationContext context;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private ChatConversationService chatConversationService;
+    @Autowired private ChatConversationService chatConversationService;
 
-    @Autowired
-    private ConversationRepository conversationRepository;
+    @Autowired private ConversationRepository conversationRepository;
 
     private MockMvc mockMvc;
 
@@ -77,8 +74,10 @@ public class ChatControllerIT {
         when(auth.isAuthenticated()).thenReturn(true);
         when(auth.getPrincipal()).thenReturn(oidcUser);
 
-        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"),
-            new SimpleGrantedAuthority("AREA_USER_OIM"));
+        List<GrantedAuthority> authorities =
+                List.of(
+                        new SimpleGrantedAuthority("ROLE_USER"),
+                        new SimpleGrantedAuthority("AREA_USER_OIM"));
         when(auth.getAuthorities()).thenAnswer(inv -> authorities);
 
         SecurityContext secContext = SecurityContextHolder.createEmptyContext();
@@ -87,11 +86,12 @@ public class ChatControllerIT {
     }
 
     private static SecurityMockMvcRequestPostProcessors.OidcLoginRequestPostProcessor testUserLogin(
-        String oid, String email, String name) {
+            String oid, String email, String name) {
         return oidcLogin()
-            .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
-            .authorities(new SimpleGrantedAuthority("ROLE_USER"),
-                new SimpleGrantedAuthority("AREA_USER_OIM"));
+                .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
+                .authorities(
+                        new SimpleGrantedAuthority("ROLE_USER"),
+                        new SimpleGrantedAuthority("AREA_USER_OIM"));
     }
 
     @Test
@@ -139,25 +139,31 @@ public class ChatControllerIT {
         setSecurityContext(userAOid, "user-a-test@local", "User A");
         var loginA = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        MvcResult result = mockMvc.perform(get("/chat").with(loginA)).andExpect(status().isOk())
-            .andExpect(model().attributeExists("folders"))
-            .andExpect(model().attributeExists("untagged"))
-            .andExpect(model().attributeExists("publicFolders"))
-            .andExpect(model().attributeExists("publicUntagged")).andReturn();
+        MvcResult result =
+                mockMvc.perform(get("/chat").with(loginA))
+                        .andExpect(status().isOk())
+                        .andExpect(model().attributeExists("folders"))
+                        .andExpect(model().attributeExists("untagged"))
+                        .andExpect(model().attributeExists("publicFolders"))
+                        .andExpect(model().attributeExists("publicUntagged"))
+                        .andReturn();
 
         Map<String, List<Conversation>> folders =
-            (Map<String, List<Conversation>>) result.getModelAndView().getModel().get("folders");
+                (Map<String, List<Conversation>>)
+                        result.getModelAndView().getModel().get("folders");
         List<Conversation> untagged =
-            (List<Conversation>) result.getModelAndView().getModel().get("untagged");
-        Map<String, List<Conversation>> publicFolders = (Map<String, List<Conversation>>) result
-            .getModelAndView().getModel().get("publicFolders");
+                (List<Conversation>) result.getModelAndView().getModel().get("untagged");
+        Map<String, List<Conversation>> publicFolders =
+                (Map<String, List<Conversation>>)
+                        result.getModelAndView().getModel().get("publicFolders");
         List<Conversation> publicUntaggedList =
-            (List<Conversation>) result.getModelAndView().getModel().get("publicUntagged");
+                (List<Conversation>) result.getModelAndView().getModel().get("publicUntagged");
 
         // Assertions on private/owned section:
         assertThat(folders).containsKey("private-tag");
-        assertThat(folders.get("private-tag")).extracting(Conversation::id)
-            .containsExactly(privateTaggedId);
+        assertThat(folders.get("private-tag"))
+                .extracting(Conversation::id)
+                .containsExactly(privateTaggedId);
         assertThat(folders).doesNotContainKey("public");
         assertThat(folders).doesNotContainKey("tutorial");
         assertThat(folders).doesNotContainKey("shared-tag");
@@ -166,11 +172,13 @@ public class ChatControllerIT {
 
         // Assertions on public section:
         assertThat(publicFolders).containsKey("tutorial");
-        assertThat(publicFolders.get("tutorial")).extracting(Conversation::id)
-            .containsExactly(publicTaggedId);
+        assertThat(publicFolders.get("tutorial"))
+                .extracting(Conversation::id)
+                .containsExactly(publicTaggedId);
         assertThat(publicFolders).containsKey("shared-tag");
-        assertThat(publicFolders.get("shared-tag")).extracting(Conversation::id)
-            .containsExactly(otherPublicId);
+        assertThat(publicFolders.get("shared-tag"))
+                .extracting(Conversation::id)
+                .containsExactly(otherPublicId);
 
         assertThat(publicUntaggedList).extracting(Conversation::id).contains(publicUntaggedId);
 
@@ -196,28 +204,26 @@ public class ChatControllerIT {
      * posts {@code /chat/{id}/streaming} and {@code /chat/{id}/show-thinking} that way, with the
      * default {@code Accept: *}{@code /*}.
      *
-     * <p>
-     * Widen {@code isNavigationalFormPost} — or just drop its call from {@code handleUnexpected},
-     * which reads as "we always want the friendly error page" — and these fetches stop getting a
-     * status at all: they get a 302 into an HTML page, which {@code fetch} follows silently and
-     * reports as {@code response.ok === true}. The browser then believes it saved a setting it did
-     * not save, and the flash message it was redirected to is attached to a page nobody is looking
-     * at, so the failure is invisible on both sides. A 400 is the only answer that lets the client
-     * know the value was rejected.
+     * <p>Widen {@code isNavigationalFormPost} — or just drop its call from {@code
+     * handleUnexpected}, which reads as "we always want the friendly error page" — and these
+     * fetches stop getting a status at all: they get a 302 into an HTML page, which {@code fetch}
+     * follows silently and reports as {@code response.ok === true}. The browser then believes it
+     * saved a setting it did not save, and the flash message it was redirected to is attached to a
+     * page nobody is looking at, so the failure is invisible on both sides. A 400 is the only
+     * answer that lets the client know the value was rejected.
      *
-     * <p>
-     * The second stanza is what makes the first discriminating: inverting the predicate so it is
+     * <p>The second stanza is what makes the first discriminating: inverting the predicate so it is
      * always false would leave the 400 intact while quietly deleting the flash-redirect behaviour
      * every admin form depends on. {@code MvcExceptionHandlerTest} covers the predicate against a
-     * synthetic probe controller, and asserts only that the exception PROPAGATES
-     * ({@code fetchPostWithoutHtmlAcceptIsNotHijackedIntoARedirect} does
-     * {@code hasRootCauseInstanceOf}); it never asserts the status the framework then produces, and
-     * it never runs against a real chat route, so the end-to-end "malformed flag reaches the
-     * browser as 400" contract is untested without this.
+     * synthetic probe controller, and asserts only that the exception PROPAGATES ({@code
+     * fetchPostWithoutHtmlAcceptIsNotHijackedIntoARedirect} does {@code hasRootCauseInstanceOf});
+     * it never asserts the status the framework then produces, and it never runs against a real
+     * chat route, so the end-to-end "malformed flag reaches the browser as 400" contract is
+     * untested without this.
      */
     @Test
     public void aNonBooleanStreamingFlagIsAFourHundredAndIsNeverSwallowedIntoAFlashRedirect()
-        throws Exception {
+            throws Exception {
         // No conversation is needed: @RequestParam binding fails before the handler body runs, so
         // nothing touches the database and no ownership check is reached.
         UUID convId = UUID.randomUUID();
@@ -225,19 +231,27 @@ public class ChatControllerIT {
 
         // Spring's StringToBooleanConverter accepts true/on/yes/1 and false/off/no/0; "maybe" is
         // outside that set, so binding raises MethodArgumentTypeMismatchException.
-        mockMvc
-            .perform(post("/chat/" + convId + "/streaming").with(login).with(csrf())
-                .header("Accept", "*/*").param("enabled", "maybe"))
-            .andExpect(status().isBadRequest()).andExpect(flash().attributeCount(0));
+        mockMvc.perform(
+                        post("/chat/" + convId + "/streaming")
+                                .with(login)
+                                .with(csrf())
+                                .header("Accept", "*/*")
+                                .param("enabled", "maybe"))
+                .andExpect(status().isBadRequest())
+                .andExpect(flash().attributeCount(0));
 
         // Same URL, classic browser form shape: this one IS meant to be swallowed into a
         // redirect-back with a flash error.
-        mockMvc
-            .perform(post("/chat/" + convId + "/streaming").with(login).with(csrf())
-                .header("Accept", "text/html,application/xhtml+xml")
-                .header("Referer", "http://localhost/chat/" + convId).param("enabled", "maybe"))
-            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/chat/" + convId))
-            .andExpect(flash().attributeExists("error"));
+        mockMvc.perform(
+                        post("/chat/" + convId + "/streaming")
+                                .with(login)
+                                .with(csrf())
+                                .header("Accept", "text/html,application/xhtml+xml")
+                                .header("Referer", "http://localhost/chat/" + convId)
+                                .param("enabled", "maybe"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/chat/" + convId))
+                .andExpect(flash().attributeExists("error"));
     }
 
     @Test
@@ -250,11 +264,16 @@ public class ChatControllerIT {
         UUID convId = conv.id();
         var loginA = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc
-            .perform(post("/chat/" + convId + "/send").with(loginA).with(csrf())
-                .param("content", "Hello").param("promptName", ""))
-            .andExpect(status().isBadRequest()).andExpect(
-                jsonPath("$.error").value("A playbook must be selected before asking a question."));
+        mockMvc.perform(
+                        post("/chat/" + convId + "/send")
+                                .with(loginA)
+                                .with(csrf())
+                                .param("content", "Hello")
+                                .param("promptName", ""))
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("A playbook must be selected before asking a question."));
 
         // Cleanup
         setSecurityContext(userAOid, "user-a-test@local", "User A");
@@ -271,11 +290,16 @@ public class ChatControllerIT {
         UUID convId = conv.id();
         var loginA = testUserLogin(userAOid, "user-a-test@local", "User A");
 
-        mockMvc
-            .perform(post("/chat/" + convId + "/send-async").with(loginA).with(csrf())
-                .param("content", "Hello").param("promptName", ""))
-            .andExpect(status().isBadRequest()).andExpect(
-                jsonPath("$.error").value("A playbook must be selected before asking a question."));
+        mockMvc.perform(
+                        post("/chat/" + convId + "/send-async")
+                                .with(loginA)
+                                .with(csrf())
+                                .param("content", "Hello")
+                                .param("promptName", ""))
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("A playbook must be selected before asking a question."));
 
         // Cleanup
         setSecurityContext(userAOid, "user-a-test@local", "User A");

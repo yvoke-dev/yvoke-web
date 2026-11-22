@@ -15,8 +15,7 @@ import org.slf4j.LoggerFactory;
  * (Gemini — {@code complete=true}, identified by id, replace-on-redelivery) and incremental deltas
  * (OpenAI-style — positional {@code index}, argument fragments appended).
  *
- * <p>
- * This holds mutable per-turn state and is <b>not</b> thread-safe and <b>not</b> a Spring bean:
+ * <p>This holds mutable per-turn state and is <b>not</b> thread-safe and <b>not</b> a Spring bean:
  * create one {@code ToolCallAccumulator} per streaming turn, driven from the single calling thread.
  */
 final class ToolCallAccumulator {
@@ -109,16 +108,14 @@ final class ToolCallAccumulator {
     /**
      * Whether accumulated arguments look like a complete JSON value.
      *
-     * <p>
-     * Structural, not a parse: this class is deliberately dependency-free, and the only failure
+     * <p>Structural, not a parse: this class is deliberately dependency-free, and the only failure
      * being screened for has an unmistakable shape. When a provider gives no {@code index} — which
      * both Azure clients face, because the SDK's deserializer discards it — an argument fragment
      * belonging to an earlier call is appended to the most recently opened one, leaving both calls
      * with truncated JSON. Unbalanced delimiters are what that mis-split always produces.
      *
-     * <p>
-     * Quotes and backslash escapes are tracked so a brace inside a string value is not counted; a
-     * blank value is balanced, because "no arguments" is a legitimate call, not a mis-split.
+     * <p>Quotes and backslash escapes are tracked so a brace inside a string value is not counted;
+     * a blank value is balanced, because "no arguments" is a legitimate call, not a mis-split.
      */
     static boolean looksBalanced(String arguments) {
         if (arguments == null || arguments.isBlank()) {
@@ -168,13 +165,15 @@ final class ToolCallAccumulator {
                 // an argument fragment attributed to the wrong call because the provider gave no
                 // index to attribute it by.
                 log.warn(
-                    "Tool call {} ({}) assembled to structurally incomplete arguments; if this "
-                        + "turn had several tool calls, a fragment was probably attributed to the wrong "
-                        + "one — the provider supplies no index to attribute it by. Arguments: {}",
-                    builder.id, builder.name, arguments);
+                        "Tool call {} ({}) assembled to structurally incomplete arguments; if this "
+                                + "turn had several tool calls, a fragment was probably attributed to the wrong "
+                                + "one — the provider supplies no index to attribute it by. Arguments: {}",
+                        builder.id,
+                        builder.name,
+                        arguments);
             }
             toolCalls.add(
-                new LlmToolCall(builder.id, "function", builder.name, arguments, extraContent));
+                    new LlmToolCall(builder.id, "function", builder.name, arguments, extraContent));
         }
         return toolCalls;
     }

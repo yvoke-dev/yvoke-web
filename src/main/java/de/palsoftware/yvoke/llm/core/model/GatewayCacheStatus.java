@@ -3,12 +3,11 @@ package de.palsoftware.yvoke.llm.core.model;
 /**
  * What an AI gateway did with one HTTP request/response pair.
  *
- * <p>
- * Deliberately not named HIT/MISS. Those are Cloudflare's wire tokens, and this concept has to stay
- * clearly distinct from {@link LlmUsage#cachedTokens()}, which is Gemini's <i>context</i> caching —
- * a completely different thing: those tokens <b>were</b> billed, just at the discounted rate.
- * REPLAYED/FORWARDED name the gateway's <i>action</i> (edge-side), which is the axis on which the
- * two differ. No constant here contains the word "cache".
+ * <p>Deliberately not named HIT/MISS. Those are Cloudflare's wire tokens, and this concept has to
+ * stay clearly distinct from {@link LlmUsage#cachedTokens()}, which is Gemini's <i>context</i>
+ * caching — a completely different thing: those tokens <b>were</b> billed, just at the discounted
+ * rate. REPLAYED/FORWARDED name the gateway's <i>action</i> (edge-side), which is the axis on which
+ * the two differ. No constant here contains the word "cache".
  */
 public enum GatewayCacheStatus {
 

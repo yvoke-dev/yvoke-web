@@ -30,15 +30,13 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 /**
- * Executes domain-scoped web searches via Gemini Grounding with Google Search
- * ({@code POST /v1beta/models/<model>:generateContent} with {@code "tools": [{"google_search":
- * {}}]}).
+ * Executes domain-scoped web searches via Gemini Grounding with Google Search ({@code POST
+ * /v1beta/models/<model>:generateContent} with {@code "tools": [{"google_search": {}}]}).
  *
- * <p>
- * Resolves {@code vertexaisearch.cloud.google.com/grounding-api-redirect/...}
- * {@code 301}/{@code 302} {@code Location} headers with {@link HttpClient.Redirect#NEVER} (avoiding
- * direct requests to vendor WAF-protected pages) and post-filters every candidate URL through
- * {@link WebSearchPolicy#isUrlDomainAllowed(String, List)}.
+ * <p>Resolves {@code vertexaisearch.cloud.google.com/grounding-api-redirect/...} {@code 301}/{@code
+ * 302} {@code Location} headers with {@link HttpClient.Redirect#NEVER} (avoiding direct requests to
+ * vendor WAF-protected pages) and post-filters every candidate URL through {@link
+ * WebSearchPolicy#isUrlDomainAllowed(String, List)}.
  */
 @Service
 public class WebSearchService {
@@ -62,23 +60,43 @@ public class WebSearchService {
     private final HttpClient httpClient;
 
     @Autowired
-    public WebSearchService(@Value("${app.web-search.enabled}") boolean enabled,
-        @Value("${app.web-search.allowed-domains}") String allowedDomainsRaw,
-        @Value("${app.web-search.model}") String model,
-        @Value("${app.web-search.max-results}") int maxResults,
-        @Value("${app.web-search.timeout-seconds}") int timeoutSeconds,
-        @Value("${app.ai.gemini.base-url}") String geminiBaseUrl,
-        @Value("${app.ai.gemini.api-key}") String geminiApiKey, ObjectMapper objectMapper,
-        @Autowired(required = false) ApplicationEventPublisher eventPublisher) {
-        this(enabled, allowedDomainsRaw, model, maxResults, timeoutSeconds, geminiBaseUrl,
-            geminiApiKey, objectMapper, eventPublisher,
-            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(Math.max(1, timeoutSeconds)))
-                .followRedirects(HttpClient.Redirect.NEVER).build());
+    public WebSearchService(
+            @Value("${app.web-search.enabled}") boolean enabled,
+            @Value("${app.web-search.allowed-domains}") String allowedDomainsRaw,
+            @Value("${app.web-search.model}") String model,
+            @Value("${app.web-search.max-results}") int maxResults,
+            @Value("${app.web-search.timeout-seconds}") int timeoutSeconds,
+            @Value("${app.ai.gemini.base-url}") String geminiBaseUrl,
+            @Value("${app.ai.gemini.api-key}") String geminiApiKey,
+            ObjectMapper objectMapper,
+            @Autowired(required = false) ApplicationEventPublisher eventPublisher) {
+        this(
+                enabled,
+                allowedDomainsRaw,
+                model,
+                maxResults,
+                timeoutSeconds,
+                geminiBaseUrl,
+                geminiApiKey,
+                objectMapper,
+                eventPublisher,
+                HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofSeconds(Math.max(1, timeoutSeconds)))
+                        .followRedirects(HttpClient.Redirect.NEVER)
+                        .build());
     }
 
-    WebSearchService(boolean enabled, String allowedDomainsRaw, String model, int maxResults,
-        int timeoutSeconds, String geminiBaseUrl, String geminiApiKey, ObjectMapper objectMapper,
-        ApplicationEventPublisher eventPublisher, HttpClient httpClient) {
+    WebSearchService(
+            boolean enabled,
+            String allowedDomainsRaw,
+            String model,
+            int maxResults,
+            int timeoutSeconds,
+            String geminiBaseUrl,
+            String geminiApiKey,
+            ObjectMapper objectMapper,
+            ApplicationEventPublisher eventPublisher,
+            HttpClient httpClient) {
         this.enabled = enabled;
         this.allowedEntries = WebSearchPolicy.parseAllowEntries(allowedDomainsRaw);
         this.model = model != null ? model.trim() : "";
@@ -97,8 +115,12 @@ public class WebSearchService {
      * (non-placeholder) Gemini API key are set.
      */
     public boolean isAvailable() {
-        return enabled && !allowedEntries.isEmpty() && !model.isEmpty() && !geminiBaseUrl.isEmpty()
-            && !geminiApiKey.isEmpty() && !geminiApiKey.startsWith("placeholder-");
+        return enabled
+                && !allowedEntries.isEmpty()
+                && !model.isEmpty()
+                && !geminiBaseUrl.isEmpty()
+                && !geminiApiKey.isEmpty()
+                && !geminiApiKey.startsWith("placeholder-");
     }
 
     /**
@@ -112,8 +134,9 @@ public class WebSearchService {
         String scopedQuery = WebSearchPolicy.buildScopedQuery(query, allowedEntries);
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("contents",
-            List.of(Map.of("role", "user", "parts", List.of(Map.of("text", scopedQuery)))));
+        payload.put(
+                "contents",
+                List.of(Map.of("role", "user", "parts", List.of(Map.of("text", scopedQuery)))));
         payload.put("tools", List.of(Map.of("google_search", Map.of())));
 
         String requestBody;
@@ -124,16 +147,22 @@ public class WebSearchService {
         }
 
         URI endpoint = URI.create(geminiBaseUrl + "/v1beta/models/" + model + ":generateContent");
-        HttpRequest request = HttpRequest.newBuilder(endpoint)
-            .timeout(Duration.ofSeconds(timeoutSeconds)).header("x-goog-api-key", geminiApiKey)
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8)).build();
+        HttpRequest request =
+                HttpRequest.newBuilder(endpoint)
+                        .timeout(Duration.ofSeconds(timeoutSeconds))
+                        .header("x-goog-api-key", geminiApiKey)
+                        .header("Content-Type", "application/json")
+                        .POST(
+                                HttpRequest.BodyPublishers.ofString(
+                                        requestBody, StandardCharsets.UTF_8))
+                        .build();
 
         long startNanos = System.nanoTime();
         HttpResponse<String> response;
         try {
-            response = httpClient.send(request,
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            response =
+                    httpClient.send(
+                            request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("WebSearch request interrupted", e);
@@ -143,7 +172,7 @@ public class WebSearchService {
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalStateException(
-                "Gemini Grounding returned HTTP " + response.statusCode());
+                    "Gemini Grounding returned HTTP " + response.statusCode());
         }
 
         JsonNode root;
@@ -172,7 +201,7 @@ public class WebSearchService {
         }
 
         Map<Integer, List<String>> supportsByChunk =
-            extractSupportsByChunkIndex(groundingMetadata.path("groundingSupports"));
+                extractSupportsByChunkIndex(groundingMetadata.path("groundingSupports"));
 
         List<WebSearchResult> results = new ArrayList<>();
         Set<String> seenUrls = new LinkedHashSet<>();
@@ -196,8 +225,8 @@ public class WebSearchService {
                 resolvedUrl = rawUri;
             }
             if (resolvedUrl == null
-                || !WebSearchPolicy.isUrlDomainAllowed(resolvedUrl, allowedEntries)
-                || !seenUrls.add(resolvedUrl)) {
+                    || !WebSearchPolicy.isUrlDomainAllowed(resolvedUrl, allowedEntries)
+                    || !seenUrls.add(resolvedUrl)) {
                 continue;
             }
 
@@ -207,8 +236,9 @@ public class WebSearchService {
             }
             List<String> supportTexts = supportsByChunk.get(i);
             String snippet =
-                (supportTexts != null && !supportTexts.isEmpty()) ? String.join(" ", supportTexts)
-                    : candidateText;
+                    (supportTexts != null && !supportTexts.isEmpty())
+                            ? String.join(" ", supportTexts)
+                            : candidateText;
 
             results.add(new WebSearchResult(title, resolvedUrl, snippet));
         }
@@ -232,7 +262,7 @@ public class WebSearchService {
     }
 
     private static Map<Integer, List<String>> extractSupportsByChunkIndex(
-        JsonNode groundingSupports) {
+            JsonNode groundingSupports) {
         if (!groundingSupports.isArray() || groundingSupports.isEmpty()) {
             return Map.of();
         }
@@ -267,7 +297,10 @@ public class WebSearchService {
             return null;
         }
         HttpRequest redirectRequest =
-            HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(timeoutSeconds)).GET().build();
+                HttpRequest.newBuilder(uri)
+                        .timeout(Duration.ofSeconds(timeoutSeconds))
+                        .GET()
+                        .build();
         HttpResponse<Void> response;
         try {
             response = httpClient.send(redirectRequest, HttpResponse.BodyHandlers.discarding());
@@ -299,9 +332,11 @@ public class WebSearchService {
             return null;
         }
         String scheme = locationUri.getScheme();
-        if (!locationUri.isAbsolute() || scheme == null
-            || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))
-            || locationUri.getHost() == null || isGroundingRedirectUri(locationUri)) {
+        if (!locationUri.isAbsolute()
+                || scheme == null
+                || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))
+                || locationUri.getHost() == null
+                || isGroundingRedirectUri(locationUri)) {
             return null;
         }
         return location;
@@ -319,46 +354,66 @@ public class WebSearchService {
         String scheme = uri.getScheme();
         String host = uri.getHost();
         String path = uri.getRawPath();
-        if (scheme == null || host == null || path == null
-            || !path.startsWith(GROUNDING_REDIRECT_PATH_PREFIX)) {
+        if (scheme == null
+                || host == null
+                || path == null
+                || !path.startsWith(GROUNDING_REDIRECT_PATH_PREFIX)) {
             return false;
         }
         if (scheme.equalsIgnoreCase("https")
-            && host.toLowerCase(Locale.ROOT).equals(GROUNDING_REDIRECT_HOST)) {
+                && host.toLowerCase(Locale.ROOT).equals(GROUNDING_REDIRECT_HOST)) {
             return true;
         }
         return !geminiBaseUrl.isEmpty()
-            && uri.toString().startsWith(geminiBaseUrl + GROUNDING_REDIRECT_PATH_PREFIX);
+                && uri.toString().startsWith(geminiBaseUrl + GROUNDING_REDIRECT_PATH_PREFIX);
     }
 
     private void publishUsageIfPresent(JsonNode usageNode, long startNanos) {
-        if (eventPublisher == null || usageNode == null || usageNode.isMissingNode()
-            || usageNode.isNull() || !usageNode.isObject()) {
+        if (eventPublisher == null
+                || usageNode == null
+                || usageNode.isMissingNode()
+                || usageNode.isNull()
+                || !usageNode.isObject()) {
             return;
         }
-        int promptTokens = usageNode.path("promptTokenCount").asInt(0)
-            + usageNode.path("toolUsePromptTokenCount").asInt(0);
+        int promptTokens =
+                usageNode.path("promptTokenCount").asInt(0)
+                        + usageNode.path("toolUsePromptTokenCount").asInt(0);
         int completionTokens = usageNode.path("candidatesTokenCount").asInt(0);
         int cachedTokens = usageNode.path("cachedContentTokenCount").asInt(0);
         int thoughtTokens = usageNode.path("thoughtsTokenCount").asInt(0);
         int totalTokens =
-            usageNode.hasNonNull("totalTokenCount") ? usageNode.path("totalTokenCount").asInt(0)
-                : (promptTokens + completionTokens + thoughtTokens);
+                usageNode.hasNonNull("totalTokenCount")
+                        ? usageNode.path("totalTokenCount").asInt(0)
+                        : (promptTokens + completionTokens + thoughtTokens);
 
         boolean wasInterrupted = Thread.interrupted();
         try {
             LlmCallContextHolder.Context ctx = LlmCallContextHolder.get();
             String source =
-                (ctx != null && ctx.source() != null && !ctx.source().isBlank()) ? ctx.source()
-                    : "web_search";
-            eventPublisher.publishEvent(new LlmCallLoggedEvent(
-                ctx != null ? ctx.conversationId() : null, ctx != null ? ctx.messageId() : null,
-                ctx != null ? ctx.agentRunId() : null, ctx != null ? ctx.userId() : null, source,
-                "web_search", model, promptTokens, completionTokens, cachedTokens, thoughtTokens,
-                totalTokens, elapsedMillis(startNanos)));
+                    (ctx != null && ctx.source() != null && !ctx.source().isBlank())
+                            ? ctx.source()
+                            : "web_search";
+            eventPublisher.publishEvent(
+                    new LlmCallLoggedEvent(
+                            ctx != null ? ctx.conversationId() : null,
+                            ctx != null ? ctx.messageId() : null,
+                            ctx != null ? ctx.agentRunId() : null,
+                            ctx != null ? ctx.userId() : null,
+                            source,
+                            "web_search",
+                            model,
+                            promptTokens,
+                            completionTokens,
+                            cachedTokens,
+                            thoughtTokens,
+                            totalTokens,
+                            elapsedMillis(startNanos)));
         } catch (Exception e) {
-            log.warn("Failed to publish web_search usage event for model {}: {}", model,
-                e.getMessage());
+            log.warn(
+                    "Failed to publish web_search usage event for model {}: {}",
+                    model,
+                    e.getMessage());
         } finally {
             if (wasInterrupted) {
                 Thread.currentThread().interrupt();

@@ -87,15 +87,13 @@ class ToolCallAccumulatorTest {
     /**
      * The exact delta stream {@code AzureOpenAiLlmClient} produces for two parallel tool calls.
      *
-     * <p>
-     * {@code ChatCompletionsFunctionToolCall}'s deserializer discards the wire-level {@code index},
-     * so the client emits {@code index = -1} and reassembly falls back to: an id-bearing fragment
-     * opens (or finds) a call, an id-less fragment appends to the MOST RECENTLY OPENED one. That is
-     * correct only while the service keeps each call's fragments contiguous.
+     * <p>{@code ChatCompletionsFunctionToolCall}'s deserializer discards the wire-level {@code
+     * index}, so the client emits {@code index = -1} and reassembly falls back to: an id-bearing
+     * fragment opens (or finds) a call, an id-less fragment appends to the MOST RECENTLY OPENED
+     * one. That is correct only while the service keeps each call's fragments contiguous.
      *
-     * <p>
-     * The counterpart in {@code AzureOpenAiLlmClientTest} asserts that the client really emits this
-     * sequence; this test owns what the sequence reassembles into. Splitting it that way is
+     * <p>The counterpart in {@code AzureOpenAiLlmClientTest} asserts that the client really emits
+     * this sequence; this test owns what the sequence reassembles into. Splitting it that way is
      * deliberate — the two classes are in different packages, and the delta stream IS the contract
      * between them, so each side pins its own half rather than one side re-implementing the other.
      */
@@ -149,15 +147,13 @@ class ToolCallAccumulatorTest {
     /**
      * The limitation made visible.
      *
-     * <p>
-     * With the index gone, an argument fragment belonging to an EARLIER call — which the wire
+     * <p>With the index gone, an argument fragment belonging to an EARLIER call — which the wire
      * format permits and the {@code index} field exists precisely to express — is appended to the
      * most recently opened one instead. Both calls then carry structurally broken JSON, and every
      * layer downstream sees only "the model sent bad arguments": the tool fails, the model is told
      * to try again, and nothing anywhere names the real cause.
      *
-     * <p>
-     * This cannot be fixed from here — the information was destroyed by the SDK's deserializer
+     * <p>This cannot be fixed from here — the information was destroyed by the SDK's deserializer
      * before the delta was built — so the accumulator's job is to make it LOUD rather than silent.
      * The balance check is what turns an invisible mis-split into a diagnosable one; it is
      * deliberately structural rather than a JSON parse, so the accumulator stays dependency-free.
@@ -173,14 +169,17 @@ class ToolCallAccumulatorTest {
         List<LlmToolCall> calls = acc.assemble();
 
         assertThat(calls.get(0).arguments())
-            .as("call_a is left truncated — the fragment that completes it went elsewhere")
-            .isEqualTo("{\"q\":");
+                .as("call_a is left truncated — the fragment that completes it went elsewhere")
+                .isEqualTo("{\"q\":");
         assertThat(ToolCallAccumulator.looksBalanced(calls.get(0).arguments()))
-            .as("a truncated fragment must be detectable, not silently handed on").isFalse();
+                .as("a truncated fragment must be detectable, not silently handed on")
+                .isFalse();
         assertThat(ToolCallAccumulator.looksBalanced("{\"q\":1}")).as("complete object").isTrue();
-        assertThat(ToolCallAccumulator.looksBalanced("")).as("no arguments is not a mis-split")
-            .isTrue();
+        assertThat(ToolCallAccumulator.looksBalanced(""))
+                .as("no arguments is not a mis-split")
+                .isTrue();
         assertThat(ToolCallAccumulator.looksBalanced("{\"s\":\"a}b\"}"))
-            .as("a delimiter inside a string is not a delimiter").isTrue();
+                .as("a delimiter inside a string is not a delimiter")
+                .isTrue();
     }
 }

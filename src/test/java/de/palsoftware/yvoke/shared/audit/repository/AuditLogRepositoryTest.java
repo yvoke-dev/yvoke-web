@@ -67,13 +67,13 @@ public class AuditLogRepositoryTest {
      * audited action has already happened. Let the serialization failure escape and the effect is
      * inverted: the privileged operation succeeds, the record of it is lost, and the admin sees a
      * 500 for an action that in fact took effect — the one combination an audit log exists to make
-     * impossible. No existing test reaches either path: {@code testLog} passes a well-formed
-     * {@code Map.of("key", "value")} and never asserts what is bound to {@code :detail}, so the
-     * repository could bind {@code "{}"} or throw and stay green.
+     * impossible. No existing test reaches either path: {@code testLog} passes a well-formed {@code
+     * Map.of("key", "value")} and never asserts what is bound to {@code :detail}, so the repository
+     * could bind {@code "{}"} or throw and stay green.
      */
     @Test
     public void unserializableOrEmptyAuditDetailStoresNullWithoutFailingTheAction()
-        throws Exception {
+            throws Exception {
         when(statementSpec.update()).thenReturn(1);
 
         // (1) An empty detail map carries no information: store NULL, not "{}".
@@ -84,7 +84,9 @@ public class AuditLogRepositoryTest {
         // (2) A detail value Jackson refuses to write must degrade to NULL, not abort the INSERT.
         ObjectMapper failingMapper = mock(ObjectMapper.class);
         when(failingMapper.writeValueAsString(any()))
-            .thenThrow(new JsonMappingException((Closeable) null, "cannot serialize audit detail"));
+                .thenThrow(
+                        new JsonMappingException(
+                                (Closeable) null, "cannot serialize audit detail"));
         JdbcClient failingClient = mock(JdbcClient.class);
         JdbcClient.StatementSpec failingSpec = mock(JdbcClient.StatementSpec.class);
         when(failingClient.sql(anyString())).thenReturn(failingSpec);

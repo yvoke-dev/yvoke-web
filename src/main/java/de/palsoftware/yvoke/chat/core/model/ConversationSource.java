@@ -1,7 +1,9 @@
 package de.palsoftware.yvoke.chat.core.model;
 
 public enum ConversationSource {
-    WEB("web"), DESKTOP("desktop"), CLAUDE_PLUGIN("claude-plugin");
+    WEB("web"),
+    DESKTOP("desktop"),
+    CLAUDE_PLUGIN("claude-plugin");
 
     private final String value;
 

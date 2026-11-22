@@ -49,10 +49,18 @@ public class MessageRepositoryTest {
         UUID conversationId = UUID.randomUUID();
         UUID chunkId = UUID.randomUUID();
         CitationCheckResult citation =
-            new CitationCheckResult("[chunk_id=abc]", "chunk", CitationStatus.REAL, "1 chunk(s)");
+                new CitationCheckResult(
+                        "[chunk_id=abc]", "chunk", CitationStatus.REAL, "1 chunk(s)");
 
-        Message message = new Message(id, conversationId, "assistant", "Hello world",
-            List.of(chunkId), List.of(citation), null);
+        Message message =
+                new Message(
+                        id,
+                        conversationId,
+                        "assistant",
+                        "Hello world",
+                        List.of(chunkId),
+                        List.of(citation),
+                        null);
 
         messageRepository.save(message);
 
@@ -70,19 +78,35 @@ public class MessageRepositoryTest {
     public void testSave_invalidRoleThrowsException() {
         UUID id = UUID.randomUUID();
         UUID conversationId = UUID.randomUUID();
-        Message message = new Message(id, conversationId, "invalid-role", "Hello world",
-            Collections.emptyList(), Collections.emptyList(), null);
+        Message message =
+                new Message(
+                        id,
+                        conversationId,
+                        "invalid-role",
+                        "Hello world",
+                        Collections.emptyList(),
+                        Collections.emptyList(),
+                        null);
 
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            messageRepository.save(message);
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    messageRepository.save(message);
+                });
     }
 
     @Test
     public void testFindById() {
         UUID id = UUID.randomUUID();
-        Message mockMsg = new Message(id, UUID.randomUUID(), "user", "hi", Collections.emptyList(),
-            Collections.emptyList(), null);
+        Message mockMsg =
+                new Message(
+                        id,
+                        UUID.randomUUID(),
+                        "user",
+                        "hi",
+                        Collections.emptyList(),
+                        Collections.emptyList(),
+                        null);
         when(querySpec.optional()).thenReturn(Optional.of(mockMsg));
 
         Optional<Message> result = messageRepository.findById(id);
@@ -113,7 +137,7 @@ public class MessageRepositoryTest {
         UUID conversationId = UUID.randomUUID();
         JdbcClient.MappedQuerySpec<Integer> intQuerySpec = mock(JdbcClient.MappedQuerySpec.class);
         when(statementSpec.query(any(RowMapper.class)))
-            .thenReturn((JdbcClient.MappedQuerySpec) intQuerySpec);
+                .thenReturn((JdbcClient.MappedQuerySpec) intQuerySpec);
         when(intQuerySpec.list()).thenReturn(List.of(3));
 
         Optional<Integer> result = messageRepository.findInitialPlaybookVersion(conversationId);

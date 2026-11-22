@@ -31,35 +31,30 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration"
+        })
 public class JsonObjectsToolsIT {
 
     private static final String COLLECTION_NAME = "OIM-JSON-TOOLS-TEST";
 
-    @Autowired
-    private TagRepository tagRepository;
+    @Autowired private TagRepository tagRepository;
 
-    @Autowired
-    private JsonObjectRepository jsonObjectRepository;
+    @Autowired private JsonObjectRepository jsonObjectRepository;
 
-    @Autowired
-    private CollectionRepository collectionRepository;
+    @Autowired private CollectionRepository collectionRepository;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private ApplicationContext applicationContext;
+    @Autowired private ApplicationContext applicationContext;
 
-    @Autowired
-    private QueryJsonObjectsTool queryTool;
+    @Autowired private QueryJsonObjectsTool queryTool;
 
-    @Autowired
-    private GetJsonSchemaTool schemaTool;
+    @Autowired private GetJsonSchemaTool schemaTool;
 
-    @Autowired
-    private JsonSchemaRepository jsonSchemaRepository;
+    @Autowired private JsonSchemaRepository jsonSchemaRepository;
 
     private UUID collectionId;
 
@@ -67,16 +62,26 @@ public class JsonObjectsToolsIT {
     public void setUp() {
         cleanup();
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("test-user", "N/A",
-                List.of(new SimpleGrantedAuthority("ROLE_USER"),
-                    new SimpleGrantedAuthority("AREA_USER_OIM"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "test-user",
+                                "N/A",
+                                List.of(
+                                        new SimpleGrantedAuthority("ROLE_USER"),
+                                        new SimpleGrantedAuthority("AREA_USER_OIM"))));
         collectionRepository.create(COLLECTION_NAME, "Test Collection", "OIM");
         collectionId =
-            collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
+                collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
 
         Map<String, Object> data = Map.of("name", "Alice", "role", "admin");
-        JsonObject obj = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data,
-            "users.json", OffsetDateTime.now());
+        JsonObject obj =
+                new JsonObject(
+                        UUID.randomUUID(),
+                        collectionId,
+                        COLLECTION_NAME,
+                        data,
+                        "users.json",
+                        OffsetDateTime.now());
         jsonObjectRepository.save(obj);
     }
 
@@ -94,21 +99,19 @@ public class JsonObjectsToolsIT {
      * the reason a fix in {@code mcp/tools} reaches both at once — and it is held up by nothing
      * more than a {@code List<ToolCallback>} constructor parameter.
      *
-     * <p>
-     * Spring resolves a collection injection point against individual {@code ToolCallback} beans
+     * <p>Spring resolves a collection injection point against individual {@code ToolCallback} beans
      * FIRST and only falls back to the {@code List<ToolCallback>} bean when none exist, so the day
      * anything contributes a single {@code ToolCallback} bean — spring-ai, or a well-meaning
      * {@code @Component} on one of the per-run callbacks — {@code RagService} silently receives
      * that instead. Narrowing or reordering the parameter has the same effect. The failure is
-     * invisible from every angle that is currently tested:
-     * {@code theTwoToolCataloguesAreSplitExactly} reads the bean directly and stays green,
-     * {@code McpServerEndpointsIT} still lists all sixteen tools over JSON-RPC, and the app still
-     * answers — it just answers without retrieval, because the agent's registry is empty or
-     * partial, which reads as a quality regression rather than a wiring bug.
+     * invisible from every angle that is currently tested: {@code
+     * theTwoToolCataloguesAreSplitExactly} reads the bean directly and stays green, {@code
+     * McpServerEndpointsIT} still lists all sixteen tools over JSON-RPC, and the app still answers
+     * — it just answers without retrieval, because the agent's registry is empty or partial, which
+     * reads as a quality regression rather than a wiring bug.
      *
-     * <p>
-     * The instance identity assertion is the load-bearing half: equal NAMES would also hold for a
-     * separately built list, which would then drift from the MCP one silently.
+     * <p>The instance identity assertion is the load-bearing half: equal NAMES would also hold for
+     * a separately built list, which would then drift from the MCP one silently.
      */
     @Test
     public void theInAppChatAgentIsFedTheSameToolCallbackInstancesAsTheMcpServer() {
@@ -116,25 +119,27 @@ public class JsonObjectsToolsIT {
         RagService ragService = applicationContext.getBean(RagService.class);
 
         List<String> mcpNames =
-            callbacks.stream().map(c -> ((ToolCallback) c).getToolDefinition().name()).toList();
+                callbacks.stream().map(c -> ((ToolCallback) c).getToolDefinition().name()).toList();
 
         assertThat(mcpNames)
-            .as("WebSearch is an in-app chat-only tool and must not be published on /mcp")
-            .doesNotContain("WebSearch");
+                .as("WebSearch is an in-app chat-only tool and must not be published on /mcp")
+                .doesNotContain("WebSearch");
 
         List<String> expectedChatNames = new ArrayList<>(mcpNames);
         expectedChatNames.add("WebSearch");
 
         assertThat(ragService.getToolRegistry().keySet())
-            .as("the agentic catalogue holds the MCP catalogue plus the chat-only WebSearch tool")
-            .containsExactlyInAnyOrderElementsOf(expectedChatNames);
+                .as(
+                        "the agentic catalogue holds the MCP catalogue plus the chat-only WebSearch tool")
+                .containsExactlyInAnyOrderElementsOf(expectedChatNames);
 
         for (Object c : callbacks) {
             ToolCallback callback = (ToolCallback) c;
             assertThat(ragService.getToolRegistry().get(callback.getToolDefinition().name()))
-                .as("the agent must hold the SAME %s instance the MCP server serves",
-                    callback.getToolDefinition().name())
-                .isSameAs(callback);
+                    .as(
+                            "the agent must hold the SAME %s instance the MCP server serves",
+                            callback.getToolDefinition().name())
+                    .isSameAs(callback);
         }
     }
 
@@ -146,8 +151,16 @@ public class JsonObjectsToolsIT {
 
     @Test
     public void testQueryTool() {
-        String response = queryTool.queryJsonObjects(COLLECTION_NAME, "$.role ? (@ == \"admin\")",
-            null, "name,role", 10, 0, null, null);
+        String response =
+                queryTool.queryJsonObjects(
+                        COLLECTION_NAME,
+                        "$.role ? (@ == \"admin\")",
+                        null,
+                        "name,role",
+                        10,
+                        0,
+                        null,
+                        null);
 
         assertThat(response).contains("Alice");
         assertThat(response).contains(COLLECTION_NAME);
@@ -156,14 +169,22 @@ public class JsonObjectsToolsIT {
     @Test
     public void testQueryToolWithTags() {
         Map<String, Object> data = Map.of("name", "Bob", "role", "user");
-        JsonObject obj = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data,
-            "users.json", List.of("release"), OffsetDateTime.now());
+        JsonObject obj =
+                new JsonObject(
+                        UUID.randomUUID(),
+                        collectionId,
+                        COLLECTION_NAME,
+                        data,
+                        "users.json",
+                        List.of("release"),
+                        OffsetDateTime.now());
         jsonObjectRepository.save(obj);
 
         tagRepository.addTagToCollection(collectionId, "release");
 
         String response =
-            queryTool.queryJsonObjects(COLLECTION_NAME, null, "release", "name", 10, 0, null, null);
+                queryTool.queryJsonObjects(
+                        COLLECTION_NAME, null, "release", "name", 10, 0, null, null);
         assertThat(response).contains("Bob");
         assertThat(response).doesNotContain("Alice");
     }
@@ -179,55 +200,76 @@ public class JsonObjectsToolsIT {
      * missing capability: "this manual has no table of contents" rather than "get_toc is gone".
      * That is indistinguishable from a corpus gap, which is how it would survive a release.
      *
-     * <p>
-     * Nothing else asserts the catalogue's membership. {@code McpToolCatalogueParityTest} compares
-     * the two annotation catalogues on each class but never asks which classes are registered, and
-     * {@code McpServerEndpointsIT.testListToolsRpc} checks only {@code search_corpus} — one of the
-     * two callbacks added by hand BEFORE the scanning loop, so it passes even if the loop registers
-     * nothing at all. The exact-match assertion is deliberate in both directions: a duplicate would
-     * mean one registration silently lost the race, and an unexpected extra name means a tool
-     * reached the agents without reaching this list.
+     * <p>Nothing else asserts the catalogue's membership. {@code McpToolCatalogueParityTest}
+     * compares the two annotation catalogues on each class but never asks which classes are
+     * registered, and {@code McpServerEndpointsIT.testListToolsRpc} checks only {@code
+     * search_corpus} — one of the two callbacks added by hand BEFORE the scanning loop, so it
+     * passes even if the loop registers nothing at all. The exact-match assertion is deliberate in
+     * both directions: a duplicate would mean one registration silently lost the race, and an
+     * unexpected extra name means a tool reached the agents without reaching this list.
      *
-     * <p>
-     * There are two lists, and this test pins both: {@code sharedToolCallbacks}, which the MCP
+     * <p>There are two lists, and this test pins both: {@code sharedToolCallbacks}, which the MCP
      * server and the in-app assistant share, and {@code clientOnlyToolCallbacks}, which only the
      * MCP server publishes (Claude plugin P1-13, D-23). A tool moving from one to the other is a
      * change to who may call it, so the split itself is part of the contract.
      *
-     * <p>
-     * The bean is fetched by NAME rather than injected as {@code List<ToolCallback>}: a collection
-     * injection point is resolved against individual {@code ToolCallback} beans first and only
-     * falls back to the {@code List<ToolCallback>} bean when none exist, so it would quietly start
-     * meaning something else the day spring-ai contributes a single {@code ToolCallback} bean.
+     * <p>The bean is fetched by NAME rather than injected as {@code List<ToolCallback>}: a
+     * collection injection point is resolved against individual {@code ToolCallback} beans first
+     * and only falls back to the {@code List<ToolCallback>} bean when none exist, so it would
+     * quietly start meaning something else the day spring-ai contributes a single {@code
+     * ToolCallback} bean.
      */
     @Test
     public void theTwoToolCataloguesAreSplitExactly() {
         List<?> callbacks = applicationContext.getBean("sharedToolCallbacks", List.class);
 
         List<String> names =
-            callbacks.stream().map(c -> ((ToolCallback) c).getToolDefinition().name()).toList();
+                callbacks.stream().map(c -> ((ToolCallback) c).getToolDefinition().name()).toList();
 
-        assertThat(names).containsExactlyInAnyOrder("search_corpus", "ask_clarifying_question",
-            "get_toc", "get_section", "list_documents", "get_graph_neighbors",
-            "search_graph_entities", "get_json_schema", "query_json_objects", "verify_citations");
+        assertThat(names)
+                .containsExactlyInAnyOrder(
+                        "search_corpus",
+                        "ask_clarifying_question",
+                        "get_toc",
+                        "get_section",
+                        "list_documents",
+                        "get_graph_neighbors",
+                        "search_graph_entities",
+                        "get_json_schema",
+                        "query_json_objects",
+                        "verify_citations");
 
         // The plugin-control tools (Claude plugin P1-13, D-23) are published to MCP clients through
         // a provider the web assistant never reads, so they must be here and only here.
         ToolCallbackProvider clientOnly =
-            applicationContext.getBean("clientOnlyToolCallbacks", ToolCallbackProvider.class);
-        List<String> clientOnlyNames = Arrays.stream(clientOnly.getToolCallbacks())
-            .map(c -> c.getToolDefinition().name()).toList();
+                applicationContext.getBean("clientOnlyToolCallbacks", ToolCallbackProvider.class);
+        List<String> clientOnlyNames =
+                Arrays.stream(clientOnly.getToolCallbacks())
+                        .map(c -> c.getToolDefinition().name())
+                        .toList();
 
-        assertThat(clientOnlyNames).containsExactlyInAnyOrder("list_playbooks", "get_playbook",
-            "list_areas", "list_profiles", "get_profile", "submit_feedback");
+        assertThat(clientOnlyNames)
+                .containsExactlyInAnyOrder(
+                        "list_playbooks",
+                        "get_playbook",
+                        "list_areas",
+                        "list_profiles",
+                        "get_profile",
+                        "submit_feedback");
     }
 
     @Test
     public void testGetSchemaTool() {
         Map<String, Object> schemaData =
-            Map.of("type", "object", "properties", Map.of("name", Map.of("type", "string")));
-        JsonSchema schema = new JsonSchema(UUID.randomUUID(), collectionId, null, schemaData,
-            "manual", OffsetDateTime.now());
+                Map.of("type", "object", "properties", Map.of("name", Map.of("type", "string")));
+        JsonSchema schema =
+                new JsonSchema(
+                        UUID.randomUUID(),
+                        collectionId,
+                        null,
+                        schemaData,
+                        "manual",
+                        OffsetDateTime.now());
         jsonSchemaRepository.upsert(schema);
 
         String response = schemaTool.getJsonSchema(COLLECTION_NAME, null);

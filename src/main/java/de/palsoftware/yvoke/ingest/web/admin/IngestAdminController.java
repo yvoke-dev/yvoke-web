@@ -38,7 +38,6 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-
 @Controller
 @RequestMapping("/admin")
 public class IngestAdminController {
@@ -52,10 +51,13 @@ public class IngestAdminController {
     private final UserService userService;
     private final String uploadDir;
 
-    public IngestAdminController(CollectionService collectionService,
-        SystemPromptService systemPromptService, JobService jobService,
-        AuditLogRepository auditLogRepository, UserService userService,
-        @Value("${app.upload-dir}") String uploadDir) {
+    public IngestAdminController(
+            CollectionService collectionService,
+            SystemPromptService systemPromptService,
+            JobService jobService,
+            AuditLogRepository auditLogRepository,
+            UserService userService,
+            @Value("${app.upload-dir}") String uploadDir) {
         this.collectionService = collectionService;
         this.systemPromptService = systemPromptService;
         this.jobService = jobService;
@@ -71,8 +73,9 @@ public class IngestAdminController {
     @GetMapping("/ingest")
     public String ingestView(Model model, @RequestParam(required = false) String collection) {
         log.info("IngestAdminController: Accessing Ingest view");
-        List<Collection> collections = AreaAccessContext
-            .filterByAdminArea(collectionService.listCollections(), Collection::area);
+        List<Collection> collections =
+                AreaAccessContext.filterByAdminArea(
+                        collectionService.listCollections(), Collection::area);
         model.addAttribute("collections", collections);
 
         String targetCollection = collection;
@@ -80,33 +83,47 @@ public class IngestAdminController {
             targetCollection = collections.get(0).name();
         }
 
-        List<String> tags = (targetCollection != null) ? collectionService
-            .getCollection(targetCollection).map(Collection::tags).orElse(List.of()) : List.of();
+        List<String> tags =
+                (targetCollection != null)
+                        ? collectionService
+                                .getCollection(targetCollection)
+                                .map(Collection::tags)
+                                .orElse(List.of())
+                        : List.of();
         model.addAttribute("tags", tags);
         model.addAttribute("versions", tags);
 
-        model.addAttribute("kgPrompts", AreaAccessContext.filterByAdminArea(
-            systemPromptService.listPromptsByType(SystemPromptType.KG), SystemPrompt::area));
-        model.addAttribute("summarizePrompts", AreaAccessContext.filterByAdminArea(
-            systemPromptService.listPromptsByType(SystemPromptType.SUMMARIZE), SystemPrompt::area));
+        model.addAttribute(
+                "kgPrompts",
+                AreaAccessContext.filterByAdminArea(
+                        systemPromptService.listPromptsByType(SystemPromptType.KG),
+                        SystemPrompt::area));
+        model.addAttribute(
+                "summarizePrompts",
+                AreaAccessContext.filterByAdminArea(
+                        systemPromptService.listPromptsByType(SystemPromptType.SUMMARIZE),
+                        SystemPrompt::area));
         return "admin/ingest";
     }
 
     @PostMapping("/ingest/upload")
-    public String uploadIngest(@RequestParam("file") MultipartFile file,
-        @RequestParam("collection") String collection,
-        @RequestParam(value = "tag", required = false) String tag,
-        @RequestParam("kind") String kind,
-        @RequestParam(value = "kgPromptName", required = false) String kgPromptName,
-        @RequestParam(value = "summarizePromptName", required = false) String summarizePromptName,
-        @RequestParam(value = "documentGlob", required = false) String documentGlob,
-        @RequestParam(value = "entitiesFile", required = false) String entitiesFile,
-        @RequestParam(value = "relationshipsFile", required = false) String relationshipsFile,
-        @RequestParam(value = "enableGraph", required = false) Boolean enableGraph,
-        @RequestParam(value = "jsonUniqueField", required = false) String jsonUniqueField,
-        @RequestParam(value = "buildSectionSummaries",
-            required = false) Boolean buildSectionSummaries,
-        RedirectAttributes redirectAttributes) throws IOException {
+    public String uploadIngest(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("collection") String collection,
+            @RequestParam(value = "tag", required = false) String tag,
+            @RequestParam("kind") String kind,
+            @RequestParam(value = "kgPromptName", required = false) String kgPromptName,
+            @RequestParam(value = "summarizePromptName", required = false)
+                    String summarizePromptName,
+            @RequestParam(value = "documentGlob", required = false) String documentGlob,
+            @RequestParam(value = "entitiesFile", required = false) String entitiesFile,
+            @RequestParam(value = "relationshipsFile", required = false) String relationshipsFile,
+            @RequestParam(value = "enableGraph", required = false) Boolean enableGraph,
+            @RequestParam(value = "jsonUniqueField", required = false) String jsonUniqueField,
+            @RequestParam(value = "buildSectionSummaries", required = false)
+                    Boolean buildSectionSummaries,
+            RedirectAttributes redirectAttributes)
+            throws IOException {
 
         if (file.isEmpty()) {
             redirectAttributes.addFlashAttribute("error", "Please select a file to upload.");
@@ -115,8 +132,8 @@ public class IngestAdminController {
 
         Optional<Collection> colOpt = collectionService.getCollection(collection);
         if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Collection not found: " + collection);
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Collection not found: " + collection);
         }
 
         Path uploadRoot = Path.of(uploadDir).toAbsolutePath().normalize();
@@ -172,8 +189,14 @@ public class IngestAdminController {
 
         EnqueueResult result;
         try {
-            result = jobService.enqueue(new EnqueueRequest(jobKind,
-                targetFile.toAbsolutePath().toString(), finalTag, collection, settings));
+            result =
+                    jobService.enqueue(
+                            new EnqueueRequest(
+                                    jobKind,
+                                    targetFile.toAbsolutePath().toString(),
+                                    finalTag,
+                                    collection,
+                                    settings));
         } catch (RuntimeException e) {
             Files.deleteIfExists(targetFile);
             throw e;
@@ -183,23 +206,35 @@ public class IngestAdminController {
         }
         UUID jobId = result.jobId();
 
-        auditLogRepository.log(getCurrentAdminOid(), "INGEST_DATA", jobId.toString(),
-            Map.of("kind", jobKind, "collection", collection, "tag",
-                finalTag != null ? finalTag : "", "filename",
-                originalFilename != null ? originalFilename : ""));
+        auditLogRepository.log(
+                getCurrentAdminOid(),
+                "INGEST_DATA",
+                jobId.toString(),
+                Map.of(
+                        "kind",
+                        jobKind,
+                        "collection",
+                        collection,
+                        "tag",
+                        finalTag != null ? finalTag : "",
+                        "filename",
+                        originalFilename != null ? originalFilename : ""));
 
         if (result.created()) {
-            redirectAttributes.addFlashAttribute("success",
-                "Job enqueued successfully! Job ID: " + jobId);
+            redirectAttributes.addFlashAttribute(
+                    "success", "Job enqueued successfully! Job ID: " + jobId);
         } else {
             // Same warning channel as the KG path: an adopted job keeps the settings (prompts,
             // graph flag) it was enqueued with, so the ones chosen on this form were not applied.
             // Practically unreachable here — the staged file name carries a fresh UUID, so this
             // upload's source_ref is unique — but the message must not claim success if it happens.
-            redirectAttributes.addFlashAttribute("warning", "An ingest of this file into '"
-                + collection + "' is already queued or running — showing that job. It runs with the"
-                + " settings it was enqueued with, so the options selected here were not applied;"
-                + " cancel that job and submit again to change them.");
+            redirectAttributes.addFlashAttribute(
+                    "warning",
+                    "An ingest of this file into '"
+                            + collection
+                            + "' is already queued or running — showing that job. It runs with the"
+                            + " settings it was enqueued with, so the options selected here were not applied;"
+                            + " cancel that job and submit again to change them.");
         }
         return "redirect:/admin/jobs/" + jobId;
     }

@@ -1,7 +1,9 @@
 package de.palsoftware.yvoke.chat.core.model;
 
 public enum MessageRole {
-    USER("user"), ASSISTANT("assistant"), SYSTEM("system");
+    USER("user"),
+    ASSISTANT("assistant"),
+    SYSTEM("system");
 
     private final String value;
 

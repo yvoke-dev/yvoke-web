@@ -26,9 +26,15 @@ public class UserArgumentResolver implements HandlerMethodArgumentResolver {
     }
 
     @Override
-    public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
-        NativeWebRequest webRequest, WebDataBinderFactory binderFactory) {
-        return userService.getCurrentUser().orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user"));
+    public Object resolveArgument(
+            MethodParameter parameter,
+            ModelAndViewContainer mavContainer,
+            NativeWebRequest webRequest,
+            WebDataBinderFactory binderFactory) {
+        return userService
+                .getCurrentUser()
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.UNAUTHORIZED, "No authenticated user"));
     }
 }

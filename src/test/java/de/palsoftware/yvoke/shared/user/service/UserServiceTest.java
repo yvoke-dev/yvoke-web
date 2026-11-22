@@ -37,22 +37,20 @@ public class UserServiceTest {
      * its email must fall back to the {@code email} claim when {@code preferred_username} is
      * absent.
      *
-     * <p>
-     * On an Entra ACCESS token both {@code oid} and {@code preferred_username} are OPTIONAL claims:
-     * a personal Microsoft account, and any app registration that has not opted into the
+     * <p>On an Entra ACCESS token both {@code oid} and {@code preferred_username} are OPTIONAL
+     * claims: a personal Microsoft account, and any app registration that has not opted into the
      * optional-claims set, sends neither. {@code testGetCurrentUserWithJwt} stubs both, so it
      * drives the happy path only and every fallback branch here is unexecuted by the whole suite —
      * the mock {@code JwtDecoder} used by {@code app.security.mock=true} synthesises both claims
      * too, so this is not reachable locally either.
      *
-     * <p>
-     * If {@code sub} stopped backfilling the oid, {@code getCurrentUser} would return
-     * {@code Optional.empty()} for those tokens: no {@code users} row is provisioned,
-     * {@code UserArgumentResolver} has nothing to resolve, and every {@code /api/chat/v1} and MCP
-     * request from that client 401s while the token itself is perfectly valid. The email half is
-     * quieter and permanent — the row is created with a NULL email, so the cost dashboard's user
-     * picker and top-users report show a blank entry for exactly the heavy MCP users an operator
-     * most wants to identify.
+     * <p>If {@code sub} stopped backfilling the oid, {@code getCurrentUser} would return {@code
+     * Optional.empty()} for those tokens: no {@code users} row is provisioned, {@code
+     * UserArgumentResolver} has nothing to resolve, and every {@code /api/chat/v1} and MCP request
+     * from that client 401s while the token itself is perfectly valid. The email half is quieter
+     * and permanent — the row is created with a NULL email, so the cost dashboard's user picker and
+     * top-users report show a blank entry for exactly the heavy MCP users an operator most wants to
+     * identify.
      */
     @Test
     public void testGetCurrentUserFallsBackToSubAndEmailWhenEntraOmitsTheOptionalClaims() {
@@ -70,28 +68,37 @@ public class UserServiceTest {
 
         // Stubbed for the SUB only: an unstubbed lookup yields Optional.empty(), so a resolved user
         // is what proves the fallback ran rather than any argument this test supplied.
-        User provisioned = new User(UUID.randomUUID(), "desktop-sub-1234", "desktop@contoso.com",
-            null, Instant.now());
+        User provisioned =
+                new User(
+                        UUID.randomUUID(),
+                        "desktop-sub-1234",
+                        "desktop@contoso.com",
+                        null,
+                        Instant.now());
         when(userRepository.upsertAndReturn("desktop-sub-1234", "desktop@contoso.com", null))
-            .thenReturn(Optional.of(provisioned));
+                .thenReturn(Optional.of(provisioned));
 
         Optional<User> user = userService.getCurrentUser();
 
-        assertThat(user).as("a token carrying no oid claim must still resolve to a user")
-            .isPresent();
+        assertThat(user)
+                .as("a token carrying no oid claim must still resolve to a user")
+                .isPresent();
 
         ArgumentCaptor<String> oid = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> email = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> displayName = ArgumentCaptor.forClass(String.class);
-        verify(userRepository).upsertAndReturn(oid.capture(), email.capture(),
-            displayName.capture());
+        verify(userRepository)
+                .upsertAndReturn(oid.capture(), email.capture(), displayName.capture());
 
-        assertThat(oid.getValue()).as("sub becomes the entra_oid when oid is absent")
-            .isEqualTo("desktop-sub-1234");
-        assertThat(email.getValue()).as("the email claim backfills a missing preferred_username")
-            .isEqualTo("desktop@contoso.com");
+        assertThat(oid.getValue())
+                .as("sub becomes the entra_oid when oid is absent")
+                .isEqualTo("desktop-sub-1234");
+        assertThat(email.getValue())
+                .as("the email claim backfills a missing preferred_username")
+                .isEqualTo("desktop@contoso.com");
         assertThat(displayName.getValue())
-            .as("an absent name claim stays absent, it is not invented").isNull();
+                .as("an absent name claim stays absent, it is not invented")
+                .isNull();
     }
 
     @BeforeEach
@@ -211,23 +218,29 @@ public class UserServiceTest {
         when(auth.getPrincipal()).thenReturn(jwt);
         SecurityContextHolder.getContext().setAuthentication(auth);
 
-        User mockUser = new User(UUID.randomUUID(), "mock-jwt-oid", "jwt-user@palsoftware.local",
-            "Jwt User", Instant.now());
-        when(userRepository.upsertAndReturn("mock-jwt-oid", "jwt-user@palsoftware.local",
-            "Jwt User")).thenReturn(Optional.of(mockUser));
+        User mockUser =
+                new User(
+                        UUID.randomUUID(),
+                        "mock-jwt-oid",
+                        "jwt-user@palsoftware.local",
+                        "Jwt User",
+                        Instant.now());
+        when(userRepository.upsertAndReturn(
+                        "mock-jwt-oid", "jwt-user@palsoftware.local", "Jwt User"))
+                .thenReturn(Optional.of(mockUser));
 
         Optional<User> user = userService.getCurrentUser();
 
-        verify(userRepository).upsertAndReturn("mock-jwt-oid", "jwt-user@palsoftware.local",
-            "Jwt User");
+        verify(userRepository)
+                .upsertAndReturn("mock-jwt-oid", "jwt-user@palsoftware.local", "Jwt User");
         assertThat(user).isPresent();
         assertThat(user.get().displayName()).isEqualTo("Jwt User");
     }
 
     @Test
     public void getCurrentUserCachesResolutionWithinSameHttpRequest() {
-        RequestContextHolder
-            .setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
+        RequestContextHolder.setRequestAttributes(
+                new ServletRequestAttributes(new MockHttpServletRequest()));
         try {
             Jwt jwt = mock(Jwt.class);
             when(jwt.getClaimAsString("oid")).thenReturn("cached-jwt-oid");
@@ -239,17 +252,22 @@ public class UserServiceTest {
             when(auth.getPrincipal()).thenReturn(jwt);
             SecurityContextHolder.getContext().setAuthentication(auth);
 
-            User mockUser = new User(UUID.randomUUID(), "cached-jwt-oid", "cached@local",
-                "Cached User", Instant.now());
+            User mockUser =
+                    new User(
+                            UUID.randomUUID(),
+                            "cached-jwt-oid",
+                            "cached@local",
+                            "Cached User",
+                            Instant.now());
             when(userRepository.upsertAndReturn("cached-jwt-oid", "cached@local", "Cached User"))
-                .thenReturn(Optional.of(mockUser));
+                    .thenReturn(Optional.of(mockUser));
 
             assertThat(userService.getCurrentUser()).contains(mockUser);
             assertThat(userService.getCurrentUser()).contains(mockUser);
             assertThat(userService.getCurrentUser()).contains(mockUser);
 
-            verify(userRepository, times(1)).upsertAndReturn("cached-jwt-oid", "cached@local",
-                "Cached User");
+            verify(userRepository, times(1))
+                    .upsertAndReturn("cached-jwt-oid", "cached@local", "Cached User");
         } finally {
             RequestContextHolder.resetRequestAttributes();
         }

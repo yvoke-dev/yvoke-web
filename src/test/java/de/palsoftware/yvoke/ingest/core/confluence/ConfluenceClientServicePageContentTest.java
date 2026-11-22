@@ -20,8 +20,24 @@ import org.springframework.web.client.RestClient;
 class ConfluenceClientServicePageContentTest {
 
     private static final ConfluenceInstance INSTANCE =
-        new ConfluenceInstance(UUID.randomUUID(), "Docs", "docs", "https://wiki.example.com",
-            "e@x.com", "tok", null, "SPACE", "123", "", "", "coll", "v1", false, true, null, null);
+            new ConfluenceInstance(
+                    UUID.randomUUID(),
+                    "Docs",
+                    "docs",
+                    "https://wiki.example.com",
+                    "e@x.com",
+                    "tok",
+                    null,
+                    "SPACE",
+                    "123",
+                    "",
+                    "",
+                    "coll",
+                    "v1",
+                    false,
+                    true,
+                    null,
+                    null);
 
     private static final class TestClient extends ConfluenceClientService implements AutoCloseable {
         private final HttpServer server;
@@ -31,24 +47,36 @@ class ConfluenceClientServicePageContentTest {
         private final List<String> requestedUris = new CopyOnWriteArrayList<>();
 
         private TestClient() throws IOException {
-            super(mock(SecretCipher.class), RestClient.builder(), 3, 1, 5, true, List.of(),
-                ConfluenceClientService.MAX_ATTACHMENT_BYTES);
+            super(
+                    mock(SecretCipher.class),
+                    RestClient.builder(),
+                    3,
+                    1,
+                    5,
+                    true,
+                    List.of(),
+                    ConfluenceClientService.MAX_ATTACHMENT_BYTES);
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/rest/api/content/", exchange -> {
-                requestedUris.add(exchange.getRequestURI().toString());
-                exchange.getRequestBody().readAllBytes();
-                int status = statusCodes.isEmpty() ? 200 : statusCodes.poll();
-                byte[] payload = (responseBodies.isEmpty() ? "{}" : responseBodies.poll())
-                    .getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().add("Content-Type", "application/json");
-                exchange.sendResponseHeaders(status, payload.length);
-                try (OutputStream out = exchange.getResponseBody()) {
-                    out.write(payload);
-                }
-            });
+            server.createContext(
+                    "/rest/api/content/",
+                    exchange -> {
+                        requestedUris.add(exchange.getRequestURI().toString());
+                        exchange.getRequestBody().readAllBytes();
+                        int status = statusCodes.isEmpty() ? 200 : statusCodes.poll();
+                        byte[] payload =
+                                (responseBodies.isEmpty() ? "{}" : responseBodies.poll())
+                                        .getBytes(StandardCharsets.UTF_8);
+                        exchange.getResponseHeaders().add("Content-Type", "application/json");
+                        exchange.sendResponseHeaders(status, payload.length);
+                        try (OutputStream out = exchange.getResponseBody()) {
+                            out.write(payload);
+                        }
+                    });
             server.start();
-            client = RestClient.builder()
-                .baseUrl("http://127.0.0.1:" + server.getAddress().getPort()).build();
+            client =
+                    RestClient.builder()
+                            .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
+                            .build();
         }
 
         private void enqueueResponse(String body) {
@@ -73,25 +101,26 @@ class ConfluenceClientServicePageContentTest {
 
     @Test
     void getPageContentExtractsXhtmlAuthorLastUpdatedAndVersion() throws IOException {
-        String json = """
-            {
-              "id": "12345",
-              "body": {
-                "storage": {
-                  "value": "<p>Hello Confluence</p>"
+        String json =
+                """
+                {
+                  "id": "12345",
+                  "body": {
+                    "storage": {
+                      "value": "<p>Hello Confluence</p>"
+                    }
+                  },
+                  "version": {
+                    "by": {
+                      "displayName": "Alice Admin",
+                      "publicName": "Alice",
+                      "username": "aadmin"
+                    },
+                    "when": "2024-03-15T12:00:00.000Z",
+                    "number": 5
+                  }
                 }
-              },
-              "version": {
-                "by": {
-                  "displayName": "Alice Admin",
-                  "publicName": "Alice",
-                  "username": "aadmin"
-                },
-                "when": "2024-03-15T12:00:00.000Z",
-                "number": 5
-              }
-            }
-            """;
+                """;
 
         try (TestClient client = new TestClient()) {
             client.enqueueResponse(json);
@@ -105,30 +134,31 @@ class ConfluenceClientServicePageContentTest {
 
             assertThat(client.requestedUris).hasSize(1);
             assertThat(client.requestedUris.get(0))
-                .isEqualTo("/rest/api/content/12345?expand=body.storage,version");
+                    .isEqualTo("/rest/api/content/12345?expand=body.storage,version");
         }
     }
 
     @Test
     void getPageContentFallsBackToPublicNameWhenDisplayNameMissing() throws IOException {
-        String json = """
-            {
-              "id": "12345",
-              "body": {
-                "storage": {
-                  "value": "<p>Content</p>"
+        String json =
+                """
+                {
+                  "id": "12345",
+                  "body": {
+                    "storage": {
+                      "value": "<p>Content</p>"
+                    }
+                  },
+                  "version": {
+                    "by": {
+                      "publicName": "Bob Public",
+                      "username": "buser"
+                    },
+                    "when": "2024-03-15T10:00:00Z",
+                    "number": 2
+                  }
                 }
-              },
-              "version": {
-                "by": {
-                  "publicName": "Bob Public",
-                  "username": "buser"
-                },
-                "when": "2024-03-15T10:00:00Z",
-                "number": 2
-              }
-            }
-            """;
+                """;
 
         try (TestClient client = new TestClient()) {
             client.enqueueResponse(json);
@@ -141,23 +171,24 @@ class ConfluenceClientServicePageContentTest {
 
     @Test
     void getPageContentFallsBackToUsernameWhenDisplayNameAndPublicNameMissing() throws IOException {
-        String json = """
-            {
-              "id": "12345",
-              "body": {
-                "storage": {
-                  "value": "<p>Content</p>"
+        String json =
+                """
+                {
+                  "id": "12345",
+                  "body": {
+                    "storage": {
+                      "value": "<p>Content</p>"
+                    }
+                  },
+                  "version": {
+                    "by": {
+                      "username": "charlie_u"
+                    },
+                    "when": "2024-03-15T10:00:00Z",
+                    "number": 1
+                  }
                 }
-              },
-              "version": {
-                "by": {
-                  "username": "charlie_u"
-                },
-                "when": "2024-03-15T10:00:00Z",
-                "number": 1
-              }
-            }
-            """;
+                """;
 
         try (TestClient client = new TestClient()) {
             client.enqueueResponse(json);
@@ -170,16 +201,17 @@ class ConfluenceClientServicePageContentTest {
 
     @Test
     void getPageContentHandlesMissingVersionGracefully() throws IOException {
-        String json = """
-            {
-              "id": "12345",
-              "body": {
-                "storage": {
-                  "value": "<p>No version info</p>"
+        String json =
+                """
+                {
+                  "id": "12345",
+                  "body": {
+                    "storage": {
+                      "value": "<p>No version info</p>"
+                    }
+                  }
                 }
-              }
-            }
-            """;
+                """;
 
         try (TestClient client = new TestClient()) {
             client.enqueueResponse(json);
@@ -195,20 +227,21 @@ class ConfluenceClientServicePageContentTest {
 
     @Test
     void getPageContentHandlesMissingAuthorGracefully() throws IOException {
-        String json = """
-            {
-              "id": "12345",
-              "body": {
-                "storage": {
-                  "value": "<p>Anonymous edit</p>"
+        String json =
+                """
+                {
+                  "id": "12345",
+                  "body": {
+                    "storage": {
+                      "value": "<p>Anonymous edit</p>"
+                    }
+                  },
+                  "version": {
+                    "when": "2024-03-15T12:00:00.000Z",
+                    "number": 1
+                  }
                 }
-              },
-              "version": {
-                "when": "2024-03-15T12:00:00.000Z",
-                "number": 1
-              }
-            }
-            """;
+                """;
 
         try (TestClient client = new TestClient()) {
             client.enqueueResponse(json);
@@ -224,20 +257,21 @@ class ConfluenceClientServicePageContentTest {
 
     @Test
     void getPageContentFormatsVariousIsoTimestampFormats() throws IOException {
-        String jsonWithOffset = """
-            {
-              "id": "12345",
-              "body": {
-                "storage": {
-                  "value": "<p>Timezones</p>"
+        String jsonWithOffset =
+                """
+                {
+                  "id": "12345",
+                  "body": {
+                    "storage": {
+                      "value": "<p>Timezones</p>"
+                    }
+                  },
+                  "version": {
+                    "when": "2024-03-15T18:30:00+05:30",
+                    "number": 1
+                  }
                 }
-              },
-              "version": {
-                "when": "2024-03-15T18:30:00+05:30",
-                "number": 1
-              }
-            }
-            """;
+                """;
 
         try (TestClient client = new TestClient()) {
             client.enqueueResponse(jsonWithOffset);
@@ -249,29 +283,31 @@ class ConfluenceClientServicePageContentTest {
 
     @Test
     void getPageContentFallsBackToBodyViewWhenStorageAbsent() throws IOException {
-        String noStorageJson = """
-            {
-              "id": "12345",
-              "body": {}
-            }
-            """;
-        String viewJson = """
-            {
-              "id": "12345",
-              "body": {
-                "view": {
-                  "value": "<p>Rendered view content</p>"
+        String noStorageJson =
+                """
+                {
+                  "id": "12345",
+                  "body": {}
                 }
-              },
-              "version": {
-                "by": {
-                  "displayName": "Editor Dave"
-                },
-                "when": "2024-03-15T12:00:00Z",
-                "number": 4
-              }
-            }
-            """;
+                """;
+        String viewJson =
+                """
+                {
+                  "id": "12345",
+                  "body": {
+                    "view": {
+                      "value": "<p>Rendered view content</p>"
+                    }
+                  },
+                  "version": {
+                    "by": {
+                      "displayName": "Editor Dave"
+                    },
+                    "when": "2024-03-15T12:00:00Z",
+                    "number": 4
+                  }
+                }
+                """;
 
         try (TestClient client = new TestClient()) {
             client.enqueueResponse(noStorageJson);
@@ -286,9 +322,9 @@ class ConfluenceClientServicePageContentTest {
 
             assertThat(client.requestedUris).hasSize(2);
             assertThat(client.requestedUris.get(0))
-                .isEqualTo("/rest/api/content/12345?expand=body.storage,version");
+                    .isEqualTo("/rest/api/content/12345?expand=body.storage,version");
             assertThat(client.requestedUris.get(1))
-                .isEqualTo("/rest/api/content/12345?expand=body.view,version");
+                    .isEqualTo("/rest/api/content/12345?expand=body.view,version");
         }
     }
 }

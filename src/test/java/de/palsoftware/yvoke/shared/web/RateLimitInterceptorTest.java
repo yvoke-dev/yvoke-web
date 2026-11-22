@@ -29,8 +29,9 @@ class RateLimitInterceptorTest {
         authenticate("alice");
 
         RateLimitInterceptor interceptor = new RateLimitInterceptor(limiter);
-        boolean proceed = interceptor.preHandle(new MockHttpServletRequest(),
-            new MockHttpServletResponse(), new Object());
+        boolean proceed =
+                interceptor.preHandle(
+                        new MockHttpServletRequest(), new MockHttpServletResponse(), new Object());
 
         assertThat(proceed).isTrue();
     }
@@ -43,11 +44,15 @@ class RateLimitInterceptorTest {
 
         RateLimitInterceptor interceptor = new RateLimitInterceptor(limiter);
 
-        assertThatThrownBy(() -> interceptor.preHandle(new MockHttpServletRequest(),
-            new MockHttpServletResponse(), new Object()))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+        assertThatThrownBy(() ->
+                        interceptor.preHandle(
+                                new MockHttpServletRequest(),
+                                new MockHttpServletResponse(),
+                                new Object()))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex ->
+                        assertThat(((ResponseStatusException) ex).getStatusCode())
+                                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
     }
 
     @Test
@@ -60,14 +65,15 @@ class RateLimitInterceptorTest {
         request.setRemoteAddr("203.0.113.7");
         RateLimitInterceptor interceptor = new RateLimitInterceptor(limiter);
 
-        assertThatThrownBy(
-            () -> interceptor.preHandle(request, new MockHttpServletResponse(), new Object()))
-            .isInstanceOf(ResponseStatusException.class);
+        assertThatThrownBy(() ->
+                        interceptor.preHandle(request, new MockHttpServletResponse(), new Object()))
+                .isInstanceOf(ResponseStatusException.class);
     }
 
     private static void authenticate(String name) {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken(name, "n/a",
-                AuthorityUtils.createAuthorityList("ROLE_USER")));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                name, "n/a", AuthorityUtils.createAuthorityList("ROLE_USER")));
     }
 }

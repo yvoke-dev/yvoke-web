@@ -24,18 +24,23 @@ public class SystemPromptService {
     private final CacheManager cacheManager;
 
     @Autowired
-    public SystemPromptService(SystemPromptRepository systemPromptRepository,
-        AreaService areaService, CacheManager cacheManager) {
+    public SystemPromptService(
+            SystemPromptRepository systemPromptRepository,
+            AreaService areaService,
+            CacheManager cacheManager) {
         this.areaService = Objects.requireNonNull(areaService, "areaService must not be null");
-        this.systemPromptRepository = Objects.requireNonNull(systemPromptRepository,
-            "systemPromptRepository must not be null");
+        this.systemPromptRepository =
+                Objects.requireNonNull(
+                        systemPromptRepository, "systemPromptRepository must not be null");
         this.cacheManager = Objects.requireNonNull(cacheManager, "cacheManager must not be null");
     }
 
     /** For callers outside the container; creates a concurrent map cache manager. */
     SystemPromptService(SystemPromptRepository systemPromptRepository, AreaService areaService) {
-        this(systemPromptRepository, areaService,
-            new ConcurrentMapCacheManager(CacheConfig.SYSTEM_PROMPTS));
+        this(
+                systemPromptRepository,
+                areaService,
+                new ConcurrentMapCacheManager(CacheConfig.SYSTEM_PROMPTS));
     }
 
     public List<SystemPrompt> listAllPrompts() {
@@ -49,33 +54,47 @@ public class SystemPromptService {
     /**
      * The prompt named, or a failure that says what to fix.
      *
-     * <p>
-     * The silent alternative — {@code getPrompt(name).orElse(null)} — is what let a whole
+     * <p>The silent alternative — {@code getPrompt(name).orElse(null)} — is what let a whole
      * collection be ingested with no summarize prompt at all: the job reported success, the
      * summaries came back as "Here is a summary of the section:", and the defect only surfaced much
      * later as content an agent read out of a {@code get_toc}. A prompt a job was told to use and
      * cannot find is a configuration error, so it is raised as one, at the point the name is known.
      *
-     * <p>
-     * The TYPE is checked as well as the name. Prompts share one flat namespace, so nothing stops a
-     * CHAT prompt being selected where a SUMMARIZE one is meant — that would "resolve" and then
-     * quietly instruct the summarizer to answer questions and cite sources. The message lists the
-     * valid names rather than just rejecting, because the caller is an operator who picked from a
-     * list that has since changed.
+     * <p>The TYPE is checked as well as the name. Prompts share one flat namespace, so nothing
+     * stops a CHAT prompt being selected where a SUMMARIZE one is meant — that would "resolve" and
+     * then quietly instruct the summarizer to answer questions and cite sources. The message lists
+     * the valid names rather than just rejecting, because the caller is an operator who picked from
+     * a list that has since changed.
      */
     public SystemPrompt requirePrompt(String name, SystemPromptType expectedType) {
         if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("No " + expectedType
-                + " system prompt was specified. Available: " + availableNames(expectedType));
+            throw new IllegalArgumentException(
+                    "No "
+                            + expectedType
+                            + " system prompt was specified. Available: "
+                            + availableNames(expectedType));
         }
-        SystemPrompt prompt = systemPromptRepository.findByName(name.trim())
-            .orElseThrow(() -> new IllegalArgumentException(
-                "System prompt '" + name.trim() + "' does not exist. Available " + expectedType
-                    + " prompts: " + availableNames(expectedType)));
+        SystemPrompt prompt =
+                systemPromptRepository
+                        .findByName(name.trim())
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "System prompt '"
+                                                + name.trim()
+                                                + "' does not exist. Available "
+                                                + expectedType
+                                                + " prompts: "
+                                                + availableNames(expectedType)));
         if (expectedType != null && prompt.type() != expectedType) {
-            throw new IllegalArgumentException("System prompt '" + prompt.name() + "' is of type "
-                + prompt.type() + ", but a " + expectedType + " prompt is required. Available: "
-                + availableNames(expectedType));
+            throw new IllegalArgumentException(
+                    "System prompt '"
+                            + prompt.name()
+                            + "' is of type "
+                            + prompt.type()
+                            + ", but a "
+                            + expectedType
+                            + " prompt is required. Available: "
+                            + availableNames(expectedType));
         }
         return prompt;
     }
@@ -86,7 +105,7 @@ public class SystemPromptService {
             return "(no type given)";
         }
         List<String> names =
-            listPromptsByType(type).stream().map(SystemPrompt::name).sorted().toList();
+                listPromptsByType(type).stream().map(SystemPrompt::name).sorted().toList();
         return names.isEmpty() ? "(none registered)" : String.join(", ", names);
     }
 
@@ -104,8 +123,12 @@ public class SystemPromptService {
     }
 
     @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true)
-    public void savePrompt(String name, SystemPromptType type, String systemPrompt,
-        String description, String area) {
+    public void savePrompt(
+            String name,
+            SystemPromptType type,
+            String systemPrompt,
+            String description,
+            String area) {
         String validName = SlugNames.requireValidName(name, "Prompt");
         if (type == null) {
             throw new IllegalArgumentException("Prompt type cannot be empty.");
@@ -114,8 +137,12 @@ public class SystemPromptService {
             throw new IllegalArgumentException("System prompt content cannot be empty.");
         }
         String storedArea = areaService.requireArea(area);
-        systemPromptRepository.upsert(validName, type, systemPrompt.trim(),
-            description != null ? description.trim() : "", storedArea);
+        systemPromptRepository.upsert(
+                validName,
+                type,
+                systemPrompt.trim(),
+                description != null ? description.trim() : "",
+                storedArea);
     }
 
     @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true)
@@ -127,8 +154,11 @@ public class SystemPromptService {
     }
 
     public String exportPromptToMarkdown(String name) {
-        SystemPrompt prompt = getPrompt(name).orElseThrow(
-            () -> new IllegalArgumentException("System prompt '" + name + "' not found."));
+        SystemPrompt prompt =
+                getPrompt(name)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "System prompt '" + name + "' not found."));
         StringBuilder sb = new StringBuilder();
         sb.append("---\n");
         sb.append("name: ").append(prompt.name()).append("\n");
@@ -148,8 +178,8 @@ public class SystemPromptService {
      * Parses a Markdown system prompt into a {@link SystemPrompt} record without persisting it. The
      * area named in its frontmatter wins; a file that names none uses {@code fallbackArea}.
      */
-    public static SystemPrompt parseMarkdown(String mdContent, String fallbackName,
-        String fallbackArea) {
+    public static SystemPrompt parseMarkdown(
+            String mdContent, String fallbackName, String fallbackArea) {
         if (mdContent == null || mdContent.isBlank()) {
             throw new IllegalArgumentException("System prompt content cannot be empty.");
         }
@@ -166,7 +196,7 @@ public class SystemPromptService {
 
         if (yamlFrontmatter.isBlank()) {
             throw new IllegalArgumentException(
-                "YAML frontmatter in system prompt cannot be empty.");
+                    "YAML frontmatter in system prompt cannot be empty.");
         }
 
         Object loaded;
@@ -177,7 +207,7 @@ public class SystemPromptService {
         }
         if (!(loaded instanceof Map<?, ?> map)) {
             throw new IllegalArgumentException(
-                "YAML frontmatter in system prompt must be a mapping.");
+                    "YAML frontmatter in system prompt must be a mapping.");
         }
 
         String name = fallbackName != null ? fallbackName : "";
@@ -196,12 +226,12 @@ public class SystemPromptService {
         Object typeObj = map.get("type");
         if (typeObj == null || String.valueOf(typeObj).isBlank()) {
             throw new IllegalArgumentException(
-                "System prompt type cannot be empty in YAML frontmatter.");
+                    "System prompt type cannot be empty in YAML frontmatter.");
         }
         SystemPromptType type = SystemPromptType.fromString(String.valueOf(typeObj).trim());
 
-        return new SystemPrompt(name, type, body, description, Instant.now(), Instant.now(), false,
-            area);
+        return new SystemPrompt(
+                name, type, body, description, Instant.now(), Instant.now(), false, area);
     }
 
     /**
@@ -209,11 +239,15 @@ public class SystemPromptService {
      * into {@code fallbackArea}, the area picked on the import form.
      */
     @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true)
-    public SystemPrompt importPromptFromMarkdown(String mdContent, String fallbackName,
-        String fallbackArea) {
+    public SystemPrompt importPromptFromMarkdown(
+            String mdContent, String fallbackName, String fallbackArea) {
         SystemPrompt parsed = parseMarkdown(mdContent, fallbackName, fallbackArea);
-        savePrompt(parsed.name(), parsed.type(), parsed.systemPrompt(), parsed.description(),
-            parsed.area());
+        savePrompt(
+                parsed.name(),
+                parsed.type(),
+                parsed.systemPrompt(),
+                parsed.description(),
+                parsed.area());
         return getPrompt(parsed.name()).orElse(parsed);
     }
 }

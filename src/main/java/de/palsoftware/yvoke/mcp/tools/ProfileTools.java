@@ -28,20 +28,20 @@ import org.springframework.stereotype.Component;
 public class ProfileTools {
 
     private static final String LIST_DESCRIPTION =
-        "For Yvoke clients only: call this only when the Yvoke plugin tells you to. Lists the "
-            + "Yvoke multi-agent orchestrator profiles as a JSON array of {name, area, prototype, "
-            + "orchestratorPlaybook, reviewerPlaybook, specialistPlaybooks, maxReviewRounds, "
-            + "maxSpecialistCalls}. Pass area to list only that area's profiles. It does not "
-            + "answer questions about the knowledge base.";
+            "For Yvoke clients only: call this only when the Yvoke plugin tells you to. Lists the "
+                    + "Yvoke multi-agent orchestrator profiles as a JSON array of {name, area, prototype, "
+                    + "orchestratorPlaybook, reviewerPlaybook, specialistPlaybooks, maxReviewRounds, "
+                    + "maxSpecialistCalls}. Pass area to list only that area's profiles. It does not "
+                    + "answer questions about the knowledge base.";
 
     private static final String GET_DESCRIPTION =
-        "For Yvoke clients only: call this only when the Yvoke plugin tells you to, with the "
-            + "profile name it gives. Returns that multi-agent orchestrator profile as a JSON "
-            + "object {name, area, prototype, orchestratorPlaybook, reviewerPlaybook, "
-            + "specialistPlaybooks, maxReviewRounds, maxSpecialistCalls}.";
+            "For Yvoke clients only: call this only when the Yvoke plugin tells you to, with the "
+                    + "profile name it gives. Returns that multi-agent orchestrator profile as a JSON "
+                    + "object {name, area, prototype, orchestratorPlaybook, reviewerPlaybook, "
+                    + "specialistPlaybooks, maxReviewRounds, maxSpecialistCalls}.";
 
     private static final String AREA_PARAM =
-        "Optional area name, e.g. \"Docs\" (see list_areas). Omit to list every area's profiles.";
+            "Optional area name, e.g. \"Docs\" (see list_areas). Omit to list every area's profiles.";
 
     private static final String NAME_PARAM = "The orchestrator profile's name, e.g. \"Docs\".";
 
@@ -50,15 +50,26 @@ public class ProfileTools {
      * model and thinking-level bindings are deliberately omitted: server profiles name server-side
      * provider deployments, whereas external clients bind their own models locally.
      */
-    private record ProfilePayload(String name, String area, boolean prototype,
-        String orchestratorPlaybook, String reviewerPlaybook, List<String> specialistPlaybooks,
-        int maxReviewRounds, int maxSpecialistCalls) {
+    private record ProfilePayload(
+            String name,
+            String area,
+            boolean prototype,
+            String orchestratorPlaybook,
+            String reviewerPlaybook,
+            List<String> specialistPlaybooks,
+            int maxReviewRounds,
+            int maxSpecialistCalls) {
 
         static ProfilePayload from(OrchestratorProfile profile, ResolvedProfile resolved) {
-            return new ProfilePayload(resolved.name(), profile.area(), profile.prototype(),
-                resolved.orchestratorPlaybook(), resolved.reviewerPlaybook(),
-                resolved.specialistPlaybooks(), resolved.maxReviewRounds(),
-                resolved.maxSpecialistCalls());
+            return new ProfilePayload(
+                    resolved.name(),
+                    profile.area(),
+                    profile.prototype(),
+                    resolved.orchestratorPlaybook(),
+                    resolved.reviewerPlaybook(),
+                    resolved.specialistPlaybooks(),
+                    resolved.maxReviewRounds(),
+                    resolved.maxSpecialistCalls());
         }
     }
 
@@ -66,8 +77,10 @@ public class ProfileTools {
     private final AreaService areaService;
     private final ObjectMapper objectMapper;
 
-    public ProfileTools(OrchestratorProfileService profileService, AreaService areaService,
-        ObjectMapper objectMapper) {
+    public ProfileTools(
+            OrchestratorProfileService profileService,
+            AreaService areaService,
+            ObjectMapper objectMapper) {
         this.profileService = profileService;
         this.areaService = areaService;
         this.objectMapper = objectMapper;
@@ -75,15 +88,21 @@ public class ProfileTools {
 
     @McpTool(name = "list_profiles", description = LIST_DESCRIPTION)
     @Tool(name = "list_profiles", description = LIST_DESCRIPTION)
-    public String listProfiles(@McpToolParam(description = AREA_PARAM, required = false)
-    @ToolParam(description = AREA_PARAM, required = false) String area) {
+    public String listProfiles(
+            @McpToolParam(description = AREA_PARAM, required = false)
+                    @ToolParam(description = AREA_PARAM, required = false)
+                    String area) {
         try {
             Predicate<OrchestratorProfile> inArea =
-                McpToolUtils.inArea(areaService, area, OrchestratorProfile::area);
-            List<OrchestratorProfile> accessible = AreaAccessContext
-                .filterByUserArea(profileService.listAllProfiles(), OrchestratorProfile::area);
-            return objectMapper.writeValueAsString(accessible.stream().filter(inArea)
-                .map(p -> ProfilePayload.from(p, profileService.resolve(p))).toList());
+                    McpToolUtils.inArea(areaService, area, OrchestratorProfile::area);
+            List<OrchestratorProfile> accessible =
+                    AreaAccessContext.filterByUserArea(
+                            profileService.listAllProfiles(), OrchestratorProfile::area);
+            return objectMapper.writeValueAsString(
+                    accessible.stream()
+                            .filter(inArea)
+                            .map(p -> ProfilePayload.from(p, profileService.resolve(p)))
+                            .toList());
         } catch (Exception e) {
             return McpToolUtils.toolError("list_profiles", e);
         }
@@ -91,8 +110,10 @@ public class ProfileTools {
 
     @McpTool(name = "get_profile", description = GET_DESCRIPTION)
     @Tool(name = "get_profile", description = GET_DESCRIPTION)
-    public String getProfile(@McpToolParam(description = NAME_PARAM, required = true)
-    @ToolParam(description = NAME_PARAM, required = true) String name) {
+    public String getProfile(
+            @McpToolParam(description = NAME_PARAM, required = true)
+                    @ToolParam(description = NAME_PARAM, required = true)
+                    String name) {
         if (name == null || name.isBlank()) {
             return "ERROR: 'name' is required for get_profile.";
         }
@@ -102,8 +123,8 @@ public class ProfileTools {
                 return "ERROR: profile '" + name + "' not found.";
             }
             OrchestratorProfile profile = found.get();
-            return objectMapper
-                .writeValueAsString(ProfilePayload.from(profile, profileService.resolve(profile)));
+            return objectMapper.writeValueAsString(
+                    ProfilePayload.from(profile, profileService.resolve(profile)));
         } catch (Exception e) {
             return McpToolUtils.toolError("get_profile", e);
         }

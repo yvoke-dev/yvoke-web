@@ -17,8 +17,8 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 /**
  * The Areas admin page: create, edit, rename and delete areas and pick each one's defaults. A
- * refused save (a taken name, a default that is not a member) is an
- * {@link IllegalArgumentException}, which {@code MvcExceptionHandler} shows as an error flash.
+ * refused save (a taken name, a default that is not a member) is an {@link
+ * IllegalArgumentException}, which {@code MvcExceptionHandler} shows as an error flash.
  */
 @Controller
 @RequestMapping("/admin")
@@ -39,31 +39,39 @@ public class AreaAdminController {
     }
 
     @PostMapping("/areas")
-    public String saveArea(@RequestParam(required = false) String originalName,
-        @RequestParam String name, @RequestParam(required = false) String title,
-        @RequestParam(required = false) String description,
-        @RequestParam(required = false, defaultValue = "false") boolean prototype,
-        @RequestParam(required = false) String defaultPlaybook,
-        @RequestParam(required = false) String defaultProfile,
-        RedirectAttributes redirectAttributes) {
+    public String saveArea(
+            @RequestParam(required = false) String originalName,
+            @RequestParam String name,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String description,
+            @RequestParam(required = false, defaultValue = "false") boolean prototype,
+            @RequestParam(required = false) String defaultPlaybook,
+            @RequestParam(required = false) String defaultProfile,
+            RedirectAttributes redirectAttributes) {
         if (!AreaAccessContext.isSuperAdmin()) {
             if (originalName == null || originalName.isBlank()) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only superadmins can create areas");
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "Only superadmins can create areas");
             }
             if (!originalName.trim().equals(name.trim())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Area admins cannot rename areas");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Area admins cannot rename areas");
             }
             if (!AreaAccessContext.canAdministerArea(originalName)) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Not authorized to administer area: " + originalName);
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "Not authorized to administer area: " + originalName);
             }
         }
-        areaService.saveArea(originalName, name, title, description, prototype, defaultPlaybook,
-            defaultProfile);
-        auditLogger.log("SAVE_AREA", name.trim(), Map.of("originalName",
-            originalName != null ? originalName.trim() : "", "prototype", prototype));
+        areaService.saveArea(
+                originalName, name, title, description, prototype, defaultPlaybook, defaultProfile);
+        auditLogger.log(
+                "SAVE_AREA",
+                name.trim(),
+                Map.of(
+                        "originalName",
+                        originalName != null ? originalName.trim() : "",
+                        "prototype",
+                        prototype));
         redirectAttributes.addFlashAttribute("success", "Area '" + name.trim() + "' saved.");
         return "redirect:/admin/areas";
     }
@@ -71,8 +79,8 @@ public class AreaAdminController {
     @PostMapping("/areas/delete")
     public String deleteArea(@RequestParam String name, RedirectAttributes redirectAttributes) {
         if (!AreaAccessContext.isSuperAdmin()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Only superadmins can delete areas");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Only superadmins can delete areas");
         }
         String deleted = areaService.deleteArea(name);
         String target = deleted != null ? deleted : (name != null ? name.trim() : "");

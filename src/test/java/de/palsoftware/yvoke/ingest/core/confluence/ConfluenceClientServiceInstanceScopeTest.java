@@ -27,9 +27,8 @@ import org.springframework.web.client.RestClient;
  * The connector is instance-scoped: nothing here may be shared between two connected Confluence
  * sites.
  *
- * <p>
- * The display-name cache is the sharp edge. It used to be keyed by {@code accountId} ALONE, and an
- * Atlassian account id is only unique WITHIN a site — so with two instances connected, the first
+ * <p>The display-name cache is the sharp edge. It used to be keyed by {@code accountId} ALONE, and
+ * an Atlassian account id is only unique WITHIN a site — so with two instances connected, the first
  * site to resolve an id decided the name every other site would render for it, silently attributing
  * one company's page to another company's employee.
  */
@@ -54,33 +53,45 @@ class ConfluenceClientServiceInstanceScopeTest {
         private final AtomicInteger builds = new AtomicInteger();
 
         private CountingClientService(SecretCipher secretCipher) {
-            super(secretCipher, RestClient.builder(), 3, 1, 5, true, List.of(),
-                ConfluenceClientService.MAX_ATTACHMENT_BYTES);
+            super(
+                    secretCipher,
+                    RestClient.builder(),
+                    3,
+                    1,
+                    5,
+                    true,
+                    List.of(),
+                    ConfluenceClientService.MAX_ATTACHMENT_BYTES);
         }
 
         @Override
         public RestClient getClient(String domain, String email, String apiToken) {
             builds.incrementAndGet();
-            return RestClient.builder().baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
-                .build();
+            return RestClient.builder()
+                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
+                    .build();
         }
     }
 
     @BeforeEach
     void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/rest/api/user", exchange -> {
-            // Consume the request body before responding, or the socket closes early and the
-            // client sees a flaky 400 (documented project pitfall).
-            exchange.getRequestBody().readAllBytes();
-            byte[] body = ("{\"displayName\":\"Person " + userRequests.incrementAndGet() + "\"}")
-                .getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, body.length);
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(body);
-            }
-        });
+        server.createContext(
+                "/rest/api/user",
+                exchange -> {
+                    // Consume the request body before responding, or the socket closes early and
+                    // the
+                    // client sees a flaky 400 (documented project pitfall).
+                    exchange.getRequestBody().readAllBytes();
+                    byte[] body =
+                            ("{\"displayName\":\"Person " + userRequests.incrementAndGet() + "\"}")
+                                    .getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, body.length);
+                    try (OutputStream out = exchange.getResponseBody()) {
+                        out.write(body);
+                    }
+                });
         server.start();
 
         cipher = new SecretCipher(SECRET_KEY, SALT, mock(Environment.class));
@@ -93,16 +104,31 @@ class ConfluenceClientServiceInstanceScopeTest {
     }
 
     private ConfluenceInstance instance(UUID id, String name, String slug, String tokenEnc) {
-        return new ConfluenceInstance(id, name, slug, "https://" + slug + ".atlassian.net/wiki",
-            "svc@example.com", tokenEnc, cipher.keyId(), "SPACE", "1", null, null, "coll", null,
-            false, true, null, null);
+        return new ConfluenceInstance(
+                id,
+                name,
+                slug,
+                "https://" + slug + ".atlassian.net/wiki",
+                "svc@example.com",
+                tokenEnc,
+                cipher.keyId(),
+                "SPACE",
+                "1",
+                null,
+                null,
+                "coll",
+                null,
+                false,
+                true,
+                null,
+                null);
     }
 
     @Test
     void twoInstancesDoNotShareADisplayNameForTheSameAccountId() {
         ConfluenceInstance acme = instance(UUID.randomUUID(), "Acme", "acme", cipher.encrypt("a"));
         ConfluenceInstance globex =
-            instance(UUID.randomUUID(), "Globex", "globex", cipher.encrypt("b"));
+                instance(UUID.randomUUID(), "Globex", "globex", cipher.encrypt("b"));
 
         String onAcme = service.getUserDisplayName(acme, "557058:same-id");
         String onGlobex = service.getUserDisplayName(globex, "557058:same-id");
@@ -123,23 +149,21 @@ class ConfluenceClientServiceInstanceScopeTest {
     }
 
     /**
-     * The one path in this application that AUTHENTICATES with a stored secret must use
-     * {@code decryptOrThrow}, never {@code decrypt}.
+     * The one path in this application that AUTHENTICATES with a stored secret must use {@code
+     * decryptOrThrow}, never {@code decrypt}.
      *
-     * <p>
-     * {@code SecretCipherTest} pins what each method does in isolation — {@code decrypt} degrades
-     * an unreadable secret to {@code ""}, {@code decryptOrThrow} raises, {@code canDecrypt} never
-     * throws — but nothing checks which one each caller picks, and the three are interchangeable at
-     * the call site: same signature, same return type, no compiler help. Swapping this one for
-     * {@code decrypt} (the shorter name, and the obvious "stop throwing on a list page" edit if the
-     * two call sites are ever unified) makes {@code resolveApiToken} hand back an empty string, so
-     * the connector builds a client with {@code Basic base64(email:)} and sync fails against
-     * Atlassian with 401s. The operator then debugs a permissions problem — re-inviting the service
-     * account, checking space access — when the actual cause is a rotated {@code APP_SECRET_KEY} on
-     * this side, which nothing in the failure mentions.
+     * <p>{@code SecretCipherTest} pins what each method does in isolation — {@code decrypt}
+     * degrades an unreadable secret to {@code ""}, {@code decryptOrThrow} raises, {@code
+     * canDecrypt} never throws — but nothing checks which one each caller picks, and the three are
+     * interchangeable at the call site: same signature, same return type, no compiler help.
+     * Swapping this one for {@code decrypt} (the shorter name, and the obvious "stop throwing on a
+     * list page" edit if the two call sites are ever unified) makes {@code resolveApiToken} hand
+     * back an empty string, so the connector builds a client with {@code Basic base64(email:)} and
+     * sync fails against Atlassian with 401s. The operator then debugs a permissions problem —
+     * re-inviting the service account, checking space access — when the actual cause is a rotated
+     * {@code APP_SECRET_KEY} on this side, which nothing in the failure mentions.
      *
-     * <p>
-     * The rotated-key state is reached the way production reaches it: a ciphertext produced by a
+     * <p>The rotated-key state is reached the way production reaches it: a ciphertext produced by a
      * key that is no longer configured, with the fingerprint of that retired key still on the row.
      * The {@code UNDECRYPTABLE} pre-assertion is the non-vacuity guard — it proves the token is
      * present (so the earlier {@code MISSING} short-circuit is not what threw) and that decryption
@@ -149,30 +173,49 @@ class ConfluenceClientServiceInstanceScopeTest {
     @Test
     void aTokenEncryptedUnderARetiredKeyFailsLoudlyInsteadOfAuthenticatingWithAnEmptyString() {
         SecretCipher retiredKey =
-            new SecretCipher("retired-" + SECRET_KEY, SALT, mock(Environment.class));
+                new SecretCipher("retired-" + SECRET_KEY, SALT, mock(Environment.class));
         String ciphertextFromTheRetiredKey = retiredKey.encrypt("s3cr3t-atlassian-token");
 
-        ConfluenceInstance rotated = new ConfluenceInstance(UUID.randomUUID(), "Acme", "acme",
-            "https://acme.atlassian.net/wiki", "svc@example.com", ciphertextFromTheRetiredKey,
-            retiredKey.keyId(), "SPACE", "1", null, null, "coll", null, false, true, null, null);
+        ConfluenceInstance rotated =
+                new ConfluenceInstance(
+                        UUID.randomUUID(),
+                        "Acme",
+                        "acme",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        ciphertextFromTheRetiredKey,
+                        retiredKey.keyId(),
+                        "SPACE",
+                        "1",
+                        null,
+                        null,
+                        "coll",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
 
         assertThat(rotated.tokenHealth(cipher.keyId()))
-            .as("a token IS stored, so resolveApiToken must get past its MISSING short-circuit and"
-                + " actually attempt the decryption")
-            .isEqualTo(TokenHealth.UNDECRYPTABLE);
+                .as(
+                        "a token IS stored, so resolveApiToken must get past its MISSING short-circuit and"
+                                + " actually attempt the decryption")
+                .isEqualTo(TokenHealth.UNDECRYPTABLE);
 
-        assertThatThrownBy(() -> service.resolveApiToken(rotated)).as(
-            "an unreadable credential must raise here, not authenticate with \"\" and surface as"
-                + " a 401 from Atlassian that reads as a permissions problem")
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("Acme")
-            .hasMessageNotContaining("s3cr3t-atlassian-token");
+        assertThatThrownBy(() -> service.resolveApiToken(rotated))
+                .as(
+                        "an unreadable credential must raise here, not authenticate with \"\" and surface as"
+                                + " a 401 from Atlassian that reads as a permissions problem")
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Acme")
+                .hasMessageNotContaining("s3cr3t-atlassian-token");
     }
 
     @Test
     void theClientIsBuiltOncePerInstanceAndNotSharedBetweenThem() {
         ConfluenceInstance acme = instance(UUID.randomUUID(), "Acme", "acme", cipher.encrypt("a"));
         ConfluenceInstance globex =
-            instance(UUID.randomUUID(), "Globex", "globex", cipher.encrypt("b"));
+                instance(UUID.randomUUID(), "Globex", "globex", cipher.encrypt("b"));
 
         service.getClient(acme);
         service.getClient(acme);
@@ -201,9 +244,25 @@ class ConfluenceClientServiceInstanceScopeTest {
         assertThat(service.getUserDisplayName(before, "557058:same-id")).isEqualTo("Person 1");
 
         // Repointed at a different site: the account ids cached for the old one mean nothing there.
-        ConfluenceInstance moved = new ConfluenceInstance(id, "Acme", "acme",
-            "https://acme-eu.atlassian.net/wiki", "svc@example.com", cipher.encrypt("tok"),
-            cipher.keyId(), "SPACE", "1", null, null, "coll", null, false, true, null, null);
+        ConfluenceInstance moved =
+                new ConfluenceInstance(
+                        id,
+                        "Acme",
+                        "acme",
+                        "https://acme-eu.atlassian.net/wiki",
+                        "svc@example.com",
+                        cipher.encrypt("tok"),
+                        cipher.keyId(),
+                        "SPACE",
+                        "1",
+                        null,
+                        null,
+                        "coll",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
 
         assertThat(service.getUserDisplayName(moved, "557058:same-id")).isEqualTo("Person 2");
     }
@@ -233,7 +292,7 @@ class ConfluenceClientServiceInstanceScopeTest {
         UUID acmeId = UUID.randomUUID();
         ConfluenceInstance acme = instance(acmeId, "Acme", "acme", cipher.encrypt("a"));
         ConfluenceInstance globex =
-            instance(UUID.randomUUID(), "Globex", "globex", cipher.encrypt("b"));
+                instance(UUID.randomUUID(), "Globex", "globex", cipher.encrypt("b"));
         assertThat(service.getUserDisplayName(acme, "557058:same-id")).isEqualTo("Person 1");
         assertThat(service.getUserDisplayName(globex, "557058:same-id")).isEqualTo("Person 2");
 
@@ -265,8 +324,8 @@ class ConfluenceClientServiceInstanceScopeTest {
     /**
      * A Confluence page title is chosen by whoever can create a page in the connected space, and
      * {@code samplePagesHtml} is the ONE field {@code ConfluenceConnectorController} interpolates
-     * into its htmx response unescaped: it escapes {@code message}, {@code spaceName} and
-     * {@code parentPageTitle} and then explicitly trusts this one ("already escaped per-item at the
+     * into its htmx response unescaped: it escapes {@code message}, {@code spaceName} and {@code
+     * parentPageTitle} and then explicitly trusts this one ("already escaped per-item at the
      * source"). If the escaping here regresses, a page titled {@code <script>...</script>} executes
      * in the browser of an authenticated admin sitting on /admin/connectors - the highest-privilege
      * page in the app, the one that can read and rewrite every connector's stored credentials. That
@@ -278,15 +337,27 @@ class ConfluenceClientServiceInstanceScopeTest {
      */
     @Test
     void anAttackerAuthoredPageTitleIsEscapedBeforeItReachesTheAdminPage() {
-        serveConnectionTest(200, "{\"totalSize\":1,\"results\":[{\"id\":\"42<img src=x>\","
-            + "\"title\":\"<script>alert(1)</script>\"}]}");
+        serveConnectionTest(
+                200,
+                "{\"totalSize\":1,\"results\":[{\"id\":\"42<img src=x>\","
+                        + "\"title\":\"<script>alert(1)</script>\"}]}");
 
-        ConfluenceClientService.ConnectionTestResult result = service.testConnection(
-            "acme.atlassian.net", "svc@example.com", "tok", "SPACE", "12345", null, null);
+        ConfluenceClientService.ConnectionTestResult result =
+                service.testConnection(
+                        "acme.atlassian.net",
+                        "svc@example.com",
+                        "tok",
+                        "SPACE",
+                        "12345",
+                        null,
+                        null);
 
         assertThat(result.ok()).isTrue();
-        assertThat(result.samplePagesHtml()).doesNotContain("<script>").doesNotContain("<img")
-            .contains("&lt;script&gt;alert(1)&lt;/script&gt;").contains("42&lt;img src=x&gt;");
+        assertThat(result.samplePagesHtml())
+                .doesNotContain("<script>")
+                .doesNotContain("<img")
+                .contains("&lt;script&gt;alert(1)&lt;/script&gt;")
+                .contains("42&lt;img src=x&gt;");
     }
 
     /**
@@ -296,16 +367,23 @@ class ConfluenceClientServiceInstanceScopeTest {
      * not fall through to the parent-page handler.
      */
     private void serveConnectionTest(int searchStatus, String searchBody) {
-        server.createContext("/rest/api/space",
-            exchange -> respondJson(exchange, 200, "{\"name\":\"Engineering\"}"));
-        server.createContext("/rest/api/content", exchange -> respondJson(exchange, 200,
-            "{\"title\":\"Root Page\",\"version\":{\"number\":7}}"));
-        server.createContext("/rest/api/content/search",
-            exchange -> respondJson(exchange, searchStatus, searchBody));
+        server.createContext(
+                "/rest/api/space",
+                exchange -> respondJson(exchange, 200, "{\"name\":\"Engineering\"}"));
+        server.createContext(
+                "/rest/api/content",
+                exchange ->
+                        respondJson(
+                                exchange,
+                                200,
+                                "{\"title\":\"Root Page\",\"version\":{\"number\":7}}"));
+        server.createContext(
+                "/rest/api/content/search",
+                exchange -> respondJson(exchange, searchStatus, searchBody));
     }
 
     private static void respondJson(HttpExchange exchange, int status, String json)
-        throws IOException {
+            throws IOException {
         // Consume the request body before responding, or the socket closes early and the client
         // sees a flaky 400 (documented project pitfall).
         exchange.getRequestBody().readAllBytes();
@@ -320,47 +398,61 @@ class ConfluenceClientServiceInstanceScopeTest {
     /**
      * "Test Connection" is the only feedback an admin gets BEFORE a crawl runs, and its green card
      * is read as "this whole configuration works". It only means that if all three probes actually
-     * ran, because each one validates a DIFFERENT field of the form:
-     * {@code /rest/api/space/{space}} the space key,
-     * {@code /rest/api/content/{rootPageId}?expand=version} the root page id, and
-     * {@code /rest/api/content/search?cql&limit=5} the query the crawl will really issue.
+     * ran, because each one validates a DIFFERENT field of the form: {@code
+     * /rest/api/space/{space}} the space key, {@code /rest/api/content/{rootPageId}?expand=version}
+     * the root page id, and {@code /rest/api/content/search?cql&limit=5} the query the crawl will
+     * really issue.
      *
-     * <p>
-     * The root-page probe is the fragile one and the one that matters most. A mistyped or
+     * <p>The root-page probe is the fragile one and the one that matters most. A mistyped or
      * since-deleted root page id is invisible to the other two — the space still resolves and the
-     * CQL still parses — so if that probe is dropped, weakened, or loses its
-     * {@code expand=version}, the admin is told "Connection OK" and the crawl that follows finds
-     * nothing under the root: an empty collection, a green job, and no signal anywhere on the
-     * connectors page. Nothing currently notices. {@code serveConnectionTest} merely registers
-     * three contexts, so a {@code testConnection} that called only one of them would satisfy every
-     * existing test in this class, and the two tests that do drive it assert only the escaping and
-     * the failure branch — never the success payload, so {@code spaceName}, {@code parentPageTitle}
-     * and {@code parentPageVersion} have shipped unasserted as well, and those three ARE the card.
+     * CQL still parses — so if that probe is dropped, weakened, or loses its {@code
+     * expand=version}, the admin is told "Connection OK" and the crawl that follows finds nothing
+     * under the root: an empty collection, a green job, and no signal anywhere on the connectors
+     * page. Nothing currently notices. {@code serveConnectionTest} merely registers three contexts,
+     * so a {@code testConnection} that called only one of them would satisfy every existing test in
+     * this class, and the two tests that do drive it assert only the escaping and the failure
+     * branch — never the success payload, so {@code spaceName}, {@code parentPageTitle} and {@code
+     * parentPageVersion} have shipped unasserted as well, and those three ARE the card.
      *
-     * <p>
-     * The assertion is therefore on the recorded request URIs, in order, with an exact count: this
-     * is a contract about which remote calls happen, and an extra or missing round-trip is as much
-     * a regression as a wrong one.
+     * <p>The assertion is therefore on the recorded request URIs, in order, with an exact count:
+     * this is a contract about which remote calls happen, and an extra or missing round-trip is as
+     * much a regression as a wrong one.
      */
     @Test
     void theConnectionTestProbesTheSpaceTheRootPageAndTheCqlSearchInThatOrder() {
         List<String> requested = Collections.synchronizedList(new ArrayList<>());
-        server.createContext("/rest/api/space", exchange -> {
-            requested.add(exchange.getRequestURI().toString());
-            respondJson(exchange, 200, "{\"name\":\"Engineering\"}");
-        });
-        server.createContext("/rest/api/content", exchange -> {
-            requested.add(exchange.getRequestURI().toString());
-            respondJson(exchange, 200, "{\"title\":\"Root Page\",\"version\":{\"number\":7}}");
-        });
-        server.createContext("/rest/api/content/search", exchange -> {
-            requested.add(exchange.getRequestURI().toString());
-            respondJson(exchange, 200,
-                "{\"totalSize\":42,\"results\":[{\"id\":\"9\",\"title\":\"Child\"}]}");
-        });
+        server.createContext(
+                "/rest/api/space",
+                exchange -> {
+                    requested.add(exchange.getRequestURI().toString());
+                    respondJson(exchange, 200, "{\"name\":\"Engineering\"}");
+                });
+        server.createContext(
+                "/rest/api/content",
+                exchange -> {
+                    requested.add(exchange.getRequestURI().toString());
+                    respondJson(
+                            exchange, 200, "{\"title\":\"Root Page\",\"version\":{\"number\":7}}");
+                });
+        server.createContext(
+                "/rest/api/content/search",
+                exchange -> {
+                    requested.add(exchange.getRequestURI().toString());
+                    respondJson(
+                            exchange,
+                            200,
+                            "{\"totalSize\":42,\"results\":[{\"id\":\"9\",\"title\":\"Child\"}]}");
+                });
 
-        ConfluenceClientService.ConnectionTestResult result = service.testConnection(
-            "acme.atlassian.net", "svc@example.com", "tok", "SPACE", "12345", null, null);
+        ConfluenceClientService.ConnectionTestResult result =
+                service.testConnection(
+                        "acme.atlassian.net",
+                        "svc@example.com",
+                        "tok",
+                        "SPACE",
+                        "12345",
+                        null,
+                        null);
 
         // The success card, field by field — every one of them comes from a different probe.
         assertThat(result.ok()).isTrue();
@@ -371,19 +463,24 @@ class ConfluenceClientServiceInstanceScopeTest {
 
         assertThat(requested).as("exactly three probes, no more and no fewer").hasSize(3);
         assertThat(requested.get(0)).as("1. the space key").isEqualTo("/rest/api/space/SPACE");
-        assertThat(requested.get(1)).as("2. the ROOT PAGE id — the field nothing else validates")
-            .startsWith("/rest/api/content/12345").contains("expand=version");
-        assertThat(requested.get(2)).as("3. the CQL the crawl will actually run")
-            .startsWith("/rest/api/content/search").contains("cql=").contains("limit=5");
+        assertThat(requested.get(1))
+                .as("2. the ROOT PAGE id — the field nothing else validates")
+                .startsWith("/rest/api/content/12345")
+                .contains("expand=version");
+        assertThat(requested.get(2))
+                .as("3. the CQL the crawl will actually run")
+                .startsWith("/rest/api/content/search")
+                .contains("cql=")
+                .contains("limit=5");
     }
 
     /**
      * The connection test is the admin's only feedback loop when a token is revoked, an e-mail is
      * wrong or a space key is a typo, and it runs through htmx: the fragment this result produces
      * IS what the page shows. The {@code RestClientResponseException} branch is what turns
-     * Atlassian's rejection into that fragment - if it stops degrading to
-     * {@code ConnectionTestResult.failure}, the exception escapes into the MVC error path and the
-     * admin gets a generic card (or an empty swap) naming neither the status nor Atlassian's own
+     * Atlassian's rejection into that fragment - if it stops degrading to {@code
+     * ConnectionTestResult.failure}, the exception escapes into the MVC error path and the admin
+     * gets a generic card (or an empty swap) naming neither the status nor Atlassian's own
      * explanation, leaving "it does not work" with no way to tell a 401 (bad token) from a 404 (bad
      * space) from a 429 (throttled) - and the operator's next move is different in all three cases.
      * The status code and the API's message are therefore both asserted; they are the entire
@@ -393,17 +490,25 @@ class ConfluenceClientServiceInstanceScopeTest {
      */
     @Test
     void aRejectedCredentialIsReportedAsAFailureNamingTheStatusAndTheApiExplanation() {
-        serveConnectionTest(401,
-            "{\"message\":\"Basic authentication with passwords is deprecated.\"}");
+        serveConnectionTest(
+                401, "{\"message\":\"Basic authentication with passwords is deprecated.\"}");
 
-        ConfluenceClientService.ConnectionTestResult result = service.testConnection(
-            "acme.atlassian.net", "svc@example.com", "revoked", "SPACE", "12345", null, null);
+        ConfluenceClientService.ConnectionTestResult result =
+                service.testConnection(
+                        "acme.atlassian.net",
+                        "svc@example.com",
+                        "revoked",
+                        "SPACE",
+                        "12345",
+                        null,
+                        null);
 
         assertThat(result.ok()).isFalse();
         // S1: return only the HTTP status to the UI, never echo the remote response body
         // (eliminates SSRF response-body oracle).
-        assertThat(result.message()).contains("HTTP 401")
-            .doesNotContain("Basic authentication with passwords is deprecated.");
+        assertThat(result.message())
+                .contains("HTTP 401")
+                .doesNotContain("Basic authentication with passwords is deprecated.");
         assertThat(result.spaceName()).isNull();
         assertThat(result.samplePagesHtml()).isEmpty();
     }
@@ -415,13 +520,30 @@ class ConfluenceClientServiceInstanceScopeTest {
 
     @Test
     void aMissingTokenFailsNamingTheInstanceAndItsHealth() {
-        ConfluenceInstance noToken = new ConfluenceInstance(UUID.randomUUID(), "iCC Wiki", "icc",
-            "https://icc.atlassian.net/wiki", "svc@example.com", null, null, "SPACE", "1", null,
-            null, "coll", null, false, true, null, null);
+        ConfluenceInstance noToken =
+                new ConfluenceInstance(
+                        UUID.randomUUID(),
+                        "iCC Wiki",
+                        "icc",
+                        "https://icc.atlassian.net/wiki",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "SPACE",
+                        "1",
+                        null,
+                        null,
+                        "coll",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> service.resolveApiToken(noToken))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("iCC Wiki")
-            .hasMessageContaining(TokenHealth.MISSING.name());
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("iCC Wiki")
+                .hasMessageContaining(TokenHealth.MISSING.name());
     }
 
     @Test
@@ -429,67 +551,138 @@ class ConfluenceClientServiceInstanceScopeTest {
         String ciphertext = cipher.encrypt("the-real-token");
         // Same ciphertext, a key that is gone: exactly what an APP_SECRET_KEY rotation leaves.
         SecretCipher rotated =
-            new SecretCipher("a-different-secret-key", SALT, mock(Environment.class));
+                new SecretCipher("a-different-secret-key", SALT, mock(Environment.class));
         CountingClientService rotatedService = new CountingClientService(rotated);
-        ConfluenceInstance stale = new ConfluenceInstance(UUID.randomUUID(), "iCC Wiki", "icc",
-            "https://icc.atlassian.net/wiki", "svc@example.com", ciphertext, "a-retired-key",
-            "SPACE", "1", null, null, "coll", null, false, true, null, null);
+        ConfluenceInstance stale =
+                new ConfluenceInstance(
+                        UUID.randomUUID(),
+                        "iCC Wiki",
+                        "icc",
+                        "https://icc.atlassian.net/wiki",
+                        "svc@example.com",
+                        ciphertext,
+                        "a-retired-key",
+                        "SPACE",
+                        "1",
+                        null,
+                        null,
+                        "coll",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
 
         assertThatThrownBy(() -> rotatedService.resolveApiToken(stale))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("iCC Wiki")
-            .hasMessageContaining(TokenHealth.UNDECRYPTABLE.name())
-            .hasMessageContaining("re-enter the token")
-            .satisfies(e -> assertThat(List.of(String.valueOf(e.getMessage()))).noneMatch(
-                message -> message.contains(ciphertext) || message.contains("the-real-token")));
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("iCC Wiki")
+                .hasMessageContaining(TokenHealth.UNDECRYPTABLE.name())
+                .hasMessageContaining("re-enter the token")
+                .satisfies(e ->
+                        assertThat(List.of(String.valueOf(e.getMessage())))
+                                .noneMatch(message ->
+                                        message.contains(ciphertext)
+                                                || message.contains("the-real-token")));
     }
 
     @Test
     void testConnectionReturnsGenericMessageForBlockedInternalOrDisallowedHostsWithoutIpOracle() {
         ConfluenceClientService realService =
-            new ConfluenceClientService(cipher, RestClient.builder(), 1, 1, 5, true, List.of(),
-                ConfluenceClientService.MAX_ATTACHMENT_BYTES);
-        for (String blockedUrl : List.of("https://127.0.0.1", "https://10.0.0.5",
-            "https://169.254.169.254", "http://ic-consult.atlassian.net")) {
-            ConfluenceClientService.ConnectionTestResult result = realService
-                .testConnection(blockedUrl, "svc@example.com", "tok", "SPACE", "12345", null, null);
+                new ConfluenceClientService(
+                        cipher,
+                        RestClient.builder(),
+                        1,
+                        1,
+                        5,
+                        true,
+                        List.of(),
+                        ConfluenceClientService.MAX_ATTACHMENT_BYTES);
+        for (String blockedUrl :
+                List.of(
+                        "https://127.0.0.1",
+                        "https://10.0.0.5",
+                        "https://169.254.169.254",
+                        "http://ic-consult.atlassian.net")) {
+            ConfluenceClientService.ConnectionTestResult result =
+                    realService.testConnection(
+                            blockedUrl, "svc@example.com", "tok", "SPACE", "12345", null, null);
 
             assertThat(result.ok()).as("blocked host %s must fail", blockedUrl).isFalse();
-            assertThat(result.message()).isEqualTo("Confluence host is not allowed.")
-                .doesNotContain("127.0.0.1").doesNotContain("10.").doesNotContain("169.254")
-                .doesNotContain("blocked address");
+            assertThat(result.message())
+                    .isEqualTo("Confluence host is not allowed.")
+                    .doesNotContain("127.0.0.1")
+                    .doesNotContain("10.")
+                    .doesNotContain("169.254")
+                    .doesNotContain("blocked address");
         }
 
-        ConfluenceClientService allowlistedService = new ConfluenceClientService(cipher,
-            RestClient.builder(), 1, 1, 5, true, List.of("ic-consult.atlassian.net"), 1024);
-        ConfluenceClientService.ConnectionTestResult disallowed = allowlistedService.testConnection(
-            "https://other.atlassian.net", "svc@example.com", "tok", "SPACE", "12345", null, null);
+        ConfluenceClientService allowlistedService =
+                new ConfluenceClientService(
+                        cipher,
+                        RestClient.builder(),
+                        1,
+                        1,
+                        5,
+                        true,
+                        List.of("ic-consult.atlassian.net"),
+                        1024);
+        ConfluenceClientService.ConnectionTestResult disallowed =
+                allowlistedService.testConnection(
+                        "https://other.atlassian.net",
+                        "svc@example.com",
+                        "tok",
+                        "SPACE",
+                        "12345",
+                        null,
+                        null);
         assertThat(disallowed.ok()).isFalse();
-        assertThat(disallowed.message()).isEqualTo("Confluence host is not allowed.")
-            .doesNotContain("other.atlassian.net").doesNotContain("allowed-hosts");
+        assertThat(disallowed.message())
+                .isEqualTo("Confluence host is not allowed.")
+                .doesNotContain("other.atlassian.net")
+                .doesNotContain("allowed-hosts");
     }
 
     @Test
     void testConnectionMasksConnectTimeDnsRebindingBlockedHostWithoutLeakingIp() {
-        RestClient rebindingClient = RestClient.builder().baseUrl("https://rebind.example/wiki")
-            .requestInterceptor((request, body, execution) -> {
-                throw new BlockedHostException(
-                    "Host resolves to a blocked address (10.0.0.5): rebind.example");
-            }).build();
+        RestClient rebindingClient =
+                RestClient.builder()
+                        .baseUrl("https://rebind.example/wiki")
+                        .requestInterceptor((request, body, execution) -> {
+                            throw new BlockedHostException(
+                                    "Host resolves to a blocked address (10.0.0.5): rebind.example");
+                        })
+                        .build();
         ConfluenceClientService rebindingService =
-            new ConfluenceClientService(cipher, RestClient.builder(), 1, 1, 5, true, List.of(),
-                ConfluenceClientService.MAX_ATTACHMENT_BYTES) {
-                @Override
-                public RestClient getClient(String domain, String email, String apiToken) {
-                    return rebindingClient;
-                }
-            };
+                new ConfluenceClientService(
+                        cipher,
+                        RestClient.builder(),
+                        1,
+                        1,
+                        5,
+                        true,
+                        List.of(),
+                        ConfluenceClientService.MAX_ATTACHMENT_BYTES) {
+                    @Override
+                    public RestClient getClient(String domain, String email, String apiToken) {
+                        return rebindingClient;
+                    }
+                };
 
-        ConfluenceClientService.ConnectionTestResult result = rebindingService.testConnection(
-            "https://rebind.example", "svc@example.com", "tok", "SPACE", "12345", null, null);
+        ConfluenceClientService.ConnectionTestResult result =
+                rebindingService.testConnection(
+                        "https://rebind.example",
+                        "svc@example.com",
+                        "tok",
+                        "SPACE",
+                        "12345",
+                        null,
+                        null);
 
         assertThat(result.ok()).isFalse();
-        assertThat(result.message()).isEqualTo("Confluence host is not allowed.")
-            .doesNotContain("10.0.0.5").doesNotContain("rebind.example")
-            .doesNotContain("blocked address");
+        assertThat(result.message())
+                .isEqualTo("Confluence host is not allowed.")
+                .doesNotContain("10.0.0.5")
+                .doesNotContain("rebind.example")
+                .doesNotContain("blocked address");
     }
 }

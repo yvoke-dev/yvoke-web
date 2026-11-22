@@ -24,11 +24,48 @@ class AgentRunAdminViewServiceTest {
         UUID convId = UUID.randomUUID();
         UUID msgId = UUID.randomUUID();
 
-        AgentRun run = new AgentRun(runId, convId, msgId, msgId, "OIM", "done", "{}", 0,
-            "{\"approved\":true}", 10, 20, 30, 0, 0, null, Instant.now(), Instant.now());
-        AgentStep step1 = new AgentStep(UUID.randomUUID(), runId, 0, "orchestrator", 0,
-            "oim-orchestrator", 3, "gemini-2.5-pro", "high", "in", "out", "[]", null, 5, 10, 15, 0,
-            0, Instant.now(), "ok", null);
+        AgentRun run =
+                new AgentRun(
+                        runId,
+                        convId,
+                        msgId,
+                        msgId,
+                        "OIM",
+                        "done",
+                        "{}",
+                        0,
+                        "{\"approved\":true}",
+                        10,
+                        20,
+                        30,
+                        0,
+                        0,
+                        null,
+                        Instant.now(),
+                        Instant.now());
+        AgentStep step1 =
+                new AgentStep(
+                        UUID.randomUUID(),
+                        runId,
+                        0,
+                        "orchestrator",
+                        0,
+                        "oim-orchestrator",
+                        3,
+                        "gemini-2.5-pro",
+                        "high",
+                        "in",
+                        "out",
+                        "[]",
+                        null,
+                        5,
+                        10,
+                        15,
+                        0,
+                        0,
+                        Instant.now(),
+                        "ok",
+                        null);
 
         when(runRepo.findById(runId)).thenReturn(Optional.of(run));
         when(stepRepo.findByRunId(runId)).thenReturn(List.of(step1));

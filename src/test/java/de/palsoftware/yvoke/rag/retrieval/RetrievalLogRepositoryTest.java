@@ -30,8 +30,9 @@ public class RetrievalLogRepositoryTest {
         retrievalLogRepository = new RetrievalLogRepository(jdbcClient);
 
         statementSpec = mock(JdbcClient.StatementSpec.class);
-        querySpec = (JdbcClient.MappedQuerySpec<RetrievalLogDetails>) mock(
-            JdbcClient.MappedQuerySpec.class);
+        querySpec =
+                (JdbcClient.MappedQuerySpec<RetrievalLogDetails>)
+                        mock(JdbcClient.MappedQuerySpec.class);
         countQuerySpec = (JdbcClient.MappedQuerySpec<Long>) mock(JdbcClient.MappedQuerySpec.class);
 
         when(jdbcClient.sql(anyString())).thenReturn(statementSpec);
@@ -46,8 +47,20 @@ public class RetrievalLogRepositoryTest {
         UUID messageId = UUID.randomUUID();
         Instant now = Instant.now();
 
-        RetrievalLogDetails mockLog = new RetrievalLogDetails(id, messageId, "OIM", "9.3", "{}",
-            "{}", "{}", now, "User message", 1, "Good text", List.of(UUID.randomUUID()));
+        RetrievalLogDetails mockLog =
+                new RetrievalLogDetails(
+                        id,
+                        messageId,
+                        "OIM",
+                        "9.3",
+                        "{}",
+                        "{}",
+                        "{}",
+                        now,
+                        "User message",
+                        1,
+                        "Good text",
+                        List.of(UUID.randomUUID()));
         when(querySpec.list()).thenReturn(List.of(mockLog));
 
         List<RetrievalLogDetails> result = retrievalLogRepository.listLogs(10, 20);
@@ -80,7 +93,9 @@ public class RetrievalLogRepositoryTest {
 
         assertThat(count).isEqualTo(7L);
         verify(jdbcClient)
-            .sql(contains("WHERE (c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower))"));
+                .sql(
+                        contains(
+                                "WHERE (c.area IS NOT NULL AND LOWER(c.area) IN (:allowedAreasLower))"));
         verify(statementSpec).param("allowedAreasLower", Set.of("area1"));
     }
 
@@ -104,8 +119,18 @@ public class RetrievalLogRepositoryTest {
         when(statementSpec.update()).thenReturn(1);
 
         UUID collectionId = UUID.randomUUID();
-        retrievalLogRepository.saveTelemetry(searchId, "my test query", collectionId, "1.0", "{}",
-            "{}", "{}", chunkIds, initialIds, fusedIds, rerankedIds);
+        retrievalLogRepository.saveTelemetry(
+                searchId,
+                "my test query",
+                collectionId,
+                "1.0",
+                "{}",
+                "{}",
+                "{}",
+                chunkIds,
+                initialIds,
+                fusedIds,
+                rerankedIds);
 
         verify(jdbcClient).sql(contains("INSERT INTO retrieval_logs"));
         verify(statementSpec).param("id", searchId);
@@ -123,20 +148,52 @@ public class RetrievalLogRepositoryTest {
     public void testRetrievalLogDetailsTruncation() {
         Instant now = Instant.now();
         RetrievalLogDetails detailsNormal =
-            new RetrievalLogDetails(UUID.randomUUID(), UUID.randomUUID(), "OIM", "9.3", "{}", "{}",
-                "{}", now, "Short message", 1, "Good text", List.of(UUID.randomUUID()));
+                new RetrievalLogDetails(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "OIM",
+                        "9.3",
+                        "{}",
+                        "{}",
+                        "{}",
+                        now,
+                        "Short message",
+                        1,
+                        "Good text",
+                        List.of(UUID.randomUUID()));
         RetrievalLogDetails detailsLong =
-            new RetrievalLogDetails(UUID.randomUUID(), UUID.randomUUID(), "OIM", "9.3", "{}", "{}",
-                "{}", now, "This is a very long message that should be truncated to some limit", 1,
-                "Good text", List.of(UUID.randomUUID()));
+                new RetrievalLogDetails(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "OIM",
+                        "9.3",
+                        "{}",
+                        "{}",
+                        "{}",
+                        now,
+                        "This is a very long message that should be truncated to some limit",
+                        1,
+                        "Good text",
+                        List.of(UUID.randomUUID()));
         RetrievalLogDetails detailsNull =
-            new RetrievalLogDetails(UUID.randomUUID(), UUID.randomUUID(), "OIM", "9.3", "{}", "{}",
-                "{}", now, null, 1, "Good text", List.of(UUID.randomUUID()));
+                new RetrievalLogDetails(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "OIM",
+                        "9.3",
+                        "{}",
+                        "{}",
+                        "{}",
+                        now,
+                        null,
+                        1,
+                        "Good text",
+                        List.of(UUID.randomUUID()));
 
         assertThat(detailsNormal.getTruncatedMessageContent(50)).isEqualTo("Short message");
         assertThat(detailsLong.getTruncatedMessageContent(10)).isEqualTo("This is a ...");
         assertThat(detailsLong.getTruncatedMessageContent(50))
-            .isEqualTo("This is a very long message that should be truncat...");
+                .isEqualTo("This is a very long message that should be truncat...");
         assertThat(detailsNull.getTruncatedMessageContent(50)).isNull();
     }
 }

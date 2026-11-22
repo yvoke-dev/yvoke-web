@@ -5,9 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Shared markdown table formatter for MCP tool outputs and citation verification reports.
- */
+/** Shared markdown table formatter for MCP tool outputs and citation verification reports. */
 public final class MarkdownTableFormatter {
 
     /**
@@ -27,8 +25,9 @@ public final class MarkdownTableFormatter {
         // Header
         sb.append("| ").append(String.join(" | ", cols)).append(" |\n");
         // Separator
-        sb.append("| ").append(cols.stream().map(c -> "---").collect(Collectors.joining(" | ")))
-            .append(" |\n");
+        sb.append("| ")
+                .append(cols.stream().map(c -> "---").collect(Collectors.joining(" | ")))
+                .append(" |\n");
         // Rows
         for (Map<String, String> row : rows) {
             List<String> vals = new ArrayList<>();

@@ -38,10 +38,14 @@ public class LifecycleService {
     private final AuditLogRepository auditLogRepository;
     private final UserService userService;
 
-    public LifecycleService(DocumentRepository documentRepository, KgWriteRepository kgRepository,
-        CollectionRepository collectionRepository, JsonObjectService jsonObjectService,
-        TagRepository tagRepository, AuditLogRepository auditLogRepository,
-        UserService userService) {
+    public LifecycleService(
+            DocumentRepository documentRepository,
+            KgWriteRepository kgRepository,
+            CollectionRepository collectionRepository,
+            JsonObjectService jsonObjectService,
+            TagRepository tagRepository,
+            AuditLogRepository auditLogRepository,
+            UserService userService) {
         this.documentRepository = documentRepository;
         this.kgRepository = kgRepository;
         this.collectionRepository = collectionRepository;
@@ -57,8 +61,11 @@ public class LifecycleService {
 
     @Transactional
     public void deleteDocument(UUID id) {
-        DocumentRow doc = documentRepository.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("Document not found: " + id));
+        DocumentRow doc =
+                documentRepository
+                        .findById(id)
+                        .orElseThrow(
+                                () -> new IllegalArgumentException("Document not found: " + id));
 
         log.info("Deleting document {} (title={})", doc.id(), doc.title());
 
@@ -83,13 +90,18 @@ public class LifecycleService {
         int docsDeleted = documentRepository.deleteByCollection(collection);
         kgRepository.deleteCollectionGraph(collection);
 
-        collectionRepository.findByName(collection).ifPresent(col -> {
-            jsonObjectService.deleteObjectsByCollection(col.id());
-            collectionRepository.deleteById(col.id());
-        });
+        collectionRepository
+                .findByName(collection)
+                .ifPresent(col -> {
+                    jsonObjectService.deleteObjectsByCollection(col.id());
+                    collectionRepository.deleteById(col.id());
+                });
 
-        auditLogRepository.log(getActor(), "DELETE_COLLECTION", collection,
-            Map.of("collection", collection, "documents_deleted", docsDeleted));
+        auditLogRepository.log(
+                getActor(),
+                "DELETE_COLLECTION",
+                collection,
+                Map.of("collection", collection, "documents_deleted", docsDeleted));
     }
 
     /**
@@ -104,8 +116,12 @@ public class LifecycleService {
         if (cleaned.isEmpty()) {
             return;
         }
-        Collection col = collectionRepository.findById(collectionId).orElseThrow(
-            () -> new IllegalArgumentException("Collection not found: " + collectionId));
+        Collection col =
+                collectionRepository
+                        .findById(collectionId)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Collection not found: " + collectionId));
 
         log.info("Removing tag '{}' from collection {} (title={})", cleaned, col.id(), col.name());
 
@@ -120,7 +136,7 @@ public class LifecycleService {
         details.put("collection", col.name());
         details.put("tag", cleaned);
         details.put("documents_deleted", docsDeleted);
-        auditLogRepository.log(getActor(), "REMOVE_COLLECTION_TAG", collectionId.toString(),
-            details);
+        auditLogRepository.log(
+                getActor(), "REMOVE_COLLECTION_TAG", collectionId.toString(), details);
     }
 }

@@ -43,26 +43,27 @@ public class DocumentKgExtractor {
     private static final Logger log = LoggerFactory.getLogger(DocumentKgExtractor.class);
 
     static final String RETRY_INSTRUCTION =
-        "Your previous response could not be parsed as valid JSON. Respond again with STRICT JSON "
-            + "ONLY (no Markdown fences, no prose) matching exactly the required schema: "
-            + "{\"entities\":[{\"name\":\"...\",\"kind\":\"...\",\"description\":\"...\"}],"
-            + "\"relationships\":[{\"subject\":\"...\",\"predicate\":\"...\",\"object\":\"...\","
-            + "\"description\":\"...\"}]}.";
+            "Your previous response could not be parsed as valid JSON. Respond again with STRICT JSON "
+                    + "ONLY (no Markdown fences, no prose) matching exactly the required schema: "
+                    + "{\"entities\":[{\"name\":\"...\",\"kind\":\"...\",\"description\":\"...\"}],"
+                    + "\"relationships\":[{\"subject\":\"...\",\"predicate\":\"...\",\"object\":\"...\","
+                    + "\"description\":\"...\"}]}.";
 
     /**
      * Response schema used to enforce structured JSON output on providers that support it (Gemini).
      * The prompt-based JSON instruction, code-fence stripping and corrective retry remain as a
      * fallback for providers that ignore the schema.
      */
-    private static final String RESPONSE_SCHEMA_JSON = "{\"type\":\"object\",\"properties\":{"
-        + "\"entities\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{"
-        + "\"name\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\"},"
-        + "\"description\":{\"type\":\"string\"}},\"required\":[\"name\"]}},"
-        + "\"relationships\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{"
-        + "\"subject\":{\"type\":\"string\"},\"predicate\":{\"type\":\"string\"},"
-        + "\"object\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"}},"
-        + "\"required\":[\"subject\",\"predicate\",\"object\"]}}},"
-        + "\"required\":[\"entities\",\"relationships\"]}";
+    private static final String RESPONSE_SCHEMA_JSON =
+            "{\"type\":\"object\",\"properties\":{"
+                    + "\"entities\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{"
+                    + "\"name\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\"},"
+                    + "\"description\":{\"type\":\"string\"}},\"required\":[\"name\"]}},"
+                    + "\"relationships\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{"
+                    + "\"subject\":{\"type\":\"string\"},\"predicate\":{\"type\":\"string\"},"
+                    + "\"object\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"}},"
+                    + "\"required\":[\"subject\",\"predicate\",\"object\"]}}},"
+                    + "\"required\":[\"entities\",\"relationships\"]}";
 
     private static final Map<String, Object> RESPONSE_SCHEMA = buildResponseSchema();
 
@@ -85,21 +86,38 @@ public class DocumentKgExtractor {
     private final int maxAttempts;
     private final String thinkingLevel;
 
-    public DocumentKgExtractor(LlmClient llmClient, ObjectMapper objectMapper,
-        JdbcClient jdbcClient, String model, int maxTokens, double temperature, int concurrency,
-        int maxAttempts) {
-        this(llmClient, objectMapper, jdbcClient, model, maxTokens, temperature, concurrency,
-            maxAttempts, null);
+    public DocumentKgExtractor(
+            LlmClient llmClient,
+            ObjectMapper objectMapper,
+            JdbcClient jdbcClient,
+            String model,
+            int maxTokens,
+            double temperature,
+            int concurrency,
+            int maxAttempts) {
+        this(
+                llmClient,
+                objectMapper,
+                jdbcClient,
+                model,
+                maxTokens,
+                temperature,
+                concurrency,
+                maxAttempts,
+                null);
     }
 
     @Autowired
-    public DocumentKgExtractor(LlmClient llmClient, ObjectMapper objectMapper,
-        JdbcClient jdbcClient, @Value("${app.ai.kg.model}") String model,
-        @Value("${app.ai.kg.max-tokens}") int maxTokens,
-        @Value("${app.ai.kg.temperature}") double temperature,
-        @Value("${app.ai.kg.concurrency}") int concurrency,
-        @Value("${app.ai.kg.max-attempts}") int maxAttempts,
-        @Value("${app.ai.kg.thinking-level}") String thinkingLevel) {
+    public DocumentKgExtractor(
+            LlmClient llmClient,
+            ObjectMapper objectMapper,
+            JdbcClient jdbcClient,
+            @Value("${app.ai.kg.model}") String model,
+            @Value("${app.ai.kg.max-tokens}") int maxTokens,
+            @Value("${app.ai.kg.temperature}") double temperature,
+            @Value("${app.ai.kg.concurrency}") int concurrency,
+            @Value("${app.ai.kg.max-attempts}") int maxAttempts,
+            @Value("${app.ai.kg.thinking-level}") String thinkingLevel) {
         this.llmClient = llmClient;
         this.objectMapper = objectMapper;
         this.jdbcClient = jdbcClient;
@@ -113,28 +131,28 @@ public class DocumentKgExtractor {
 
     /**
      * @param systemPrompt the KG prompt to run with — required, and validated here rather than per
-     *        chunk. It used to be an optional "override" resolved inside {@link #callModel}: once
-     *        per chunk AND once per retry attempt, falling back to
-     *        {@code getPrompt("default-kg").orElse("")} — a prompt name registered in no
-     *        deployment. So the fallback always missed and extraction ran with an EMPTY system
-     *        prompt. That prompt is what specifies the strict-JSON response shape, so the model was
-     *        asked for a graph with no schema; the resulting parse failures were counted as chunks
-     *        with nothing in them, which is indistinguishable from a genuinely empty corpus.
-     *        <p>
-     *        The two null-passing overloads are gone deliberately. One of them was reached whenever
-     *        no {@code kgPrompt} was selected, which is how the empty-prompt path was entered in
-     *        practice; making the parameter required turns that into a compile error.
+     *     chunk. It used to be an optional "override" resolved inside {@link #callModel}: once per
+     *     chunk AND once per retry attempt, falling back to {@code
+     *     getPrompt("default-kg").orElse("")} — a prompt name registered in no deployment. So the
+     *     fallback always missed and extraction ran with an EMPTY system prompt. That prompt is
+     *     what specifies the strict-JSON response shape, so the model was asked for a graph with no
+     *     schema; the resulting parse failures were counted as chunks with nothing in them, which
+     *     is indistinguishable from a genuinely empty corpus.
+     *     <p>The two null-passing overloads are gone deliberately. One of them was reached whenever
+     *     no {@code kgPrompt} was selected, which is how the empty-prompt path was entered in
+     *     practice; making the parameter required turns that into a compile error.
      */
-    public KgExtractionResult extract(List<String> chunkTexts, UUID jobId, JobContext ctx,
-        String systemPrompt) {
+    public KgExtractionResult extract(
+            List<String> chunkTexts, UUID jobId, JobContext ctx, String systemPrompt) {
         int total = chunkTexts.size();
         if (total == 0) {
             return new KgExtractionResult(List.of(), List.of(), 0);
         }
         if (systemPrompt == null || systemPrompt.isBlank()) {
-            throw new IllegalArgumentException("A KG system prompt is required to extract a"
-                + " knowledge graph; none was supplied. It defines the strict-JSON response shape,"
-                + " so extracting without it yields unparseable output, not a smaller graph.");
+            throw new IllegalArgumentException(
+                    "A KG system prompt is required to extract a"
+                            + " knowledge graph; none was supplied. It defines the strict-JSON response shape,"
+                            + " so extracting without it yields unparseable output, not a smaller graph.");
         }
 
         // Bound the fan-out: each chunk is mined on its own virtual thread, but at most
@@ -144,16 +162,26 @@ public class DocumentKgExtractor {
         Semaphore gate = new Semaphore(concurrency);
 
         List<ChunkOutcome> outcomes = new ArrayList<>(total);
-        try (
-            ExecutorService delegate = Executors
-                .newThreadPerTaskExecutor(Thread.ofVirtual().name("kg-extract-", 0).factory());
-            ExecutorService executor = new DelegatingSecurityContextExecutorService(delegate)) {
+        try (ExecutorService delegate =
+                        Executors.newThreadPerTaskExecutor(
+                                Thread.ofVirtual().name("kg-extract-", 0).factory());
+                ExecutorService executor = new DelegatingSecurityContextExecutorService(delegate)) {
             List<Future<ChunkOutcome>> futures = new ArrayList<>(total);
             for (int i = 0; i < total; i++) {
                 final int index = i;
                 final String chunkText = chunkTexts.get(i);
-                futures.add(executor.submit(() -> processChunk(index, total, chunkText, jobId, ctx,
-                    gate, cancelled, completed, systemPrompt)));
+                futures.add(
+                        executor.submit(() ->
+                                processChunk(
+                                        index,
+                                        total,
+                                        chunkText,
+                                        jobId,
+                                        ctx,
+                                        gate,
+                                        cancelled,
+                                        completed,
+                                        systemPrompt)));
             }
             // Collect in submission order so the aggregated graph is deterministic.
             for (Future<ChunkOutcome> future : futures) {
@@ -184,7 +212,7 @@ public class DocumentKgExtractor {
             entities.addAll(outcome.entities());
             relationships.addAll(outcome.relationships());
             chunkStatuses.add(
-                new KgExtractionResult.ChunkStatus(outcome.index(), !outcome.skipped(), model));
+                    new KgExtractionResult.ChunkStatus(outcome.index(), !outcome.skipped(), model));
             if (outcome.skipped()) {
                 skipped++;
             }
@@ -192,9 +220,17 @@ public class DocumentKgExtractor {
         return new KgExtractionResult(entities, relationships, skipped, chunkStatuses);
     }
 
-    private ChunkOutcome processChunk(int index, int total, String chunkText, UUID jobId,
-        JobContext ctx, Semaphore gate, AtomicBoolean cancelled, AtomicInteger completed,
-        String systemPrompt) throws InterruptedException {
+    private ChunkOutcome processChunk(
+            int index,
+            int total,
+            String chunkText,
+            UUID jobId,
+            JobContext ctx,
+            Semaphore gate,
+            AtomicBoolean cancelled,
+            AtomicInteger completed,
+            String systemPrompt)
+            throws InterruptedException {
         gate.acquire();
         try {
             if (cancelled.get()) {
@@ -205,8 +241,12 @@ public class DocumentKgExtractor {
                 return null;
             }
 
-            log.info("KG extraction: processing chunk {}/{} ({} chars) for job {}", index + 1,
-                total, chunkText.length(), jobId != null ? jobId : "null");
+            log.info(
+                    "KG extraction: processing chunk {}/{} ({} chars) for job {}",
+                    index + 1,
+                    total,
+                    chunkText.length(),
+                    jobId != null ? jobId : "null");
 
             return extractChunkWithRetry(index, total, chunkText, systemPrompt);
         } finally {
@@ -214,14 +254,16 @@ public class DocumentKgExtractor {
             int done = completed.incrementAndGet();
             if (ctx != null) {
                 int progress = 80 + (int) ((done * 15.0) / total);
-                ctx.report(JobStep.EXTRACT, progress,
-                    String.format("Processing chunk %d of %d", done, total));
+                ctx.report(
+                        JobStep.EXTRACT,
+                        progress,
+                        String.format("Processing chunk %d of %d", done, total));
             }
         }
     }
 
-    private ChunkOutcome extractChunkWithRetry(int index, int total, String chunkText,
-        String systemPrompt) {
+    private ChunkOutcome extractChunkWithRetry(
+            int index, int total, String chunkText, String systemPrompt) {
         String sha = computeSha256(chunkText);
         Optional<String> cached = getCachedExtraction(sha);
         if (cached.isPresent()) {
@@ -233,8 +275,11 @@ public class DocumentKgExtractor {
                 return new ChunkOutcome(index, entities, relationships, false);
             } catch (RuntimeException e) {
                 log.warn(
-                    "KG extraction: cached JSON corrupted for chunk {}/{} ({}); falling back to LLM. cause={}",
-                    index + 1, total, sha, e.toString());
+                        "KG extraction: cached JSON corrupted for chunk {}/{} ({}); falling back to LLM. cause={}",
+                        index + 1,
+                        total,
+                        sha,
+                        e.toString());
             }
         }
 
@@ -247,13 +292,20 @@ public class DocumentKgExtractor {
                 correctiveRetry = false;
                 if (attempt < maxAttempts) {
                     log.warn(
-                        "KG extraction call failed for chunk {}/{} (attempt {}/{}); retrying. cause={}",
-                        index + 1, total, attempt, maxAttempts, e.toString());
+                            "KG extraction call failed for chunk {}/{} (attempt {}/{}); retrying. cause={}",
+                            index + 1,
+                            total,
+                            attempt,
+                            maxAttempts,
+                            e.toString());
                     continue;
                 }
                 log.warn(
-                    "KG extraction call failed for chunk {}/{} after {} attempts; skipping. cause={}",
-                    index + 1, total, maxAttempts, e.toString());
+                        "KG extraction call failed for chunk {}/{} after {} attempts; skipping. cause={}",
+                        index + 1,
+                        total,
+                        maxAttempts,
+                        e.toString());
                 return new ChunkOutcome(index, List.of(), List.of(), true);
             }
 
@@ -267,15 +319,22 @@ public class DocumentKgExtractor {
                 correctiveRetry = true;
                 if (attempt < maxAttempts) {
                     log.warn(
-                        "KG extraction output malformed/truncated at chunk {}/{} (attempt {}/{}); "
-                            + "retrying with corrective prompt. cause={}",
-                        index + 1, total, attempt, maxAttempts, e.toString());
+                            "KG extraction output malformed/truncated at chunk {}/{} (attempt {}/{}); "
+                                    + "retrying with corrective prompt. cause={}",
+                            index + 1,
+                            total,
+                            attempt,
+                            maxAttempts,
+                            e.toString());
                     continue;
                 }
                 log.warn(
-                    "KG extraction output malformed/truncated at chunk {}/{} after {} attempts; "
-                        + "skipping chunk. cause={}",
-                    index + 1, total, maxAttempts, e.toString());
+                        "KG extraction output malformed/truncated at chunk {}/{} after {} attempts; "
+                                + "skipping chunk. cause={}",
+                        index + 1,
+                        total,
+                        maxAttempts,
+                        e.toString());
                 return new ChunkOutcome(index, List.of(), List.of(), true);
             }
         }
@@ -285,16 +344,23 @@ public class DocumentKgExtractor {
 
     private Optional<String> getCachedExtraction(String sha) {
         return jdbcClient
-            .sql("SELECT summary FROM summary_cache WHERE source_sha = :sha AND kind = 'kg'")
-            .param("sha", sha).query(String.class).optional();
+                .sql("SELECT summary FROM summary_cache WHERE source_sha = :sha AND kind = 'kg'")
+                .param("sha", sha)
+                .query(String.class)
+                .optional();
     }
 
     private void putCachedExtraction(String sha, String rawJson) {
-        jdbcClient.sql("""
-            INSERT INTO summary_cache (source_sha, kind, summary)
-            VALUES (:sha, 'kg', :rawJson)
-            ON CONFLICT (source_sha) DO NOTHING
-            """).param("sha", sha).param("rawJson", rawJson).update();
+        jdbcClient
+                .sql(
+                        """
+                        INSERT INTO summary_cache (source_sha, kind, summary)
+                        VALUES (:sha, 'kg', :rawJson)
+                        ON CONFLICT (source_sha) DO NOTHING
+                        """)
+                .param("sha", sha)
+                .param("rawJson", rawJson)
+                .update();
     }
 
     private String computeSha256(String text) {
@@ -315,30 +381,51 @@ public class DocumentKgExtractor {
         }
     }
 
-    private record ChunkOutcome(int index, List<ExtractedEntity> entities,
-        List<ExtractedRelationship> relationships, boolean skipped) {}
+    private record ChunkOutcome(
+            int index,
+            List<ExtractedEntity> entities,
+            List<ExtractedRelationship> relationships,
+            boolean skipped) {}
 
     private boolean isJobCancelled(UUID jobId) {
         if (jobId == null) {
             return false;
         }
-        String status = jdbcClient.sql("SELECT status FROM ingestion_jobs WHERE id = :id")
-            .param("id", jobId).query(String.class).optional().orElse("running");
+        String status =
+                jdbcClient
+                        .sql("SELECT status FROM ingestion_jobs WHERE id = :id")
+                        .param("id", jobId)
+                        .query(String.class)
+                        .optional()
+                        .orElse("running");
         return !"running".equals(status);
     }
 
     private String callModel(String chunkText, boolean appendCorrective, String systemPrompt) {
         log.info(
-            "LLM Request (KG extraction): model={}, temperature={}, maxTokens={}, promptLength={}, corrective={}",
-            model, temperature, maxTokens, chunkText.length(), appendCorrective);
+                "LLM Request (KG extraction): model={}, temperature={}, maxTokens={}, promptLength={}, corrective={}",
+                model,
+                temperature,
+                maxTokens,
+                chunkText.length(),
+                appendCorrective);
         List<LlmMessage> messages = new ArrayList<>(3);
         messages.add(new LlmMessage("system", systemPrompt));
         messages.add(new LlmMessage("user", chunkText));
         if (appendCorrective) {
             messages.add(new LlmMessage("user", RETRY_INSTRUCTION));
         }
-        LlmRequest request = new LlmRequest(model, messages, temperature, maxTokens, null,
-            thinkingLevel, "application/json", RESPONSE_SCHEMA, null);
+        LlmRequest request =
+                new LlmRequest(
+                        model,
+                        messages,
+                        temperature,
+                        maxTokens,
+                        null,
+                        thinkingLevel,
+                        "application/json",
+                        RESPONSE_SCHEMA,
+                        null);
         // Extraction fans out over virtual threads and LlmCallContextHolder is a ThreadLocal that
         // DelegatingSecurityContextExecutorService does not carry, so the context has to be set
         // here — on the worker thread that actually makes the call — not around the executor.
@@ -355,12 +442,12 @@ public class DocumentKgExtractor {
         return response;
     }
 
-    private void parseInto(String raw, List<ExtractedEntity> entities,
-        List<ExtractedRelationship> relationships) {
+    private void parseInto(
+            String raw, List<ExtractedEntity> entities, List<ExtractedRelationship> relationships) {
         JsonNode root = parseJson(raw);
         if (!root.isObject() || (!root.has("entities") && !root.has("relationships"))) {
             throw new IllegalArgumentException(
-                "KG extraction JSON missing required root fields: entities or relationships");
+                    "KG extraction JSON missing required root fields: entities or relationships");
         }
 
         JsonNode entitiesNode = root.get("entities");
@@ -370,8 +457,11 @@ public class DocumentKgExtractor {
                 if (name == null || name.isBlank()) {
                     continue;
                 }
-                entities.add(new ExtractedEntity(name.strip(), normalizeKind(text(e, "kind")),
-                    text(e, "description")));
+                entities.add(
+                        new ExtractedEntity(
+                                name.strip(),
+                                normalizeKind(text(e, "kind")),
+                                text(e, "description")));
             }
         }
 
@@ -381,12 +471,20 @@ public class DocumentKgExtractor {
                 String subject = text(r, "subject");
                 String predicate = text(r, "predicate");
                 String object = text(r, "object");
-                if (subject == null || subject.isBlank() || predicate == null || predicate.isBlank()
-                    || object == null || object.isBlank()) {
+                if (subject == null
+                        || subject.isBlank()
+                        || predicate == null
+                        || predicate.isBlank()
+                        || object == null
+                        || object.isBlank()) {
                     continue;
                 }
-                relationships.add(new ExtractedRelationship(subject.strip(), predicate.strip(),
-                    object.strip(), text(r, "description")));
+                relationships.add(
+                        new ExtractedRelationship(
+                                subject.strip(),
+                                predicate.strip(),
+                                object.strip(),
+                                text(r, "description")));
             }
         }
     }

@@ -18,9 +18,8 @@ import org.junit.jupiter.api.Test;
  * {@code CLAUDE.md} § 1: "No fully-qualified class names inline — add an {@code import} at the top
  * of the file and use the simple name". This is the test that makes that rule real.
  *
- * <p>
- * <b>Why this cannot be an ArchUnit rule.</b> {@code ArchitectureTest} reads <em>bytecode</em>, and
- * an inline FQN and an import compile to exactly the same thing — the constant pool records
+ * <p><b>Why this cannot be an ArchUnit rule.</b> {@code ArchitectureTest} reads <em>bytecode</em>,
+ * and an inline FQN and an import compile to exactly the same thing — the constant pool records
  * {@code org/springframework/.../JdbcClient} either way. That is not a guess: when this rule was
  * first enforced, the 351-site rewrite was verified by disassembling every class it touched, and
  * all 53 differing class files were identical under {@code javap -c -p}; the only difference in the
@@ -29,36 +28,34 @@ import org.junit.jupiter.api.Test;
  * following {@code MigrationSeedPolicyTest} and {@code DocumentedCommandsTest}, which also read the
  * repository rather than the compiled output.
  *
- * <p>
- * <b>Why the rule is worth enforcing at all.</b> It is a readability rule, so nothing breaks when
- * it is violated — which is exactly why it rotted: it was stated as a hard rule in two files and
- * violated 351 times across 96 files, including four times inside {@code ArchitectureTest} itself,
- * the class that enforces every other § 1 rule. By this project's own principle, a rule no test
- * fails on is undocumented rather than safe.
+ * <p><b>Why the rule is worth enforcing at all.</b> It is a readability rule, so nothing breaks
+ * when it is violated — which is exactly why it rotted: it was stated as a hard rule in two files
+ * and violated 351 times across 96 files, including four times inside {@code ArchitectureTest}
+ * itself, the class that enforces every other § 1 rule. By this project's own principle, a rule no
+ * test fails on is undocumented rather than safe.
  *
- * <p>
- * <b>What counts.</b> Comments, javadoc, string literals, char literals and text blocks are
+ * <p><b>What counts.</b> Comments, javadoc, string literals, char literals and text blocks are
  * stripped before matching, so {@code {@code java.util.Map}} in a doc comment and a fully-qualified
- * class name inside an SQL string or an exception message are all fine. {@code import} and
- * {@code package} lines are skipped for the obvious reason.
+ * class name inside an SQL string or an exception message are all fine. {@code import} and {@code
+ * package} lines are skipped for the obvious reason.
  */
 class NoInlineFullyQualifiedNamesTest {
 
     private static final List<Path> SOURCE_ROOTS =
-        List.of(Path.of("src/main/java"), Path.of("src/test/java"), Path.of("src/it/java"));
+            List.of(Path.of("src/main/java"), Path.of("src/test/java"), Path.of("src/it/java"));
 
     /**
      * A package path starting at a real root, then a {@code Capitalised} type name.
      *
-     * <p>
-     * Anchoring on known roots keeps an ordinary method chain on a lower-cased receiver
-     * ({@code config.security.Provider}) from being mistaken for a package.
+     * <p>Anchoring on known roots keeps an ordinary method chain on a lower-cased receiver ({@code
+     * config.security.Provider}) from being mistaken for a package.
      */
-    private static final Pattern INLINE_FQN = Pattern.compile(
-        "\\b(?:java|javax|jakarta|org|com|de|net|io)(?:\\.[a-z][a-zA-Z0-9_]*)+\\.[A-Z][A-Za-z0-9_]*\\b");
+    private static final Pattern INLINE_FQN =
+            Pattern.compile(
+                    "\\b(?:java|javax|jakarta|org|com|de|net|io)(?:\\.[a-z][a-zA-Z0-9_]*)+\\.[A-Z][A-Za-z0-9_]*\\b");
 
     private static final Pattern IMPORT_OR_PACKAGE =
-        Pattern.compile("^\\s*(?:import|package)\\b.*$", Pattern.MULTILINE);
+            Pattern.compile("^\\s*(?:import|package)\\b.*$", Pattern.MULTILINE);
 
     /**
      * The only place a fully-qualified name is unavoidable: the file imports the domain's own
@@ -66,8 +63,9 @@ class NoInlineFullyQualifiedNamesTest {
      * override it declares cannot name {@code java.util.Collection} any other way.
      */
     private static final Map<String, String> ALLOWED =
-        Map.of("src/it/java/de/palsoftware/yvoke/ingest/api/IngestApiControllerIT.java",
-            "java.util.Collection");
+            Map.of(
+                    "src/it/java/de/palsoftware/yvoke/ingest/api/IngestApiControllerIT.java",
+                    "java.util.Collection");
 
     @Test
     void noJavaSourceUsesAFullyQualifiedClassNameInline() throws IOException {
@@ -77,8 +75,9 @@ class NoInlineFullyQualifiedNamesTest {
                 walk.filter(p -> p.toString().endsWith(".java")).forEach(sources::add);
             }
         }
-        assertThat(sources).as("the source roots must contain java files, or this test is vacuous")
-            .hasSizeGreaterThan(100);
+        assertThat(sources)
+                .as("the source roots must contain java files, or this test is vacuous")
+                .hasSizeGreaterThan(100);
 
         List<String> violations = new ArrayList<>();
         for (Path file : sources) {
@@ -95,12 +94,13 @@ class NoInlineFullyQualifiedNamesTest {
         }
 
         assertThat(violations)
-            .as("CLAUDE.md / .agents/AGENTS.md § 1: add an import and use the simple name. "
-                + "Nothing breaks when this is violated, which is why it needs a test — the rule "
-                + "had rotted to 351 violations across 96 files before this existed. If a simple "
-                + "name genuinely collides with another import, add the file to ALLOWED with the "
-                + "reason.")
-            .isEmpty();
+                .as(
+                        "CLAUDE.md / .agents/AGENTS.md § 1: add an import and use the simple name. "
+                                + "Nothing breaks when this is violated, which is why it needs a test — the rule "
+                                + "had rotted to 351 violations across 96 files before this existed. If a simple "
+                                + "name genuinely collides with another import, add the file to ALLOWED with the "
+                                + "reason.")
+                .isEmpty();
     }
 
     /**

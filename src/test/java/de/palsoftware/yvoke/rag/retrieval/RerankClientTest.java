@@ -31,39 +31,44 @@ public class RerankClientTest {
     public void setUp() {
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).build();
-        rerankClient = new RerankClient(builder, "mock-key-for-skeleton", "rerank-2.5",
-            "https://api.voyageai.com/v1");
+        rerankClient =
+                new RerankClient(
+                        builder,
+                        "mock-key-for-skeleton",
+                        "rerank-2.5",
+                        "https://api.voyageai.com/v1");
     }
 
     @Test
     public void testRerankSuccess() {
-        String jsonResponse = """
-            {
-              "object": "list",
-              "data": [
+        String jsonResponse =
+                """
                 {
-                  "index": 0,
-                  "relevance_score": 0.95
-                },
-                {
-                  "index": 1,
-                  "relevance_score": 0.12
+                  "object": "list",
+                  "data": [
+                    {
+                      "index": 0,
+                      "relevance_score": 0.95
+                    },
+                    {
+                      "index": 1,
+                      "relevance_score": 0.12
+                    }
+                  ],
+                  "model": "rerank-2.5",
+                  "usage": {
+                    "total_tokens": 15
+                  }
                 }
-              ],
-              "model": "rerank-2.5",
-              "usage": {
-                "total_tokens": 15
-              }
-            }
-            """;
+                """;
 
         server.expect(requestTo("https://api.voyageai.com/v1/rerank"))
-            .andExpect(method(HttpMethod.POST))
-            .andExpect(header("Authorization", "Bearer mock-key-for-skeleton"))
-            .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("Authorization", "Bearer mock-key-for-skeleton"))
+                .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
 
         List<RerankClient.RerankResult> results =
-            rerankClient.rerank("query", List.of("Paris is capital", "Berlin is capital"));
+                rerankClient.rerank("query", List.of("Paris is capital", "Berlin is capital"));
 
         assertThat(results).hasSize(2);
         assertThat(results.get(0).index()).isEqualTo(0);
@@ -82,31 +87,32 @@ public class RerankClientTest {
     @Test
     public void testRerankInvalidInput() {
         assertThatThrownBy(() -> rerankClient.rerank("", List.of("doc")))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> rerankClient.rerank(null, List.of("doc")))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     public void testRerankServerError() {
         server.expect(requestTo("https://api.voyageai.com/v1/rerank"))
-            .andExpect(method(HttpMethod.POST))
-            .andRespond(MockRestResponseCreators.withServerError());
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(MockRestResponseCreators.withServerError());
 
         assertThatThrownBy(() -> rerankClient.rerank("query", List.of("doc")))
-            .isInstanceOf(HttpServerErrorException.class);
+                .isInstanceOf(HttpServerErrorException.class);
         server.verify();
     }
 
     @Test
     public void testRerankEmptyResponseBody() {
         server.expect(requestTo("https://api.voyageai.com/v1/rerank"))
-            .andExpect(method(HttpMethod.POST))
-            .andRespond(withSuccess("", MediaType.APPLICATION_JSON));
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("", MediaType.APPLICATION_JSON));
 
         assertThatThrownBy(() -> rerankClient.rerank("query", List.of("doc")))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining(
-                "Failed to get reranking response from Voyage AI; empty response.");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(
+                        "Failed to get reranking response from Voyage AI; empty response.");
         server.verify();
     }
 
@@ -121,34 +127,41 @@ public class RerankClientTest {
      * looks free — precisely the number an operator would use to decide whether to leave reranking
      * on. The {@code max(1, ...)} floor matters for the same reason: a zero-token row reads as a
      * call that cost nothing rather than one whose usage was unknown. No existing test reaches this
-     * branch — {@code testRerank_publishesModelUsageEvent} responds with an explicit
-     * {@code "total_tokens": 15}, so the fallback arithmetic has never executed.
+     * branch — {@code testRerank_publishesModelUsageEvent} responds with an explicit {@code
+     * "total_tokens": 15}, so the fallback arithmetic has never executed.
      */
     @Test
     public void rerankUsageFallsBackToACharacterEstimateOverQueryAndDocuments() {
         ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer usageLessServer = MockRestServiceServer.bindTo(builder).build();
-        RerankClient client = new RerankClient(builder, "mock-key", "rerank-2.5",
-            "https://api.voyageai.com/v1", publisher);
+        RerankClient client =
+                new RerankClient(
+                        builder,
+                        "mock-key",
+                        "rerank-2.5",
+                        "https://api.voyageai.com/v1",
+                        publisher);
 
         // Deliberately no "usage" block: this is the shape that forces the character estimate.
-        String jsonResponse = """
-            {
-              "object": "list",
-              "data": [
+        String jsonResponse =
+                """
                 {
-                  "index": 0,
-                  "relevance_score": 0.9
+                  "object": "list",
+                  "data": [
+                    {
+                      "index": 0,
+                      "relevance_score": 0.9
+                    }
+                  ],
+                  "model": "rerank-2.5"
                 }
-              ],
-              "model": "rerank-2.5"
-            }
-            """;
+                """;
 
-        usageLessServer.expect(requestTo("https://api.voyageai.com/v1/rerank"))
-            .andExpect(method(HttpMethod.POST))
-            .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
+        usageLessServer
+                .expect(requestTo("https://api.voyageai.com/v1/rerank"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
 
         // query 8 chars + two 96-char documents = 200 chars -> max(1, 200 / 4) = 50 tokens.
         // Estimating from the query alone would publish 2, which is the regression this pins.
@@ -158,7 +171,8 @@ public class RerankClientTest {
         usageLessServer.verify();
 
         verify(publisher)
-            .publishEvent(new LlmCallLoggedEvent("rerank", "rerank", "rerank-2.5", 50, 0, 0, 0));
+                .publishEvent(
+                        new LlmCallLoggedEvent("rerank", "rerank", "rerank-2.5", 50, 0, 0, 0));
     }
 
     @Test
@@ -167,37 +181,45 @@ public class RerankClientTest {
 
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer mockServer = MockRestServiceServer.bindTo(builder).build();
-        RerankClient clientWithPublisher = new RerankClient(builder, "mock-key", "rerank-2.5",
-            "https://api.voyageai.com/v1", mockPublisher);
+        RerankClient clientWithPublisher =
+                new RerankClient(
+                        builder,
+                        "mock-key",
+                        "rerank-2.5",
+                        "https://api.voyageai.com/v1",
+                        mockPublisher);
 
-        String jsonResponse = """
-            {
-              "object": "list",
-              "data": [
+        String jsonResponse =
+                """
                 {
-                  "object": "rerank",
-                  "relevance_score": 0.9,
-                  "index": 0
+                  "object": "list",
+                  "data": [
+                    {
+                      "object": "rerank",
+                      "relevance_score": 0.9,
+                      "index": 0
+                    }
+                  ],
+                  "model": "rerank-2.5",
+                  "usage": {
+                    "total_tokens": 15
+                  }
                 }
-              ],
-              "model": "rerank-2.5",
-              "usage": {
-                "total_tokens": 15
-              }
-            }
-            """;
+                """;
 
-        mockServer.expect(requestTo("https://api.voyageai.com/v1/rerank"))
-            .andExpect(method(HttpMethod.POST))
-            .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
+        mockServer
+                .expect(requestTo("https://api.voyageai.com/v1/rerank"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
 
         List<RerankClient.RerankResult> results =
-            clientWithPublisher.rerank("query", List.of("doc1"));
+                clientWithPublisher.rerank("query", List.of("doc1"));
 
         assertThat(results).hasSize(1);
         mockServer.verify();
 
         Mockito.verify(mockPublisher)
-            .publishEvent(new LlmCallLoggedEvent("rerank", "rerank", "rerank-2.5", 15, 0, 0, 0));
+                .publishEvent(
+                        new LlmCallLoggedEvent("rerank", "rerank", "rerank-2.5", 15, 0, 0, 0));
     }
 }

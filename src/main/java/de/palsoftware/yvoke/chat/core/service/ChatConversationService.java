@@ -45,8 +45,11 @@ public class ChatConversationService {
     private final ChatProperties chatProperties;
     private final TagRepository tagRepository;
 
-    public ChatConversationService(ConversationRepository conversationRepository,
-        UserService userService, ChatProperties chatProperties, TagRepository tagRepository) {
+    public ChatConversationService(
+            ConversationRepository conversationRepository,
+            UserService userService,
+            ChatProperties chatProperties,
+            TagRepository tagRepository) {
         this.conversationRepository = conversationRepository;
         this.userService = userService;
         this.chatProperties = chatProperties;
@@ -54,50 +57,52 @@ public class ChatConversationService {
     }
 
     public List<String> getAllowedModels() {
-        return chatProperties.allowedModels() != null ? chatProperties.allowedModels()
-            : Collections.emptyList();
+        return chatProperties.allowedModels() != null
+                ? chatProperties.allowedModels()
+                : Collections.emptyList();
     }
 
     /**
      * The model a conversation actually runs on, given the whitelist in force right now.
      *
-     * <p>
-     * A conversation's stored model outlives the whitelist: retiring one from
-     * {@code app.chat.allowed-models} leaves every conversation pinned to it still naming it. The
-     * two halves of the app then disagreed about what that meant — the picker rendered no matching
+     * <p>A conversation's stored model outlives the whitelist: retiring one from {@code
+     * app.chat.allowed-models} leaves every conversation pinned to it still naming it. The two
+     * halves of the app then disagreed about what that meant — the picker rendered no matching
      * option so the browser selected the FIRST, while the send path read the stored value straight
      * out of the settings map, so the UI said one model and the answer came from another with
      * nothing anywhere reporting the divergence. The obvious repair did not work either: the picker
      * already displayed the default, so choosing it fired no change event and posted nothing, and
      * the conversation could not be moved off the retired model at all.
      *
-     * <p>
-     * A retired model therefore resolves to the default — element 0, the same value
-     * {@link #createConversation()} stamps on a new conversation. Nothing is written back: a page
-     * render must not mutate a conversation, and the stale stored value is inert from here on,
-     * overwritten by {@link #updateModel} the first time the user picks anything.
+     * <p>A retired model therefore resolves to the default — element 0, the same value {@link
+     * #createConversation()} stamps on a new conversation. Nothing is written back: a page render
+     * must not mutate a conversation, and the stale stored value is inert from here on, overwritten
+     * by {@link #updateModel} the first time the user picks anything.
      *
-     * <p>
-     * An EMPTY or absent whitelist passes the stored value through untouched — an empty list is a
-     * missing opinion, not a statement that every model is forbidden, and substituting a "default"
-     * from it would mean inventing a model out of nothing. A missing stored model is likewise
-     * returned unchanged: callers already handle that case, and differently (the send path throws,
-     * the preflight substitutes the default), so folding them together here would change two
-     * behaviours while fixing a third.
+     * <p>An EMPTY or absent whitelist passes the stored value through untouched — an empty list is
+     * a missing opinion, not a statement that every model is forbidden, and substituting a
+     * "default" from it would mean inventing a model out of nothing. A missing stored model is
+     * likewise returned unchanged: callers already handle that case, and differently (the send path
+     * throws, the preflight substitutes the default), so folding them together here would change
+     * two behaviours while fixing a third.
      *
-     * <p>
-     * Static so the send path can resolve with the REAL rule while taking only the whitelist from
-     * its mocked {@code ChatConversationService} — a lenient stub of an instance method would let
-     * the test agree with whatever production did.
+     * <p>Static so the send path can resolve with the REAL rule while taking only the whitelist
+     * from its mocked {@code ChatConversationService} — a lenient stub of an instance method would
+     * let the test agree with whatever production did.
      */
-    public static @Nullable String effectiveModel(@Nullable String storedModel,
-        @Nullable List<String> allowedModels) {
-        if (allowedModels == null || allowedModels.isEmpty() || storedModel == null
-            || storedModel.isBlank() || allowedModels.contains(storedModel)) {
+    public static @Nullable String effectiveModel(
+            @Nullable String storedModel, @Nullable List<String> allowedModels) {
+        if (allowedModels == null
+                || allowedModels.isEmpty()
+                || storedModel == null
+                || storedModel.isBlank()
+                || allowedModels.contains(storedModel)) {
             return storedModel;
         }
-        log.warn("Conversation model '{}' is no longer in app.chat.allowed-models; using '{}'",
-            storedModel, allowedModels.get(0));
+        log.warn(
+                "Conversation model '{}' is no longer in app.chat.allowed-models; using '{}'",
+                storedModel,
+                allowedModels.get(0));
         return allowedModels.get(0);
     }
 
@@ -121,10 +126,10 @@ public class ChatConversationService {
 
         List<String> allowedModels = chatProperties.allowedModels();
         String defaultModel =
-            (allowedModels != null && !allowedModels.isEmpty()) ? allowedModels.get(0) : null;
+                (allowedModels != null && !allowedModels.isEmpty()) ? allowedModels.get(0) : null;
         if (defaultModel == null) {
             throw new IllegalStateException(
-                "No allowed models configured under 'app.chat.allowed-models'");
+                    "No allowed models configured under 'app.chat.allowed-models'");
         }
         settings.put(ConversationSetting.MODEL.getValue(), defaultModel);
         settings.put(ConversationSetting.STREAMING.getValue(), false);
@@ -134,8 +139,12 @@ public class ChatConversationService {
 
         String title = "New Conversation";
         UUID userId =
-            userService.getCurrentUser().map(User::id).orElseThrow(() -> new AccessDeniedException(
-                "Authenticated user is required to create a conversation."));
+                userService
+                        .getCurrentUser()
+                        .map(User::id)
+                        .orElseThrow(() ->
+                                new AccessDeniedException(
+                                        "Authenticated user is required to create a conversation."));
         conversationRepository.create(id, userId, title, settings);
         return conversationRepository.findById(id).orElseThrow();
     }
@@ -179,10 +188,10 @@ public class ChatConversationService {
     }
 
     /**
-     * Sets the conversation's model, rejecting any value not present in the configured
-     * {@code app.chat.allowed-models} whitelist (SEC-04). Validating here — the single user-facing
-     * set path — prevents a client from steering the conversation onto an arbitrary/expensive model
-     * by posting a crafted {@code model} parameter.
+     * Sets the conversation's model, rejecting any value not present in the configured {@code
+     * app.chat.allowed-models} whitelist (SEC-04). Validating here — the single user-facing set
+     * path — prevents a client from steering the conversation onto an arbitrary/expensive model by
+     * posting a crafted {@code model} parameter.
      */
     public void updateModel(UUID id, String model) {
         // Authorize BEFORE validating the payload: a caller who does not own the conversation must
@@ -191,8 +200,8 @@ public class ChatConversationService {
         verifyOwnership(id, false);
         String requested = model == null ? "" : model.trim();
         if (!getAllowedModels().contains(requested)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Model is not in the allowed list: " + requested);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Model is not in the allowed list: " + requested);
         }
         Map<String, Object> settings = new HashMap<>();
         settings.put(ConversationSetting.MODEL.getValue(), requested);
@@ -230,8 +239,7 @@ public class ChatConversationService {
     /**
      * The chat folder names — the tags on the conversations this caller can see.
      *
-     * <p>
-     * Its own namespace, deliberately. Until V6 this read a global {@code tags} registry shared
+     * <p>Its own namespace, deliberately. Until V6 this read a global {@code tags} registry shared
      * with the corpus tags, so the folder autocomplete offered corpus version tags ({@code 9.3.1},
      * {@code 10.0}) as folder names and exposed every other user's folder names alongside them.
      * Deriving from {@code listAllConversations} narrows it to the visible set for free.
@@ -241,8 +249,13 @@ public class ChatConversationService {
     }
 
     private static List<String> distinctTags(List<Conversation> conversations) {
-        return conversations.stream().map(Conversation::tags).filter(Objects::nonNull)
-            .flatMap(List::stream).distinct().sorted(String.CASE_INSENSITIVE_ORDER).toList();
+        return conversations.stream()
+                .map(Conversation::tags)
+                .filter(Objects::nonNull)
+                .flatMap(List::stream)
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
     }
 
     /**
@@ -259,9 +272,11 @@ public class ChatConversationService {
         UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
         Set<String> allowedAreasLower = AreaAccessContext.allowedUserAreasLower().orElse(null);
         List<Conversation> owned =
-            conversationRepository.listOwned(currentUserId, SIDEBAR_LIMIT, 0, allowedAreasLower);
-        List<Conversation> otherPublic = conversationRepository.listOtherPublic(currentUserId,
-            SIDEBAR_LIMIT, 0, allowedAreasLower);
+                conversationRepository.listOwned(
+                        currentUserId, SIDEBAR_LIMIT, 0, allowedAreasLower);
+        List<Conversation> otherPublic =
+                conversationRepository.listOtherPublic(
+                        currentUserId, SIDEBAR_LIMIT, 0, allowedAreasLower);
         List<Conversation> conversations = new ArrayList<>(owned.size() + otherPublic.size());
         conversations.addAll(owned);
         conversations.addAll(otherPublic);
@@ -269,22 +284,23 @@ public class ChatConversationService {
         TreeMap<String, List<Conversation>> folders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         List<Conversation> untagged = new ArrayList<>();
         TreeMap<String, List<Conversation>> publicFolders =
-            new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+                new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         List<Conversation> publicUntagged = new ArrayList<>();
         // Derived from the owned + public lists loaded above — public threads can no longer starve
         // the owner's conversations or folder autocomplete suggestions.
         List<String> allTags = distinctTags(conversations);
 
         for (Conversation conv : conversations) {
-            boolean isPublic = (conv.tags() != null && conv.tags().contains("public"))
-                || !isOwner(conv.userId(), currentUserId);
+            boolean isPublic =
+                    (conv.tags() != null && conv.tags().contains("public"))
+                            || !isOwner(conv.userId(), currentUserId);
 
             if (isPublic) {
                 if (conv.tags() == null || conv.tags().isEmpty()) {
                     publicUntagged.add(conv);
                 } else {
                     List<String> otherTags =
-                        conv.tags().stream().filter(t -> !"public".equals(t)).toList();
+                            conv.tags().stream().filter(t -> !"public".equals(t)).toList();
                     if (otherTags.isEmpty()) {
                         publicUntagged.add(conv);
                     } else {
@@ -309,14 +325,22 @@ public class ChatConversationService {
             publicCount += list.size();
         }
 
-        return new ConversationSidebar(conversations, folders, untagged, publicFolders,
-            publicUntagged, publicCount, allTags, currentUserId);
+        return new ConversationSidebar(
+                conversations,
+                folders,
+                untagged,
+                publicFolders,
+                publicUntagged,
+                publicCount,
+                allTags,
+                currentUserId);
     }
 
     /** Null-safe ownership check: an orphaned (null userId) conversation has NO owner. */
     public static boolean isOwner(UUID conversationUserId, UUID currentUserId) {
-        return conversationUserId != null && currentUserId != null
-            && conversationUserId.equals(currentUserId);
+        return conversationUserId != null
+                && currentUserId != null
+                && conversationUserId.equals(currentUserId);
     }
 
     /**
@@ -325,47 +349,57 @@ public class ChatConversationService {
      * public viewer).
      */
     public boolean canViewFeedback(UUID conversationId) {
-        Conversation conversation = conversationRepository.findById(conversationId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Conversation not found: " + conversationId));
+        Conversation conversation =
+                conversationRepository
+                        .findById(conversationId)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Conversation not found: " + conversationId));
         verifyConversationOwnership(conversation, true);
         UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
         if (isOwner(conversation.userId(), currentUserId)) {
             return true;
         }
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null && (AreaAccessContext.isSuperAdmin(auth) || (conversation.area() != null
-            && AreaAccessContext.canAdministerArea(auth, conversation.area())));
+        return auth != null
+                && (AreaAccessContext.isSuperAdmin(auth)
+                        || (conversation.area() != null
+                                && AreaAccessContext.canAdministerArea(auth, conversation.area())));
     }
 
     public void verifyConversationOwnership(Conversation conversation, boolean readOnlyAllowed) {
-        if (conversation.area() != null && !conversation.area().isBlank()
-            && !AreaAccessContext.canAccessUserArea(conversation.area())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Conversation not found: " + conversation.id());
+        if (conversation.area() != null
+                && !conversation.area().isBlank()
+                && !AreaAccessContext.canAccessUserArea(conversation.area())) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Conversation not found: " + conversation.id());
         }
         UUID currentUserId = userService.getCurrentUser().map(User::id).orElse(null);
         if (isOwner(conversation.userId(), currentUserId)) {
             if (!readOnlyAllowed
-                && ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source())) {
+                    && ConversationSource.CLAUDE_PLUGIN.getValue().equals(conversation.source())) {
                 throw new AccessDeniedException(
-                    "Cannot modify claude-plugin feedback conversation: " + conversation.id());
+                        "Cannot modify claude-plugin feedback conversation: " + conversation.id());
             }
             return;
         }
         if (readOnlyAllowed) {
             if (conversation.tags() != null && conversation.tags().contains("public")) {
                 if ((conversation.area() == null || conversation.area().isBlank())
-                    && !AreaAccessContext.hasAllUserAreas()) {
-                    throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Conversation not found: " + conversation.id());
+                        && !AreaAccessContext.hasAllUserAreas()) {
+                    throw new ResponseStatusException(
+                            HttpStatus.NOT_FOUND, "Conversation not found: " + conversation.id());
                 }
                 return;
             }
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            boolean isAdmin = auth != null
-                && (AreaAccessContext.isSuperAdmin(auth) || (conversation.area() != null
-                    && AreaAccessContext.canAdministerArea(auth, conversation.area())));
+            boolean isAdmin =
+                    auth != null
+                            && (AreaAccessContext.isSuperAdmin(auth)
+                                    || (conversation.area() != null
+                                            && AreaAccessContext.canAdministerArea(
+                                                    auth, conversation.area())));
             if (isAdmin) {
                 return;
             }
@@ -374,9 +408,13 @@ public class ChatConversationService {
     }
 
     public Conversation verifyOwnership(UUID conversationId, boolean readOnlyAllowed) {
-        Conversation conversation = conversationRepository.findById(conversationId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Conversation not found: " + conversationId));
+        Conversation conversation =
+                conversationRepository
+                        .findById(conversationId)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Conversation not found: " + conversationId));
         verifyConversationOwnership(conversation, readOnlyAllowed);
         return conversation;
     }

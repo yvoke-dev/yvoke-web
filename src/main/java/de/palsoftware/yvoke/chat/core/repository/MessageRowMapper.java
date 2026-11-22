@@ -30,8 +30,9 @@ public class MessageRowMapper implements RowMapper<Message> {
         List<CitationCheckResult> citations = Collections.emptyList();
         if (citationsStr != null && !citationsStr.isBlank()) {
             try {
-                citations = objectMapper.readValue(citationsStr,
-                    new TypeReference<List<CitationCheckResult>>() {});
+                citations =
+                        objectMapper.readValue(
+                                citationsStr, new TypeReference<List<CitationCheckResult>>() {});
             } catch (JsonProcessingException e) {
                 log.warn("Failed to deserialize citations JSONB: {}", citationsStr, e);
             }
@@ -41,24 +42,35 @@ public class MessageRowMapper implements RowMapper<Message> {
 
         Timestamp createdTs = rs.getTimestamp("created_at");
         Integer playbookVersion =
-            rs.getObject("playbook_version") != null ? rs.getInt("playbook_version") : null;
+                rs.getObject("playbook_version") != null ? rs.getInt("playbook_version") : null;
         Integer promptTokens =
-            rs.getObject("prompt_tokens") != null ? rs.getInt("prompt_tokens") : null;
+                rs.getObject("prompt_tokens") != null ? rs.getInt("prompt_tokens") : null;
         Integer completionTokens =
-            rs.getObject("completion_tokens") != null ? rs.getInt("completion_tokens") : null;
+                rs.getObject("completion_tokens") != null ? rs.getInt("completion_tokens") : null;
         Integer totalTokens =
-            rs.getObject("total_tokens") != null ? rs.getInt("total_tokens") : null;
+                rs.getObject("total_tokens") != null ? rs.getInt("total_tokens") : null;
 
         Integer cachedTokens =
-            rs.getObject("cached_tokens") != null ? rs.getInt("cached_tokens") : null;
+                rs.getObject("cached_tokens") != null ? rs.getInt("cached_tokens") : null;
         Integer thoughtTokens =
-            rs.getObject("thought_tokens") != null ? rs.getInt("thought_tokens") : null;
+                rs.getObject("thought_tokens") != null ? rs.getInt("thought_tokens") : null;
 
-        return new Message(rs.getObject("id", UUID.class),
-            rs.getObject("conversation_id", UUID.class), rs.getString("role"),
-            rs.getString("content"), rs.getString("playbook"), playbookVersion, retrievedChunkIds,
-            citations, createdTs != null ? createdTs.toInstant() : null, promptTokens,
-            completionTokens, totalTokens, cachedTokens, thoughtTokens, rs.getString("status"),
-            rs.getString("model"));
+        return new Message(
+                rs.getObject("id", UUID.class),
+                rs.getObject("conversation_id", UUID.class),
+                rs.getString("role"),
+                rs.getString("content"),
+                rs.getString("playbook"),
+                playbookVersion,
+                retrievedChunkIds,
+                citations,
+                createdTs != null ? createdTs.toInstant() : null,
+                promptTokens,
+                completionTokens,
+                totalTokens,
+                cachedTokens,
+                thoughtTokens,
+                rs.getString("status"),
+                rs.getString("model"));
     }
 }

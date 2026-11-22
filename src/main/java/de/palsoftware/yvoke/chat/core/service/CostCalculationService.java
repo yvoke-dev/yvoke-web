@@ -32,6 +32,7 @@ public class CostCalculationService {
 
     private final ModelPricingRepository pricingRepository;
     private final CostQueryRepository costQueryRepository;
+
     /**
      * Hard cap on rows fetched by the per-call/per-message cost-explorer views (PRF-01). Without
      * it, a wide time range ({@code timePreset='all'}) materializes the whole {@code llm_call_logs}
@@ -41,100 +42,157 @@ public class CostCalculationService {
      */
     private final int explorerRowCap;
 
-    public CostCalculationService(ModelPricingRepository pricingRepository,
-        CostQueryRepository costQueryRepository,
-        @Value("${app.chat.cost-explorer.max-rows}") int explorerRowCap) {
+    public CostCalculationService(
+            ModelPricingRepository pricingRepository,
+            CostQueryRepository costQueryRepository,
+            @Value("${app.chat.cost-explorer.max-rows}") int explorerRowCap) {
         this.pricingRepository = pricingRepository;
         this.costQueryRepository = costQueryRepository;
         this.explorerRowCap = explorerRowCap;
     }
 
-    public record ModelCostBreakdown(String modelName, long promptTokens, long completionTokens,
-        long cachedTokens, long thoughtTokens, BigDecimal estimatedCostUsd) {}
+    public record ModelCostBreakdown(
+            String modelName,
+            long promptTokens,
+            long completionTokens,
+            long cachedTokens,
+            long thoughtTokens,
+            BigDecimal estimatedCostUsd) {}
 
-    public record CostReport(List<ModelCostBreakdown> breakdowns, long totalPromptTokens,
-        long totalCompletionTokens, long totalCachedTokens, long totalThoughtTokens,
-        BigDecimal estimatedCostUsd) {}
+    public record CostReport(
+            List<ModelCostBreakdown> breakdowns,
+            long totalPromptTokens,
+            long totalCompletionTokens,
+            long totalCachedTokens,
+            long totalThoughtTokens,
+            BigDecimal estimatedCostUsd) {}
 
-    public record UserCostRow(UUID userId, String displayName, String email, long totalTokens,
-        BigDecimal estimatedCostUsd) {}
+    public record UserCostRow(
+            UUID userId,
+            String displayName,
+            String email,
+            long totalTokens,
+            BigDecimal estimatedCostUsd) {}
 
-    public record ConversationCostRow(UUID conversationId, String title, String userName,
-        long totalTokens, BigDecimal estimatedCostUsd) {}
+    public record ConversationCostRow(
+            UUID conversationId,
+            String title,
+            String userName,
+            long totalTokens,
+            BigDecimal estimatedCostUsd) {}
 
-    public record MasProfileCostRow(String profileName, long totalTokens,
-        BigDecimal estimatedCostUsd) {}
+    public record MasProfileCostRow(
+            String profileName, long totalTokens, BigDecimal estimatedCostUsd) {}
 
-    public record MessageCostRow(UUID messageId, String role, String model, long promptTokens,
-        long completionTokens, long cachedTokens, long thoughtTokens, BigDecimal estimatedCostUsd,
-        Instant createdAt) {}
+    public record MessageCostRow(
+            UUID messageId,
+            String role,
+            String model,
+            long promptTokens,
+            long completionTokens,
+            long cachedTokens,
+            long thoughtTokens,
+            BigDecimal estimatedCostUsd,
+            Instant createdAt) {}
 
     /**
      * The cost-dashboard overview fragment's four pieces, computed against a single pricing
      * snapshot (PRF-14). Accessor names mirror the individual model attributes the controller used
      * to bind so the template is unchanged.
      */
-    public record OverviewReport(CostReport report, List<UserCostRow> topUsers,
-        List<ConversationCostRow> topConversations, List<MasProfileCostRow> masProfiles) {}
+    public record OverviewReport(
+            CostReport report,
+            List<UserCostRow> topUsers,
+            List<ConversationCostRow> topConversations,
+            List<MasProfileCostRow> masProfiles) {}
 
     public record FilteredConversationRow(
-        UUID conversationId,
-        String title,
-        String userName,
-        String modelsUsed,
-        String masProfilesUsed,
-        String playbooksUsed,
-        long messageCount,
-        long agentStepCount,
-        long totalPromptTokens,
-        long totalCompletionTokens,
-        long totalCachedTokens,
-        long totalThoughtTokens,
-        long totalTokens,
-        BigDecimal estimatedCostUsd,
-        Instant lastActivityAt
-    ) {
+            UUID conversationId,
+            String title,
+            String userName,
+            String modelsUsed,
+            String masProfilesUsed,
+            String playbooksUsed,
+            long messageCount,
+            long agentStepCount,
+            long totalPromptTokens,
+            long totalCompletionTokens,
+            long totalCachedTokens,
+            long totalThoughtTokens,
+            long totalTokens,
+            BigDecimal estimatedCostUsd,
+            Instant lastActivityAt) {
         public BigDecimal averageCostPerMessageUsd() {
-            if (messageCount <= 0 || estimatedCostUsd == null) return BigDecimal.ZERO.setScale(6, RoundingMode.HALF_UP);
-            return estimatedCostUsd.divide(BigDecimal.valueOf(messageCount), 6, RoundingMode.HALF_UP);
+            if (messageCount <= 0 || estimatedCostUsd == null)
+                return BigDecimal.ZERO.setScale(6, RoundingMode.HALF_UP);
+            return estimatedCostUsd.divide(
+                    BigDecimal.valueOf(messageCount), 6, RoundingMode.HALF_UP);
         }
     }
 
     public record FilteredMessageRow(
-        UUID id,
-        String itemType,
-        String role,
-        String playbook,
-        String masProfile,
-        String model,
-        UUID conversationId,
-        String conversationTitle,
-        String userName,
-        long promptTokens,
-        long completionTokens,
-        long cachedTokens,
-        long thoughtTokens,
-        long totalTokens,
-        BigDecimal estimatedCostUsd,
-        Instant createdAt,
-        long callCount,
-        UUID messageId
-    ) {
+            UUID id,
+            String itemType,
+            String role,
+            String playbook,
+            String masProfile,
+            String model,
+            UUID conversationId,
+            String conversationTitle,
+            String userName,
+            long promptTokens,
+            long completionTokens,
+            long cachedTokens,
+            long thoughtTokens,
+            long totalTokens,
+            BigDecimal estimatedCostUsd,
+            Instant createdAt,
+            long callCount,
+            UUID messageId) {
         public FilteredMessageRow(
-            UUID id, String itemType, String role, String playbook, String masProfile, String model,
-            UUID conversationId, String conversationTitle, String userName,
-            long promptTokens, long completionTokens, long cachedTokens, long thoughtTokens,
-            long totalTokens, BigDecimal estimatedCostUsd, Instant createdAt) {
-            this(id, itemType, role, playbook, masProfile, model, conversationId, conversationTitle, userName,
-                promptTokens, completionTokens, cachedTokens, thoughtTokens, totalTokens, estimatedCostUsd, createdAt, 1L, id);
+                UUID id,
+                String itemType,
+                String role,
+                String playbook,
+                String masProfile,
+                String model,
+                UUID conversationId,
+                String conversationTitle,
+                String userName,
+                long promptTokens,
+                long completionTokens,
+                long cachedTokens,
+                long thoughtTokens,
+                long totalTokens,
+                BigDecimal estimatedCostUsd,
+                Instant createdAt) {
+            this(
+                    id,
+                    itemType,
+                    role,
+                    playbook,
+                    masProfile,
+                    model,
+                    conversationId,
+                    conversationTitle,
+                    userName,
+                    promptTokens,
+                    completionTokens,
+                    cachedTokens,
+                    thoughtTokens,
+                    totalTokens,
+                    estimatedCostUsd,
+                    createdAt,
+                    1L,
+                    id);
         }
 
         public BigDecimal averageCostPerCallUsd() {
-            if (callCount <= 0 || estimatedCostUsd == null) return BigDecimal.ZERO.setScale(6, RoundingMode.HALF_UP);
+            if (callCount <= 0 || estimatedCostUsd == null)
+                return BigDecimal.ZERO.setScale(6, RoundingMode.HALF_UP);
             return estimatedCostUsd.divide(BigDecimal.valueOf(callCount), 6, RoundingMode.HALF_UP);
         }
     }
-
 
     /** Name of the gateway status meaning the provider was never called and billed nothing. */
     private static final String GATEWAY_REPLAYED = "REPLAYED";
@@ -148,40 +206,59 @@ public class CostCalculationService {
     }
 
     public record FilteredCostExplorerReport(
-        List<FilteredConversationRow> conversations,
-        List<FilteredMessageRow> messages,
-        String viewLevel,
-        long totalPromptTokens,
-        long totalCompletionTokens,
-        long totalCachedTokens,
-        long totalThoughtTokens,
-        long totalTokens,
-        BigDecimal totalCostUsd,
-        int totalCount,
-        String nextCursor,
-        long replayedCalls,
-        long forwardedCalls,
-        BigDecimal costAvoidedUsd
-    ) {
+            List<FilteredConversationRow> conversations,
+            List<FilteredMessageRow> messages,
+            String viewLevel,
+            long totalPromptTokens,
+            long totalCompletionTokens,
+            long totalCachedTokens,
+            long totalThoughtTokens,
+            long totalTokens,
+            BigDecimal totalCostUsd,
+            int totalCount,
+            String nextCursor,
+            long replayedCalls,
+            long forwardedCalls,
+            BigDecimal costAvoidedUsd) {
 
-        /**
-         * Back-compat for callers that predate gateway accounting; reports no gateway activity.
-         */
-        public FilteredCostExplorerReport(List<FilteredConversationRow> conversations,
-            List<FilteredMessageRow> messages, String viewLevel, long totalPromptTokens,
-            long totalCompletionTokens, long totalCachedTokens, long totalThoughtTokens,
-            long totalTokens, BigDecimal totalCostUsd, int totalCount, String nextCursor) {
-            this(conversations, messages, viewLevel, totalPromptTokens, totalCompletionTokens,
-                totalCachedTokens, totalThoughtTokens, totalTokens, totalCostUsd, totalCount,
-                nextCursor, 0L, 0L, BigDecimal.ZERO);
+        /** Back-compat for callers that predate gateway accounting; reports no gateway activity. */
+        public FilteredCostExplorerReport(
+                List<FilteredConversationRow> conversations,
+                List<FilteredMessageRow> messages,
+                String viewLevel,
+                long totalPromptTokens,
+                long totalCompletionTokens,
+                long totalCachedTokens,
+                long totalThoughtTokens,
+                long totalTokens,
+                BigDecimal totalCostUsd,
+                int totalCount,
+                String nextCursor) {
+            this(
+                    conversations,
+                    messages,
+                    viewLevel,
+                    totalPromptTokens,
+                    totalCompletionTokens,
+                    totalCachedTokens,
+                    totalThoughtTokens,
+                    totalTokens,
+                    totalCostUsd,
+                    totalCount,
+                    nextCursor,
+                    0L,
+                    0L,
+                    BigDecimal.ZERO);
         }
 
         /** Share of gateway-routed calls served from cache, 0 when none were routed. */
         public BigDecimal cacheHitRatePercent() {
             long routed = replayedCalls + forwardedCalls;
-            return routed == 0 ? BigDecimal.ZERO
-                : BigDecimal.valueOf(replayedCalls).multiply(BigDecimal.valueOf(100))
-                    .divide(BigDecimal.valueOf(routed), 1, RoundingMode.HALF_UP);
+            return routed == 0
+                    ? BigDecimal.ZERO
+                    : BigDecimal.valueOf(replayedCalls)
+                            .multiply(BigDecimal.valueOf(100))
+                            .divide(BigDecimal.valueOf(routed), 1, RoundingMode.HALF_UP);
         }
 
         /** True when any call in this slice traversed an AI gateway. */
@@ -190,16 +267,34 @@ public class CostCalculationService {
         }
 
         /** Back-compat: MESSAGE/CONVERSATION views are unpaged, so they carry no next cursor. */
-        public FilteredCostExplorerReport(List<FilteredConversationRow> conversations,
-            List<FilteredMessageRow> messages, String viewLevel, long totalPromptTokens,
-            long totalCompletionTokens, long totalCachedTokens, long totalThoughtTokens,
-            long totalTokens, BigDecimal totalCostUsd, int totalCount) {
-            this(conversations, messages, viewLevel, totalPromptTokens, totalCompletionTokens,
-                totalCachedTokens, totalThoughtTokens, totalTokens, totalCostUsd, totalCount, null);
+        public FilteredCostExplorerReport(
+                List<FilteredConversationRow> conversations,
+                List<FilteredMessageRow> messages,
+                String viewLevel,
+                long totalPromptTokens,
+                long totalCompletionTokens,
+                long totalCachedTokens,
+                long totalThoughtTokens,
+                long totalTokens,
+                BigDecimal totalCostUsd,
+                int totalCount) {
+            this(
+                    conversations,
+                    messages,
+                    viewLevel,
+                    totalPromptTokens,
+                    totalCompletionTokens,
+                    totalCachedTokens,
+                    totalThoughtTokens,
+                    totalTokens,
+                    totalCostUsd,
+                    totalCount,
+                    null);
         }
 
         public BigDecimal averageCostUsd() {
-            if (totalCount <= 0 || totalCostUsd == null) return BigDecimal.ZERO.setScale(6, RoundingMode.HALF_UP);
+            if (totalCount <= 0 || totalCostUsd == null)
+                return BigDecimal.ZERO.setScale(6, RoundingMode.HALF_UP);
             return totalCostUsd.divide(BigDecimal.valueOf(totalCount), 6, RoundingMode.HALF_UP);
         }
     }
@@ -212,14 +307,14 @@ public class CostCalculationService {
     // User (userId)
     public CostReport calculateCostByUser(UUID userId, LocalDate startDate, LocalDate endDate) {
         return aggregateModelRows(
-            costQueryRepository.userModelTokenRows(userId, startDate, endDate));
+                costQueryRepository.userModelTokenRows(userId, startDate, endDate));
     }
 
     // Conversation (conversationId)
-    public CostReport calculateCostByConversation(UUID conversationId, LocalDate startDate,
-        LocalDate endDate) {
+    public CostReport calculateCostByConversation(
+            UUID conversationId, LocalDate startDate, LocalDate endDate) {
         return aggregateModelRows(
-            costQueryRepository.conversationModelTokenRows(conversationId, startDate, endDate));
+                costQueryRepository.conversationModelTokenRows(conversationId, startDate, endDate));
     }
 
     // MAS Run
@@ -228,10 +323,10 @@ public class CostCalculationService {
     }
 
     // MAS Profile (profileName)
-    public CostReport calculateCostByMasProfile(String profileName, LocalDate startDate,
-        LocalDate endDate) {
+    public CostReport calculateCostByMasProfile(
+            String profileName, LocalDate startDate, LocalDate endDate) {
         return aggregateModelRows(
-            costQueryRepository.masProfileModelTokenRows(profileName, startDate, endDate));
+                costQueryRepository.masProfileModelTokenRows(profileName, startDate, endDate));
     }
 
     public List<Map<String, Object>> getAvailableUsers() {
@@ -266,16 +361,30 @@ public class CostCalculationService {
             Timestamp ts = (Timestamp) row.get("created_at");
             Instant createdAt = ts != null ? ts.toInstant() : null;
 
-            result.add(new MessageCostRow(id, role, model, p, c, ca, t,
-                cost.setScale(6, RoundingMode.HALF_UP), createdAt));
+            result.add(
+                    new MessageCostRow(
+                            id,
+                            role,
+                            model,
+                            p,
+                            c,
+                            ca,
+                            t,
+                            cost.setScale(6, RoundingMode.HALF_UP),
+                            createdAt));
         }
         return result;
     }
 
-    public record UsedModelPricingStatus(String modelName, boolean hasPricing,
-        BigDecimal promptPricePerMillion, BigDecimal completionPricePerMillion,
-        BigDecimal cachedPricePerMillion, BigDecimal thoughtPricePerMillion, Instant updatedAt,
-        long usageCount) {}
+    public record UsedModelPricingStatus(
+            String modelName,
+            boolean hasPricing,
+            BigDecimal promptPricePerMillion,
+            BigDecimal completionPricePerMillion,
+            BigDecimal cachedPricePerMillion,
+            BigDecimal thoughtPricePerMillion,
+            Instant updatedAt,
+            long usageCount) {}
 
     public List<UsedModelPricingStatus> getAllUsedModelsWithPricingStatus() {
         Map<String, ModelPricing> dbPrices = loadPricingMap();
@@ -305,8 +414,9 @@ public class CostCalculationService {
             BigDecimal thought = hasPricing ? mp.thoughtPricePerMillion() : null;
             Instant updatedAt = hasPricing ? mp.updatedAt() : null;
 
-            result.add(new UsedModelPricingStatus(m, hasPricing, prompt, completion, cached,
-                thought, updatedAt, usage));
+            result.add(
+                    new UsedModelPricingStatus(
+                            m, hasPricing, prompt, completion, cached, thought, updatedAt, usage));
         }
 
         result.sort((a, b) -> {
@@ -320,15 +430,33 @@ public class CostCalculationService {
     }
 
     @Transactional
-    public void updateModelPricing(String modelName, BigDecimal prompt, BigDecimal completion,
-        BigDecimal cached, BigDecimal thought) {
+    public void updateModelPricing(
+            String modelName,
+            BigDecimal prompt,
+            BigDecimal completion,
+            BigDecimal cached,
+            BigDecimal thought) {
         ModelPricing existing = pricingRepository.findByModelName(modelName).orElse(null);
         if (existing != null) {
-            pricingRepository.upsert(new ModelPricing(existing.id(), modelName, prompt, completion,
-                cached, thought, Instant.now()));
+            pricingRepository.upsert(
+                    new ModelPricing(
+                            existing.id(),
+                            modelName,
+                            prompt,
+                            completion,
+                            cached,
+                            thought,
+                            Instant.now()));
         } else {
-            pricingRepository.upsert(new ModelPricing(UUID.randomUUID(), modelName, prompt,
-                completion, cached, thought, Instant.now()));
+            pricingRepository.upsert(
+                    new ModelPricing(
+                            UUID.randomUUID(),
+                            modelName,
+                            prompt,
+                            completion,
+                            cached,
+                            thought,
+                            Instant.now()));
         }
     }
 
@@ -348,8 +476,13 @@ public class CostCalculationService {
 
     private CostReport aggregateModelRows(List<Map<String, Object>> rows) {
         if (rows.isEmpty()) {
-            return new CostReport(Collections.emptyList(), 0, 0, 0, 0,
-                BigDecimal.ZERO.setScale(6, RoundingMode.HALF_UP));
+            return new CostReport(
+                    Collections.emptyList(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    BigDecimal.ZERO.setScale(6, RoundingMode.HALF_UP));
         }
 
         List<ModelCostBreakdown> breakdowns = new ArrayList<>();
@@ -383,25 +516,46 @@ public class CostCalculationService {
             acc.cost = acc.cost.add(rowCost);
         }
 
-        byModel.forEach((model, acc) -> breakdowns.add(new ModelCostBreakdown(model, acc.pTokens,
-            acc.cTokens, acc.caTokens, acc.tTokens, acc.cost.setScale(6, RoundingMode.HALF_UP))));
+        byModel.forEach((model, acc) ->
+                breakdowns.add(
+                        new ModelCostBreakdown(
+                                model,
+                                acc.pTokens,
+                                acc.cTokens,
+                                acc.caTokens,
+                                acc.tTokens,
+                                acc.cost.setScale(6, RoundingMode.HALF_UP))));
 
-        return new CostReport(breakdowns, totalPrompt, totalCompletion, totalCached, totalThought,
-            totalCost.setScale(6, RoundingMode.HALF_UP));
+        return new CostReport(
+                breakdowns,
+                totalPrompt,
+                totalCompletion,
+                totalCached,
+                totalThought,
+                totalCost.setScale(6, RoundingMode.HALF_UP));
     }
 
-    public FilteredCostExplorerReport getFilteredExplorerReport(String viewLevel,
-        LocalDate startDate, LocalDate endDate, List<String> models, List<UUID> userIds,
-        List<String> playbooks) {
-        return getFilteredExplorerReport(viewLevel, startDate, endDate, models, userIds, null,
-            playbooks);
+    public FilteredCostExplorerReport getFilteredExplorerReport(
+            String viewLevel,
+            LocalDate startDate,
+            LocalDate endDate,
+            List<String> models,
+            List<UUID> userIds,
+            List<String> playbooks) {
+        return getFilteredExplorerReport(
+                viewLevel, startDate, endDate, models, userIds, null, playbooks);
     }
 
-    public FilteredCostExplorerReport getFilteredExplorerReport(String viewLevel,
-        LocalDate startDate, LocalDate endDate, List<String> models, List<UUID> userIds,
-        List<String> sources, List<String> playbooks) {
-        return getFilteredExplorerReport(viewLevel, startDate, endDate, models, userIds, sources,
-            playbooks, null);
+    public FilteredCostExplorerReport getFilteredExplorerReport(
+            String viewLevel,
+            LocalDate startDate,
+            LocalDate endDate,
+            List<String> models,
+            List<UUID> userIds,
+            List<String> sources,
+            List<String> playbooks) {
+        return getFilteredExplorerReport(
+                viewLevel, startDate, endDate, models, userIds, sources, playbooks, null);
     }
 
     /**
@@ -410,12 +564,18 @@ public class CostCalculationService {
      * first page). MESSAGE and CONVERSATION are unpaged (their grouping would split across page
      * cuts).
      */
-    public FilteredCostExplorerReport getFilteredExplorerReport(String viewLevel,
-        LocalDate startDate, LocalDate endDate, List<String> models, List<UUID> userIds,
-        List<String> sources, List<String> playbooks, String cursor) {
+    public FilteredCostExplorerReport getFilteredExplorerReport(
+            String viewLevel,
+            LocalDate startDate,
+            LocalDate endDate,
+            List<String> models,
+            List<UUID> userIds,
+            List<String> sources,
+            List<String> playbooks,
+            String cursor) {
 
         boolean isRawLevel =
-            "RAW".equalsIgnoreCase(viewLevel) || "CALL".equalsIgnoreCase(viewLevel);
+                "RAW".equalsIgnoreCase(viewLevel) || "CALL".equalsIgnoreCase(viewLevel);
         boolean isMessageLevel = "MESSAGE".equalsIgnoreCase(viewLevel);
 
         if (isRawLevel || isMessageLevel) {
@@ -424,23 +584,39 @@ public class CostCalculationService {
             if (isRawLevel) {
                 // Forward keyset page (Slice 3): fetch one extra row to detect whether more remain.
                 RawCursor rc = decodeCursor(cursor);
-                rows = costQueryRepository.explorerCallRowsPaged(startDate, endDate, models,
-                    userIds, sources, playbooks, rc != null ? rc.createdAt() : null,
-                    rc != null ? rc.id() : null, explorerRowCap + 1);
+                rows =
+                        costQueryRepository.explorerCallRowsPaged(
+                                startDate,
+                                endDate,
+                                models,
+                                userIds,
+                                sources,
+                                playbooks,
+                                rc != null ? rc.createdAt() : null,
+                                rc != null ? rc.id() : null,
+                                explorerRowCap + 1);
                 hasMore = rows.size() > explorerRowCap;
                 if (hasMore) {
                     rows = rows.subList(0, explorerRowCap);
                 }
             } else {
-                rows = costQueryRepository.explorerCallRows(startDate, endDate, models, userIds,
-                    sources, playbooks, explorerRowCap);
+                rows =
+                        costQueryRepository.explorerCallRows(
+                                startDate,
+                                endDate,
+                                models,
+                                userIds,
+                                sources,
+                                playbooks,
+                                explorerRowCap);
                 if (rows.size() >= explorerRowCap) {
                     // Not a silent cap: warn so the number isn't mistaken for the true total
                     // (PRF-01).
                     log.warn(
-                        "Cost-explorer {} view truncated at the {}-row cap; narrow the filters "
-                            + "or date range for complete figures.",
-                        viewLevel, explorerRowCap);
+                            "Cost-explorer {} view truncated at the {}-row cap; narrow the filters "
+                                    + "or date range for complete figures.",
+                            viewLevel,
+                            explorerRowCap);
                 }
             }
 
@@ -485,19 +661,49 @@ public class CostCalculationService {
                     totalT += t;
                     grandTotalCost = grandTotalCost.add(cost);
 
-                    msgRows.add(new FilteredMessageRow(id, itemType, role, playbook, masProfile,
-                        model, convId, convTitle, userName, p, c, ca, t, totalTokens,
-                        cost.setScale(6, RoundingMode.HALF_UP), createdAt, 1L, msgId));
+                    msgRows.add(
+                            new FilteredMessageRow(
+                                    id,
+                                    itemType,
+                                    role,
+                                    playbook,
+                                    masProfile,
+                                    model,
+                                    convId,
+                                    convTitle,
+                                    userName,
+                                    p,
+                                    c,
+                                    ca,
+                                    t,
+                                    totalTokens,
+                                    cost.setScale(6, RoundingMode.HALF_UP),
+                                    createdAt,
+                                    1L,
+                                    msgId));
                 }
 
-                String nextCursor = (hasMore && !msgRows.isEmpty())
-                    ? encodeCursor(msgRows.get(msgRows.size() - 1).createdAt(),
-                        msgRows.get(msgRows.size() - 1).id())
-                    : null;
-                return new FilteredCostExplorerReport(Collections.emptyList(), msgRows, "RAW",
-                    totalP, totalC, totalCa, totalT, (totalP + totalC + totalCa + totalT),
-                    grandTotalCost.setScale(6, RoundingMode.HALF_UP), msgRows.size(), nextCursor,
-                    replayed, forwarded, avoidedCost.setScale(6, RoundingMode.HALF_UP));
+                String nextCursor =
+                        (hasMore && !msgRows.isEmpty())
+                                ? encodeCursor(
+                                        msgRows.get(msgRows.size() - 1).createdAt(),
+                                        msgRows.get(msgRows.size() - 1).id())
+                                : null;
+                return new FilteredCostExplorerReport(
+                        Collections.emptyList(),
+                        msgRows,
+                        "RAW",
+                        totalP,
+                        totalC,
+                        totalCa,
+                        totalT,
+                        (totalP + totalC + totalCa + totalT),
+                        grandTotalCost.setScale(6, RoundingMode.HALF_UP),
+                        msgRows.size(),
+                        nextCursor,
+                        replayed,
+                        forwarded,
+                        avoidedCost.setScale(6, RoundingMode.HALF_UP));
             } else {
                 // isMessageLevel: group by message_id
                 Map<UUID, MsgAcc> msgMap = new LinkedHashMap<>();
@@ -541,22 +747,24 @@ public class CostCalculationService {
                     totalT += t;
                     grandTotalCost = grandTotalCost.add(cost);
 
-                    MsgAcc acc = msgMap.computeIfAbsent(keyId, k -> {
-                        MsgAcc newAcc = new MsgAcc();
-                        newAcc.messageId = keyId;
-                        newAcc.itemType = itemType;
-                        newAcc.role = role;
-                        newAcc.playbook = playbook;
-                        newAcc.masProfile = masProfile;
-                        newAcc.conversationId = convId;
-                        newAcc.conversationTitle = convTitle;
-                        newAcc.userName = userName;
-                        newAcc.createdAt = createdAt;
-                        return newAcc;
-                    });
+                    MsgAcc acc =
+                            msgMap.computeIfAbsent(
+                                    keyId,
+                                    k -> {
+                                        MsgAcc newAcc = new MsgAcc();
+                                        newAcc.messageId = keyId;
+                                        newAcc.itemType = itemType;
+                                        newAcc.role = role;
+                                        newAcc.playbook = playbook;
+                                        newAcc.masProfile = masProfile;
+                                        newAcc.conversationId = convId;
+                                        newAcc.conversationTitle = convTitle;
+                                        newAcc.userName = userName;
+                                        newAcc.createdAt = createdAt;
+                                        return newAcc;
+                                    });
 
-                    if (model != null && !model.isBlank())
-                        acc.models.add(model);
+                    if (model != null && !model.isBlank()) acc.models.add(model);
                     acc.callCount++;
                     acc.pTokens += p;
                     acc.cTokens += c;
@@ -570,26 +778,61 @@ public class CostCalculationService {
                     long totalTokens = acc.pTokens + acc.cTokens + acc.caTokens + acc.tTokens;
                     String modelsStr = String.join(", ", acc.models);
 
-                    msgRows.add(new FilteredMessageRow(acc.messageId, acc.itemType, acc.role,
-                        acc.playbook, acc.masProfile, modelsStr, acc.conversationId,
-                        acc.conversationTitle, acc.userName, acc.pTokens, acc.cTokens, acc.caTokens,
-                        acc.tTokens, totalTokens, acc.cost.setScale(6, RoundingMode.HALF_UP),
-                        acc.createdAt, acc.callCount, acc.messageId));
+                    msgRows.add(
+                            new FilteredMessageRow(
+                                    acc.messageId,
+                                    acc.itemType,
+                                    acc.role,
+                                    acc.playbook,
+                                    acc.masProfile,
+                                    modelsStr,
+                                    acc.conversationId,
+                                    acc.conversationTitle,
+                                    acc.userName,
+                                    acc.pTokens,
+                                    acc.cTokens,
+                                    acc.caTokens,
+                                    acc.tTokens,
+                                    totalTokens,
+                                    acc.cost.setScale(6, RoundingMode.HALF_UP),
+                                    acc.createdAt,
+                                    acc.callCount,
+                                    acc.messageId));
                 }
 
-                return new FilteredCostExplorerReport(Collections.emptyList(), msgRows, "MESSAGE",
-                    totalP, totalC, totalCa, totalT, (totalP + totalC + totalCa + totalT),
-                    grandTotalCost.setScale(6, RoundingMode.HALF_UP), msgRows.size(), null,
-                    replayed, forwarded, avoidedCost.setScale(6, RoundingMode.HALF_UP));
+                return new FilteredCostExplorerReport(
+                        Collections.emptyList(),
+                        msgRows,
+                        "MESSAGE",
+                        totalP,
+                        totalC,
+                        totalCa,
+                        totalT,
+                        (totalP + totalC + totalCa + totalT),
+                        grandTotalCost.setScale(6, RoundingMode.HALF_UP),
+                        msgRows.size(),
+                        null,
+                        replayed,
+                        forwarded,
+                        avoidedCost.setScale(6, RoundingMode.HALF_UP));
             }
         } else {
             BigDecimal avoidedCost = BigDecimal.ZERO;
             long replayed = 0, forwarded = 0;
-            List<Map<String, Object>> rows = costQueryRepository.explorerConversationRows(startDate,
-                endDate, models, userIds, sources, playbooks, explorerRowCap);
+            List<Map<String, Object>> rows =
+                    costQueryRepository.explorerConversationRows(
+                            startDate,
+                            endDate,
+                            models,
+                            userIds,
+                            sources,
+                            playbooks,
+                            explorerRowCap);
             if (rows.size() >= explorerRowCap) {
-                log.warn("Cost-explorer CONVERSATION view truncated at the {}-row cap; narrow the "
-                    + "filters or date range for complete figures.", explorerRowCap);
+                log.warn(
+                        "Cost-explorer CONVERSATION view truncated at the {}-row cap; narrow the "
+                                + "filters or date range for complete figures.",
+                        explorerRowCap);
             }
 
             class ConvAcc {
@@ -632,21 +875,21 @@ public class CostCalculationService {
                     forwarded += msgC + stepC;
                 }
 
-                ConvAcc acc = convMap.computeIfAbsent(convId, k -> {
-                    ConvAcc newAcc = new ConvAcc();
-                    newAcc.convId = convId;
-                    newAcc.title = title;
-                    newAcc.userName = userName;
-                    newAcc.lastActivity = lastActivity;
-                    return newAcc;
-                });
+                ConvAcc acc =
+                        convMap.computeIfAbsent(
+                                convId,
+                                k -> {
+                                    ConvAcc newAcc = new ConvAcc();
+                                    newAcc.convId = convId;
+                                    newAcc.title = title;
+                                    newAcc.userName = userName;
+                                    newAcc.lastActivity = lastActivity;
+                                    return newAcc;
+                                });
 
-                if (model != null && !model.isBlank())
-                    acc.models.add(model);
-                if (masProfile != null && !masProfile.isBlank())
-                    acc.masProfiles.add(masProfile);
-                if (playbook != null && !playbook.isBlank())
-                    acc.playbooks.add(playbook);
+                if (model != null && !model.isBlank()) acc.models.add(model);
+                if (masProfile != null && !masProfile.isBlank()) acc.masProfiles.add(masProfile);
+                if (playbook != null && !playbook.isBlank()) acc.playbooks.add(playbook);
                 acc.msgCount += msgC;
                 acc.stepCount += stepC;
                 acc.pTokens += p;
@@ -672,18 +915,42 @@ public class CostCalculationService {
                 String masStr = String.join(", ", acc.masProfiles);
                 String playbooksStr = String.join(", ", acc.playbooks);
 
-                convRows.add(new FilteredConversationRow(acc.convId, acc.title, acc.userName,
-                    modelsStr, masStr, playbooksStr, acc.msgCount, acc.stepCount, acc.pTokens,
-                    acc.cTokens, acc.caTokens, acc.tTokens, totalTokens,
-                    acc.cost.setScale(6, RoundingMode.HALF_UP), acc.lastActivity));
+                convRows.add(
+                        new FilteredConversationRow(
+                                acc.convId,
+                                acc.title,
+                                acc.userName,
+                                modelsStr,
+                                masStr,
+                                playbooksStr,
+                                acc.msgCount,
+                                acc.stepCount,
+                                acc.pTokens,
+                                acc.cTokens,
+                                acc.caTokens,
+                                acc.tTokens,
+                                totalTokens,
+                                acc.cost.setScale(6, RoundingMode.HALF_UP),
+                                acc.lastActivity));
             }
 
             convRows.sort((r1, r2) -> r2.estimatedCostUsd().compareTo(r1.estimatedCostUsd()));
 
-            return new FilteredCostExplorerReport(convRows, Collections.emptyList(), "CONVERSATION",
-                totalP, totalC, totalCa, totalT, (totalP + totalC + totalCa + totalT),
-                grandTotalCost.setScale(6, RoundingMode.HALF_UP), convRows.size(), null, replayed,
-                forwarded, avoidedCost.setScale(6, RoundingMode.HALF_UP));
+            return new FilteredCostExplorerReport(
+                    convRows,
+                    Collections.emptyList(),
+                    "CONVERSATION",
+                    totalP,
+                    totalC,
+                    totalCa,
+                    totalT,
+                    (totalP + totalC + totalCa + totalT),
+                    grandTotalCost.setScale(6, RoundingMode.HALF_UP),
+                    convRows.size(),
+                    null,
+                    replayed,
+                    forwarded,
+                    avoidedCost.setScale(6, RoundingMode.HALF_UP));
         }
     }
 
@@ -700,13 +967,14 @@ public class CostCalculationService {
 
     public OverviewReport getOverviewReport(LocalDate startDate, LocalDate endDate, int topN) {
         CostReport report =
-            aggregateModelRows(costQueryRepository.globalModelTokenRows(startDate, endDate));
+                aggregateModelRows(costQueryRepository.globalModelTokenRows(startDate, endDate));
         List<UserCostRow> topUsers =
-            topUsersByCost(costQueryRepository.topUserTokenRows(startDate, endDate), topN);
-        List<ConversationCostRow> topConversations = topConversationsByCost(
-            costQueryRepository.topConversationTokenRows(startDate, endDate), topN);
+                topUsersByCost(costQueryRepository.topUserTokenRows(startDate, endDate), topN);
+        List<ConversationCostRow> topConversations =
+                topConversationsByCost(
+                        costQueryRepository.topConversationTokenRows(startDate, endDate), topN);
         List<MasProfileCostRow> masProfiles =
-            masProfilesByCost(costQueryRepository.masProfileTokenRows(startDate, endDate));
+                masProfilesByCost(costQueryRepository.masProfileTokenRows(startDate, endDate));
         return new OverviewReport(report, topUsers, topConversations, masProfiles);
     }
 
@@ -729,26 +997,33 @@ public class CostCalculationService {
 
             UserCostRow existing = userMap.get(userId);
             if (existing != null) {
-                userMap.put(userId, new UserCostRow(userId, displayName, email,
-                    existing.totalTokens() + tokens, existing.estimatedCostUsd().add(cost)));
+                userMap.put(
+                        userId,
+                        new UserCostRow(
+                                userId,
+                                displayName,
+                                email,
+                                existing.totalTokens() + tokens,
+                                existing.estimatedCostUsd().add(cost)));
             } else {
                 userMap.put(userId, new UserCostRow(userId, displayName, email, tokens, cost));
             }
         }
 
         return userMap.values().stream()
-            .sorted((u1, u2) -> u2.estimatedCostUsd().compareTo(u1.estimatedCostUsd())).limit(limit)
-            .toList();
+                .sorted((u1, u2) -> u2.estimatedCostUsd().compareTo(u1.estimatedCostUsd()))
+                .limit(limit)
+                .toList();
     }
 
-    public List<ConversationCostRow> getTopConversationsByCost(LocalDate startDate,
-        LocalDate endDate, int limit) {
+    public List<ConversationCostRow> getTopConversationsByCost(
+            LocalDate startDate, LocalDate endDate, int limit) {
         return topConversationsByCost(
-            costQueryRepository.topConversationTokenRows(startDate, endDate), limit);
+                costQueryRepository.topConversationTokenRows(startDate, endDate), limit);
     }
 
-    private List<ConversationCostRow> topConversationsByCost(List<Map<String, Object>> rows,
-        int limit) {
+    private List<ConversationCostRow> topConversationsByCost(
+            List<Map<String, Object>> rows, int limit) {
         Map<UUID, ConversationCostRow> convMap = new HashMap<>();
         for (Map<String, Object> row : rows) {
             UUID convId = (UUID) row.get("conv_id");
@@ -763,16 +1038,23 @@ public class CostCalculationService {
 
             ConversationCostRow existing = convMap.get(convId);
             if (existing != null) {
-                convMap.put(convId, new ConversationCostRow(convId, title, userName,
-                    existing.totalTokens() + tokens, existing.estimatedCostUsd().add(cost)));
+                convMap.put(
+                        convId,
+                        new ConversationCostRow(
+                                convId,
+                                title,
+                                userName,
+                                existing.totalTokens() + tokens,
+                                existing.estimatedCostUsd().add(cost)));
             } else {
                 convMap.put(convId, new ConversationCostRow(convId, title, userName, tokens, cost));
             }
         }
 
         return convMap.values().stream()
-            .sorted((c1, c2) -> c2.estimatedCostUsd().compareTo(c1.estimatedCostUsd())).limit(limit)
-            .toList();
+                .sorted((c1, c2) -> c2.estimatedCostUsd().compareTo(c1.estimatedCostUsd()))
+                .limit(limit)
+                .toList();
     }
 
     public List<MasProfileCostRow> getMasProfilesByCost(LocalDate startDate, LocalDate endDate) {
@@ -792,15 +1074,20 @@ public class CostCalculationService {
 
             MasProfileCostRow existing = profileMap.get(profileName);
             if (existing != null) {
-                profileMap.put(profileName, new MasProfileCostRow(profileName,
-                    existing.totalTokens() + tokens, existing.estimatedCostUsd().add(cost)));
+                profileMap.put(
+                        profileName,
+                        new MasProfileCostRow(
+                                profileName,
+                                existing.totalTokens() + tokens,
+                                existing.estimatedCostUsd().add(cost)));
             } else {
                 profileMap.put(profileName, new MasProfileCostRow(profileName, tokens, cost));
             }
         }
 
         return profileMap.values().stream()
-            .sorted((p1, p2) -> p2.estimatedCostUsd().compareTo(p1.estimatedCostUsd())).toList();
+                .sorted((p1, p2) -> p2.estimatedCostUsd().compareTo(p1.estimatedCostUsd()))
+                .toList();
     }
 
     private static class MsgAcc {
@@ -820,8 +1107,7 @@ public class CostCalculationService {
     }
 
     private long getLong(Object value) {
-        if (value == null)
-            return 0L;
+        if (value == null) return 0L;
         if (value instanceof Number n) {
             return n.longValue();
         }
@@ -868,8 +1154,9 @@ public class CostCalculationService {
             return null;
         }
         try {
-            return new RawCursor(Instant.parse(cursor.substring(0, sep)),
-                UUID.fromString(cursor.substring(sep + 1)));
+            return new RawCursor(
+                    Instant.parse(cursor.substring(0, sep)),
+                    UUID.fromString(cursor.substring(sep + 1)));
         } catch (RuntimeException e) {
             return null;
         }

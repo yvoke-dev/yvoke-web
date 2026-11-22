@@ -10,24 +10,24 @@ import java.util.List;
  * process both named "ADS"). {@code edges} carries each incident relationship already resolved
  * against the start node's entity ids.
  */
-public record KgNeighborEdges(List<String>matchedKinds,List<Edge>edges){
+public record KgNeighborEdges(List<String> matchedKinds, List<Edge> edges) {
 
-/** Where an edge points relative to the queried start node. */
-public enum Direction {
+    /** Where an edge points relative to the queried start node. */
+    public enum Direction {
+        OUTGOING("outgoing"),
+        INCOMING("incoming"),
+        SELF("self");
 
-    OUTGOING("outgoing"), INCOMING("incoming"), SELF("self");
+        private final String label;
 
-    private final String label;
+        Direction(String label) {
+            this.label = label;
+        }
 
-    Direction(String label) {
-        this.label = label;
-    }
-
-    /** Lower-case rendering used in tool output. */
-    public String label() {
-        return label;
-    }
-
+        /** Lower-case rendering used in tool output. */
+        public String label() {
+            return label;
+        }
     }
 
     /**
@@ -35,11 +35,16 @@ public enum Direction {
      * repository from {@code subject_id}/{@code object_id}; re-deriving them by comparing the start
      * name to {@code subject}/{@code object} is wrong, because two different nodes routinely share
      * a name (module "ADS" ─has_connector→ connector "ADS"). {@link Direction#SELF} therefore means
-     * a genuine self-reference ({@code subject_id = object_id}), never a name collision.
-     * {@code counterpartKind} is null only when the counterpart endpoint has no entity row (legacy,
+     * a genuine self-reference ({@code subject_id = object_id}), never a name collision. {@code
+     * counterpartKind} is null only when the counterpart endpoint has no entity row (legacy,
      * name-only data).
      */
-    public record Edge(String subject, String predicate, String object,
-        @Nullable String description, Direction direction, String counterpart,
-        @Nullable String counterpartKind) {}
+    public record Edge(
+            String subject,
+            String predicate,
+            String object,
+            @Nullable String description,
+            Direction direction,
+            String counterpart,
+            @Nullable String counterpartKind) {}
 }

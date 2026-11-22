@@ -19,7 +19,7 @@ public final class MarkdownTree {
 
     private static final Pattern HEADING_RE = Pattern.compile("^(#{1,6})\\s+(.+?)\\s*$");
     private static final Pattern FRONTMATTER_RE =
-        Pattern.compile("^---\\s*\\n(.*?)\\n---\\s*\\n", Pattern.DOTALL);
+            Pattern.compile("^---\\s*\\n(.*?)\\n---\\s*\\n", Pattern.DOTALL);
 
     private MarkdownTree() {}
 
@@ -83,8 +83,10 @@ public final class MarkdownTree {
             Collections.reverse(headingPath);
 
             int bodyStart = lineNo + 1;
-            int bodyEnd = (idx + 1 < headingPositions.size()) ? headingPositions.get(idx + 1)[0]
-                : lines.size();
+            int bodyEnd =
+                    (idx + 1 < headingPositions.size())
+                            ? headingPositions.get(idx + 1)[0]
+                            : lines.size();
             String sectionBody = String.join("\n", lines.subList(bodyStart, bodyEnd)).strip();
 
             sections.add(new Section(depth, title, headingPath, sectionBody));
@@ -111,8 +113,7 @@ public final class MarkdownTree {
     /**
      * Expand every oversized section into its {@code (part n/m)} pieces.
      *
-     * <p>
-     * Split out of {@link #buildOrderedSections(ParsedMarkdown)} so the standard ingest can keep
+     * <p>Split out of {@link #buildOrderedSections(ParsedMarkdown)} so the standard ingest can keep
      * the UNSPLIT list as well: section summaries must be generated from sections as they were
      * before this step, which is the same list the hierarchical path summarizes. Sharing this
      * method rather than repeating the loop keeps the two callers from drifting.
@@ -128,10 +129,15 @@ public final class MarkdownTree {
     public static List<Section> filterSections(List<Section> sections) {
         List<Section> out = new ArrayList<>();
         for (Section s : sections) {
-            boolean topLevelToc = s.headingPath().isEmpty()
-                && s.title().toLowerCase(Locale.ROOT).equals("table of contents");
-            boolean underToc = !s.headingPath().isEmpty()
-                && s.headingPath().get(0).toLowerCase(Locale.ROOT).equals("table of contents");
+            boolean topLevelToc =
+                    s.headingPath().isEmpty()
+                            && s.title().toLowerCase(Locale.ROOT).equals("table of contents");
+            boolean underToc =
+                    !s.headingPath().isEmpty()
+                            && s.headingPath()
+                                    .get(0)
+                                    .toLowerCase(Locale.ROOT)
+                                    .equals("table of contents");
             if (topLevelToc || underToc) {
                 continue;
             }
@@ -176,10 +182,9 @@ public final class MarkdownTree {
     /**
      * As {@link #splitOversizedSection(Section)}, but against a caller-supplied budget.
      *
-     * <p>
-     * The Confluence builder needs this because it prepends a provenance header to every finished
-     * body: split to the full {@link #CHUNK_BODY_MAX_CHARS} and each part is then over the cap by
-     * the header's length, which varies with the page URL and the author's name.
+     * <p>The Confluence builder needs this because it prepends a provenance header to every
+     * finished body: split to the full {@link #CHUNK_BODY_MAX_CHARS} and each part is then over the
+     * cap by the header's length, which varies with the page URL and the author's name.
      */
     public static List<Section> splitOversizedSection(Section section, int maxChars) {
         if (section.body().length() <= maxChars) {
@@ -193,8 +198,11 @@ public final class MarkdownTree {
         List<Section> out = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             out.add(
-                new Section(section.depth(), section.title() + " (part " + (i + 1) + "/" + n + ")",
-                    section.headingPath(), parts.get(i)));
+                    new Section(
+                            section.depth(),
+                            section.title() + " (part " + (i + 1) + "/" + n + ")",
+                            section.headingPath(),
+                            parts.get(i)));
         }
         return out;
     }

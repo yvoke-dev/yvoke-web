@@ -18,9 +18,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Unit tests for {@link UserArgumentResolver} — the plumbing that injects the authenticated
- * {@link User} into every controller method. A regression here fails every {@code @User}-taking
- * endpoint, so pin both the type match and the 401-when-unauthenticated branch.
+ * Unit tests for {@link UserArgumentResolver} — the plumbing that injects the authenticated {@link
+ * User} into every controller method. A regression here fails every {@code @User}-taking endpoint,
+ * so pin both the type match and the 401-when-unauthenticated branch.
  */
 public class UserArgumentResolverTest {
 
@@ -28,7 +28,7 @@ public class UserArgumentResolverTest {
     private UserArgumentResolver resolver;
 
     private final User user =
-        new User(UUID.randomUUID(), "entra-oid", "user@test.local", "Test User", Instant.now());
+            new User(UUID.randomUUID(), "entra-oid", "user@test.local", "Test User", Instant.now());
 
     @BeforeEach
     public void setUp() {
@@ -66,8 +66,9 @@ public class UserArgumentResolverTest {
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> resolver.resolveArgument(null, null, null, null))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(t -> assertThat(((ResponseStatusException) t).getStatusCode())
-                .isEqualTo(HttpStatus.UNAUTHORIZED));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(t ->
+                        assertThat(((ResponseStatusException) t).getStatusCode())
+                                .isEqualTo(HttpStatus.UNAUTHORIZED));
     }
 }

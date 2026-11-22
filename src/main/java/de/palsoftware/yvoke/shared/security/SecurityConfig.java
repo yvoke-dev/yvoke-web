@@ -1,7 +1,5 @@
 package de.palsoftware.yvoke.shared.security;
 
-
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -71,20 +69,27 @@ public class SecurityConfig {
     /**
      * Content-Security-Policy for the interactive (cookie/session) chain (SEC-12). {@code
      * frame-ancestors}/{@code object-src}/{@code base-uri} are hard restrictions with no impact on
-     * current functionality. {@code script-src}/{@code style-src} still allow
-     * {@code 'unsafe-inline'} (and {@code 'unsafe-eval'} for the Mermaid UMD bundle) because the
-     * chat client is currently a large inline script (MNT-02); once that is extracted into static
+     * current functionality. {@code script-src}/{@code style-src} still allow {@code
+     * 'unsafe-inline'} (and {@code 'unsafe-eval'} for the Mermaid UMD bundle) because the chat
+     * client is currently a large inline script (MNT-02); once that is extracted into static
      * modules (Wave 3.1) these can be tightened to nonces. External origins are pinned to the CDNs
      * the templates actually load.
      */
-    private static final String CONTENT_SECURITY_POLICY = String.join("; ", "default-src 'self'",
-        // unpkg.com removed: htmx is vendored (static/js/htmx.min.js). jsdelivr remains only for
-        // mermaid and KaTeX, which are feature-detected and degrade if unreachable.
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
-        "img-src 'self' data:",
-        "font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
-        "connect-src 'self'", "object-src 'none'", "base-uri 'self'", "frame-ancestors 'none'");
+    private static final String CONTENT_SECURITY_POLICY =
+            String.join(
+                    "; ",
+                    "default-src 'self'",
+                    // unpkg.com removed: htmx is vendored (static/js/htmx.min.js). jsdelivr remains
+                    // only for
+                    // mermaid and KaTeX, which are feature-detected and degrade if unreachable.
+                    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
+                    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+                    "img-src 'self' data:",
+                    "font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+                    "connect-src 'self'",
+                    "object-src 'none'",
+                    "base-uri 'self'",
+                    "frame-ancestors 'none'");
 
     static final String PLUGIN_DEV_MODE_HEADER = "X-Yvoke-Dev-Mode";
     private static final String PLUGIN_DEV_MODE_TOKEN = "yvoke-plugin-dev-mode";
@@ -107,20 +112,22 @@ public class SecurityConfig {
     private final long mcpRateLimitRefillSeconds;
 
     @Autowired
-    public SecurityConfig(UserService userService, Environment environment,
-        @Value("${app.security.mock}") boolean mockAuth,
-        @Value("${app.security.api-key}") String apiKey,
-        @Value("${app.security.area-api-keys}") String areaApiKeysJson,
-        @Value("${app.security.roles.admin-claim}") String adminClaim,
-        @Value("${app.security.roles.user-claim}") String userClaim,
-        @Value("${app.security.mcp.allowed-audience}") String allowedAudience,
-        @Value("${app.security.mcp.required-scope}") String requiredScope,
-        @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}") String jwkSetUri,
-        @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri,
-        @Value("${app.security.mcp.resource-url}") String resourceUrl,
-        @Value("${app.rate-limit.enabled}") boolean rateLimitEnabled,
-        @Value("${app.rate-limit.mcp-capacity}") int mcpRateLimitCapacity,
-        @Value("${app.rate-limit.mcp-refill-period-seconds}") long mcpRateLimitRefillSeconds) {
+    public SecurityConfig(
+            UserService userService,
+            Environment environment,
+            @Value("${app.security.mock}") boolean mockAuth,
+            @Value("${app.security.api-key}") String apiKey,
+            @Value("${app.security.area-api-keys}") String areaApiKeysJson,
+            @Value("${app.security.roles.admin-claim}") String adminClaim,
+            @Value("${app.security.roles.user-claim}") String userClaim,
+            @Value("${app.security.mcp.allowed-audience}") String allowedAudience,
+            @Value("${app.security.mcp.required-scope}") String requiredScope,
+            @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}") String jwkSetUri,
+            @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri,
+            @Value("${app.security.mcp.resource-url}") String resourceUrl,
+            @Value("${app.rate-limit.enabled}") boolean rateLimitEnabled,
+            @Value("${app.rate-limit.mcp-capacity}") int mcpRateLimitCapacity,
+            @Value("${app.rate-limit.mcp-refill-period-seconds}") long mcpRateLimitRefillSeconds) {
         this.userService = userService;
         this.mockAuth = mockAuth;
         this.apiKey = apiKey;
@@ -129,9 +136,10 @@ public class SecurityConfig {
         this.userClaim = userClaim;
         this.allowedAudience = allowedAudience;
         this.requiredScope = requiredScope;
-        this.relativeScope = requiredScope.contains("/")
-            ? requiredScope.substring(requiredScope.lastIndexOf("/") + 1)
-            : requiredScope;
+        this.relativeScope =
+                requiredScope.contains("/")
+                        ? requiredScope.substring(requiredScope.lastIndexOf("/") + 1)
+                        : requiredScope;
         this.jwkSetUri = jwkSetUri;
         this.issuerUri = issuerUri;
         this.resourceUrl = resourceUrl;
@@ -147,10 +155,13 @@ public class SecurityConfig {
             // app.security.mock=false; this is defence in depth against a misconfigured deployment.
             if (!DevProfiles.anyActive(environment)) {
                 throw new IllegalStateException(
-                    "app.security.mock=true is only permitted while one "
-                        + "of the development profiles " + DevProfiles.NAMES + " is active. Active "
-                        + "profiles: " + Arrays.toString(environment.getActiveProfiles())
-                        + ". Authentication mocking must never run outside local development.");
+                        "app.security.mock=true is only permitted while one "
+                                + "of the development profiles "
+                                + DevProfiles.NAMES
+                                + " is active. Active "
+                                + "profiles: "
+                                + Arrays.toString(environment.getActiveProfiles())
+                                + ". Authentication mocking must never run outside local development.");
             }
             log.warn("====================================================================");
             log.warn("app.security.mock=true: authentication is MOCKED. Any /login with");
@@ -159,30 +170,35 @@ public class SecurityConfig {
             log.warn("it in a deployed/production environment.");
             log.warn("====================================================================");
         } else if (!DevProfiles.anyActive(environment)) {
-            assertPinnedEntraTenant("spring.security.oauth2.resourceserver.jwt.issuer-uri",
-                issuerUri);
-            assertPinnedEntraTenant("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
-                jwkSetUri);
-            String authUri = environment
-                .getProperty("spring.security.oauth2.client.provider.entra.authorization-uri", "");
+            assertPinnedEntraTenant(
+                    "spring.security.oauth2.resourceserver.jwt.issuer-uri", issuerUri);
+            assertPinnedEntraTenant(
+                    "spring.security.oauth2.resourceserver.jwt.jwk-set-uri", jwkSetUri);
+            String authUri =
+                    environment.getProperty(
+                            "spring.security.oauth2.client.provider.entra.authorization-uri", "");
             if (!authUri.isBlank()) {
                 assertPinnedEntraTenant(
-                    "spring.security.oauth2.client.provider.entra.authorization-uri", authUri);
+                        "spring.security.oauth2.client.provider.entra.authorization-uri", authUri);
             }
         }
     }
 
     private static void assertPinnedEntraTenant(String propertyName, String uri) {
         if (uri == null || uri.isBlank()) {
-            throw new IllegalStateException(propertyName
-                + " must not be blank outside development profiles; set ENTRA_TENANT_ID to your tenant GUID.");
+            throw new IllegalStateException(
+                    propertyName
+                            + " must not be blank outside development profiles; set ENTRA_TENANT_ID to your tenant GUID.");
         }
         String lower = uri.toLowerCase(Locale.ROOT);
-        if (lower.contains("/common/") || lower.contains("/organizations/")
-            || lower.contains("/consumers/")) {
-            throw new IllegalStateException(propertyName
-                + " targets a multi-tenant Entra endpoint (" + uri
-                + "), which is forbidden outside development profiles; set ENTRA_TENANT_ID to your tenant GUID.");
+        if (lower.contains("/common/")
+                || lower.contains("/organizations/")
+                || lower.contains("/consumers/")) {
+            throw new IllegalStateException(
+                    propertyName
+                            + " targets a multi-tenant Entra endpoint ("
+                            + uri
+                            + "), which is forbidden outside development profiles; set ENTRA_TENANT_ID to your tenant GUID.");
         }
     }
 
@@ -190,8 +206,8 @@ public class SecurityConfig {
         return parseAreaApiKeys(mapper, json, null);
     }
 
-    static Map<String, String> parseAreaApiKeys(ObjectMapper mapper, String json,
-        String globalApiKey) {
+    static Map<String, String> parseAreaApiKeys(
+            ObjectMapper mapper, String json, String globalApiKey) {
         if (json == null || json.isBlank()) {
             return Map.of();
         }
@@ -200,15 +216,15 @@ public class SecurityConfig {
             root = mapper.readTree(json);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException(
-                "app.security.area-api-keys is not valid JSON: " + e.getOriginalMessage(), e);
+                    "app.security.area-api-keys is not valid JSON: " + e.getOriginalMessage(), e);
         }
         if (root == null || root.isNull()) {
             return Map.of();
         }
         if (!root.isObject()) {
             throw new IllegalStateException(
-                "app.security.area-api-keys must be a JSON object mapping area names to API keys, e.g. {\"Docs\": \"...\"}; got "
-                    + root.getNodeType());
+                    "app.security.area-api-keys must be a JSON object mapping area names to API keys, e.g. {\"Docs\": \"...\"}; got "
+                            + root.getNodeType());
         }
         Map<String, String> parsed = new LinkedHashMap<>();
         Set<String> seenLowerAreas = new HashSet<>();
@@ -219,39 +235,50 @@ public class SecurityConfig {
             String area = entry.getKey().trim();
             if (area.isEmpty()) {
                 throw new IllegalStateException(
-                    "app.security.area-api-keys contains a blank area name.");
+                        "app.security.area-api-keys contains a blank area name.");
             }
             if ("*".equals(area)) {
                 throw new IllegalStateException(
-                    "app.security.area-api-keys cannot use wildcard '*' as an area name; use app.security.api-key for the global key.");
+                        "app.security.area-api-keys cannot use wildcard '*' as an area name; use app.security.api-key for the global key.");
             }
             JsonNode value = entry.getValue();
             if (!value.isTextual()) {
-                throw new IllegalStateException("app.security.area-api-keys maps area '" + area
-                    + "' to " + value.getNodeType() + " rather than a string API key.");
+                throw new IllegalStateException(
+                        "app.security.area-api-keys maps area '"
+                                + area
+                                + "' to "
+                                + value.getNodeType()
+                                + " rather than a string API key.");
             }
             String key = value.textValue().trim();
             if (key.isBlank()) {
                 throw new IllegalStateException(
-                    "app.security.area-api-keys maps area '" + area + "' to a blank API key.");
+                        "app.security.area-api-keys maps area '" + area + "' to a blank API key.");
             }
             if (DEFAULT_DEV_API_KEY.equals(key)) {
-                throw new IllegalStateException("app.security.area-api-keys maps area '" + area
-                    + "' to the placeholder default 'dev-key-12345'. Configure a real secret key.");
+                throw new IllegalStateException(
+                        "app.security.area-api-keys maps area '"
+                                + area
+                                + "' to the placeholder default 'dev-key-12345'. Configure a real secret key.");
             }
-            if (globalApiKey != null && !globalApiKey.isBlank()
-                && globalApiKey.trim().equals(key)) {
-                throw new IllegalStateException("app.security.area-api-keys maps area '" + area
-                    + "' to the same key configured in app.security.api-key. Area keys must be distinct from the global API key.");
+            if (globalApiKey != null
+                    && !globalApiKey.isBlank()
+                    && globalApiKey.trim().equals(key)) {
+                throw new IllegalStateException(
+                        "app.security.area-api-keys maps area '"
+                                + area
+                                + "' to the same key configured in app.security.api-key. Area keys must be distinct from the global API key.");
             }
             String lowerArea = area.toLowerCase(Locale.ROOT);
             if (!seenLowerAreas.add(lowerArea)) {
-                throw new IllegalStateException("app.security.area-api-keys defines area '" + area
-                    + "' more than once (case-insensitive collision).");
+                throw new IllegalStateException(
+                        "app.security.area-api-keys defines area '"
+                                + area
+                                + "' more than once (case-insensitive collision).");
             }
             if (!seenKeys.add(key)) {
                 throw new IllegalStateException(
-                    "app.security.area-api-keys maps the same API key to multiple areas. Each area must have a unique API key, or use app.security.api-key for a global key.");
+                        "app.security.area-api-keys maps the same API key to multiple areas. Each area must have a unique API key, or use app.security.api-key for a global key.");
             }
             parsed.put(area, key);
         }
@@ -262,18 +289,23 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain actuatorSecurityFilterChain(HttpSecurity http) throws Exception {
         http.securityMatcher("/actuator/**", "/actuator")
-            // Only the liveness/readiness/info probes are anonymous. Anything else (env,
-            // loggers,
-            // heapdump, prometheus, …) requires authentication, so adding it to the exposure
-            // list
-            // later cannot silently leak — it must be deliberately authorized. Sensitive
-            // endpoints
-            // are additionally kept off the public port via management.server.port=9090.
-            .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info")
-                .permitAll().anyRequest().authenticated())
-            .csrf(csrf -> csrf.disable()).sessionManagement(
-                session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+                // Only the liveness/readiness/info probes are anonymous. Anything else (env,
+                // loggers,
+                // heapdump, prometheus, …) requires authentication, so adding it to the exposure
+                // list
+                // later cannot silently leak — it must be deliberately authorized. Sensitive
+                // endpoints
+                // are additionally kept off the public port via management.server.port=9090.
+                .authorizeHttpRequests(authorize ->
+                        authorize
+                                .requestMatchers(
+                                        "/actuator/health", "/actuator/health/**", "/actuator/info")
+                                .permitAll()
+                                .anyRequest()
+                                .authenticated())
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
         return http.build();
     }
 
@@ -281,28 +313,43 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain mcpSecurityFilterChain(HttpSecurity http) throws Exception {
         String resourceMetadataUrl =
-            resourceUrl.replace("/mcp", "") + "/.well-known/oauth-protected-resource";
+                resourceUrl.replace("/mcp", "") + "/.well-known/oauth-protected-resource";
         http.securityMatcher("/mcp/**", "/mcp")
-            .authorizeHttpRequests(authorize -> authorize.anyRequest().hasAnyAuthority(
-                "SCOPE_" + requiredScope, "SCOPE_" + relativeScope, "ROLE_USER", "ROLE_ADMIN"))
-            // Bearer-only: never read/write an HTTP session on this chain, so an ambient browser
-            // session (from the cookie chain) cannot carry its authorities into MCP (SEC-13).
-            .sessionManagement(
-                session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .oauth2ResourceServer(oauth2 -> oauth2.bearerTokenResolver(mcpBearerTokenResolver())
-                .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
-                .authenticationEntryPoint((request, response, authException) -> {
-                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                    response.setHeader("WWW-Authenticate",
-                        "Bearer realm=\"mcp\", resource_metadata=\"" + resourceMetadataUrl + "\"");
-                }));
+                .authorizeHttpRequests(authorize ->
+                        authorize
+                                .anyRequest()
+                                .hasAnyAuthority(
+                                        "SCOPE_" + requiredScope,
+                                        "SCOPE_" + relativeScope,
+                                        "ROLE_USER",
+                                        "ROLE_ADMIN"))
+                // Bearer-only: never read/write an HTTP session on this chain, so an ambient
+                // browser
+                // session (from the cookie chain) cannot carry its authorities into MCP (SEC-13).
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .oauth2ResourceServer(oauth2 ->
+                        oauth2.bearerTokenResolver(mcpBearerTokenResolver())
+                                .jwt(jwt ->
+                                        jwt.jwtAuthenticationConverter(
+                                                jwtAuthenticationConverter()))
+                                .authenticationEntryPoint((request, response, authException) -> {
+                                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                                    response.setHeader(
+                                            "WWW-Authenticate",
+                                            "Bearer realm=\"mcp\", resource_metadata=\""
+                                                    + resourceMetadataUrl
+                                                    + "\"");
+                                }));
 
         McpRateLimitFilter mcpRateLimitFilter =
-            new McpRateLimitFilter(new GenerationRateLimiter(rateLimitEnabled, mcpRateLimitCapacity,
-                mcpRateLimitRefillSeconds), mcpRateLimitRefillSeconds);
+                new McpRateLimitFilter(
+                        new GenerationRateLimiter(
+                                rateLimitEnabled, mcpRateLimitCapacity, mcpRateLimitRefillSeconds),
+                        mcpRateLimitRefillSeconds);
 
-        http.csrf(csrf -> csrf.disable()).addFilterAfter(mcpRateLimitFilter,
-            AuthorizationFilter.class);
+        http.csrf(csrf -> csrf.disable())
+                .addFilterAfter(mcpRateLimitFilter, AuthorizationFilter.class);
 
         return http.build();
     }
@@ -310,11 +357,10 @@ public class SecurityConfig {
     /**
      * The Claude Code plugin's dev switch (yvoke-claude-plugin P0-11). Its {@code .mcp.json} cannot
      * send a dev {@code Authorization} header, because Claude Code turns its OAuth sign-in off as
-     * soon as one is configured, even an empty one. So the plugin always sends
-     * {@code X-Yvoke-Dev-Mode}, reading {@code true} only while its {@code devMode} setting is on.
-     * In mock mode, which already trusts any bearer token, that header stands in for one; outside
-     * mock mode the default resolver is used and the header is never read, since its value is
-     * public.
+     * soon as one is configured, even an empty one. So the plugin always sends {@code
+     * X-Yvoke-Dev-Mode}, reading {@code true} only while its {@code devMode} setting is on. In mock
+     * mode, which already trusts any bearer token, that header stands in for one; outside mock mode
+     * the default resolver is used and the header is never read, since its value is public.
      */
     BearerTokenResolver mcpBearerTokenResolver() {
         DefaultBearerTokenResolver bearer = new DefaultBearerTokenResolver();
@@ -334,12 +380,19 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain chatApiSecurityFilterChain(HttpSecurity http) throws Exception {
         http.securityMatcher("/api/chat/**")
-            .authorizeHttpRequests(authorize -> authorize.anyRequest().hasAnyAuthority(
-                "SCOPE_" + requiredScope, "SCOPE_" + relativeScope, "ROLE_USER", "ROLE_ADMIN"))
-            .sessionManagement(
-                session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .oauth2ResourceServer(oauth2 -> oauth2
-                .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
+                .authorizeHttpRequests(authorize ->
+                        authorize
+                                .anyRequest()
+                                .hasAnyAuthority(
+                                        "SCOPE_" + requiredScope,
+                                        "SCOPE_" + relativeScope,
+                                        "ROLE_USER",
+                                        "ROLE_ADMIN"))
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .oauth2ResourceServer(oauth2 ->
+                        oauth2.jwt(jwt ->
+                                jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
 
         http.csrf(csrf -> csrf.disable());
 
@@ -350,19 +403,30 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain apiKeySecurityFilterChain(HttpSecurity http) throws Exception {
         http.securityMatcher("/api/ingest/**", "/api/document/**", "/api/jobs/**")
-            .authorizeHttpRequests(authorize -> authorize
-                // ROLE_INGEST is the scoped authority granted to the X-API-Key principal (see
-                // ApiKeyAuthenticationFilter); ROLE_ADMIN is how the admin UI's job-progress
-                // EventSource reaches this chain with its cookie session; ROLE_AREA_ADMIN is how
-                // Area Admins connect to job progress EventSource.
-                // ROLE_USER is deliberately NOT admitted. This is the corpus WRITE surface: a plain
-                // signed-in person could otherwise upload files and queue import jobs into ANY
-                // knowledge area straight from their browser session — content that then becomes
-                // searchable by everyone and is cited as authoritative, that spends money on
-                // summarisation and embedding, and that is never audited (only admin-screen imports
-                // are). No UI depends on the USER grant: /api/document/** has no browser caller and
-                // the only /api/jobs/** consumer is the admin-only job page.
-                .anyRequest().hasAnyRole("INGEST", "ADMIN", "AREA_ADMIN"));
+                .authorizeHttpRequests(authorize ->
+                        authorize
+                                // ROLE_INGEST is the scoped authority granted to the X-API-Key
+                                // principal (see
+                                // ApiKeyAuthenticationFilter); ROLE_ADMIN is how the admin UI's
+                                // job-progress
+                                // EventSource reaches this chain with its cookie session;
+                                // ROLE_AREA_ADMIN is how
+                                // Area Admins connect to job progress EventSource.
+                                // ROLE_USER is deliberately NOT admitted. This is the corpus WRITE
+                                // surface: a plain
+                                // signed-in person could otherwise upload files and queue import
+                                // jobs into ANY
+                                // knowledge area straight from their browser session — content that
+                                // then becomes
+                                // searchable by everyone and is cited as authoritative, that spends
+                                // money on
+                                // summarisation and embedding, and that is never audited (only
+                                // admin-screen imports
+                                // are). No UI depends on the USER grant: /api/document/** has no
+                                // browser caller and
+                                // the only /api/jobs/** consumer is the admin-only job page.
+                                .anyRequest()
+                                .hasAnyRole("INGEST", "ADMIN", "AREA_ADMIN"));
         // NOTE: this chain is intentionally NOT stateless — the admin UI reaches these endpoints
         // with its cookie session (e.g. the job-progress EventSource on /api/jobs/v1/**/progress).
         // CSRF is disabled here for the non-browser X-API-Key clients; the residual CSRF exposure
@@ -373,12 +437,12 @@ public class SecurityConfig {
         if (apiKeyConfigured()) {
             String globalKey = isGlobalApiKeyConfigured() ? apiKey : null;
             http.addFilterBefore(
-                new ApiKeyAuthenticationFilter("X-API-Key", globalKey, areaApiKeys),
-                UsernamePasswordAuthenticationFilter.class);
+                    new ApiKeyAuthenticationFilter("X-API-Key", globalKey, areaApiKeys),
+                    UsernamePasswordAuthenticationFilter.class);
         } else {
             log.warn(
-                "Neither app.security.api-key nor any app.security.area-api-keys are configured; "
-                    + "the X-API-Key REST endpoints (/api/ingest, /api/document, /api/jobs) accept session auth only until a real key is configured.");
+                    "Neither app.security.api-key nor any app.security.area-api-keys are configured; "
+                            + "the X-API-Key REST endpoints (/api/ingest, /api/document, /api/jobs) accept session auth only until a real key is configured.");
         }
 
         http.csrf(csrf -> csrf.disable());
@@ -418,52 +482,81 @@ public class SecurityConfig {
                 return false;
             }
             String uri = request.getRequestURI();
-            if (uri.contains(".well-known") || uri.contains("com.chrome.devtools")
-                || uri.endsWith(".json")) {
+            if (uri.contains(".well-known")
+                    || uri.contains("com.chrome.devtools")
+                    || uri.endsWith(".json")) {
                 return false;
             }
             String accept = request.getHeader("Accept");
             return accept != null && accept.contains("text/html");
         });
 
-        http.headers(headers -> headers
-            .contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY)));
+        http.headers(headers ->
+                headers.contentSecurityPolicy(
+                        csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY)));
 
         http.requestCache(cache -> cache.requestCache(requestCache))
-            .authorizeHttpRequests(authorize -> authorize
-                // Public paths: static assets, actuator, login page, RFC 9728 endpoint
-                .requestMatchers("/css/**", "/js/**", "/images/**", "/favicon.ico").permitAll()
-                .requestMatchers("/actuator/**", "/actuator").permitAll()
-                .requestMatchers("/login", "/logged-out", "/error", "/.well-known/**").permitAll()
-                // Gated paths:
-                // 1. Superadmin-only paths (hasRole("ADMIN"))
-                .requestMatchers("/admin/costs/**", "/admin/costs", "/admin/pricing/**",
-                    "/admin/pricing", "/admin/audit/**", "/admin/audit", "/admin/areas/delete")
-                .hasRole("ADMIN")
-                // 2. Admin & Trace paths (hasAnyRole("ADMIN", "AREA_ADMIN"))
-                // Note: trace endpoint must precede /chat/** so it cannot be matched by plain
-                // ROLE_USER
-                .requestMatchers("/chat/*/messages/*/trace").hasAnyRole("ADMIN", "AREA_ADMIN")
-                .requestMatchers("/admin/**", "/admin").hasAnyRole("ADMIN", "AREA_ADMIN")
-                // 3. User paths (hasRole("USER"))
-                .requestMatchers("/chat/**", "/chat").hasRole("USER")
-                .requestMatchers("/document/**", "/document").hasRole("USER").anyRequest()
-                .authenticated());
+                .authorizeHttpRequests(authorize ->
+                        authorize
+                                // Public paths: static assets, actuator, login page, RFC 9728
+                                // endpoint
+                                .requestMatchers("/css/**", "/js/**", "/images/**", "/favicon.ico")
+                                .permitAll()
+                                .requestMatchers("/actuator/**", "/actuator")
+                                .permitAll()
+                                .requestMatchers(
+                                        "/login", "/logged-out", "/error", "/.well-known/**")
+                                .permitAll()
+                                // Gated paths:
+                                // 1. Superadmin-only paths (hasRole("ADMIN"))
+                                .requestMatchers(
+                                        "/admin/costs/**",
+                                        "/admin/costs",
+                                        "/admin/pricing/**",
+                                        "/admin/pricing",
+                                        "/admin/audit/**",
+                                        "/admin/audit",
+                                        "/admin/areas/delete")
+                                .hasRole("ADMIN")
+                                // 2. Admin & Trace paths (hasAnyRole("ADMIN", "AREA_ADMIN"))
+                                // Note: trace endpoint must precede /chat/** so it cannot be
+                                // matched by plain
+                                // ROLE_USER
+                                .requestMatchers("/chat/*/messages/*/trace")
+                                .hasAnyRole("ADMIN", "AREA_ADMIN")
+                                .requestMatchers("/admin/**", "/admin")
+                                .hasAnyRole("ADMIN", "AREA_ADMIN")
+                                // 3. User paths (hasRole("USER"))
+                                .requestMatchers("/chat/**", "/chat")
+                                .hasRole("USER")
+                                .requestMatchers("/document/**", "/document")
+                                .hasRole("USER")
+                                .anyRequest()
+                                .authenticated());
 
         if (mockAuth) {
             http.authenticationProvider(
-                new MockAuthenticationProvider(userService, adminClaim, userClaim))
-                .formLogin(form -> form.loginPage("/login").loginProcessingUrl("/login")
-                    .successHandler(new CustomAuthenticationSuccessHandler()).permitAll());
+                            new MockAuthenticationProvider(userService, adminClaim, userClaim))
+                    .formLogin(form ->
+                            form.loginPage("/login")
+                                    .loginProcessingUrl("/login")
+                                    .successHandler(new CustomAuthenticationSuccessHandler())
+                                    .permitAll());
         } else {
-            http.oauth2Login(oauth2 -> oauth2.loginPage("/login")
-                .successHandler(new CustomAuthenticationSuccessHandler())
-                .userInfoEndpoint(userInfo -> userInfo.oidcUserService(oidcUserService())
-                    .userAuthoritiesMapper(authoritiesMapper())));
+            http.oauth2Login(oauth2 ->
+                    oauth2.loginPage("/login")
+                            .successHandler(new CustomAuthenticationSuccessHandler())
+                            .userInfoEndpoint(userInfo ->
+                                    userInfo.oidcUserService(oidcUserService())
+                                            .userAuthoritiesMapper(authoritiesMapper())));
         }
 
-        http.logout(logout -> logout.logoutUrl("/logout").logoutSuccessUrl("/logged-out")
-            .invalidateHttpSession(true).clearAuthentication(true).permitAll());
+        http.logout(logout ->
+                logout.logoutUrl("/logout")
+                        .logoutSuccessUrl("/logged-out")
+                        .invalidateHttpSession(true)
+                        .clearAuthentication(true)
+                        .permitAll());
 
         // CSRF protection stays ENABLED on this cookie/session chain (Spring's default). The token
         // is
@@ -481,19 +574,31 @@ public class SecurityConfig {
         if (mockAuth) {
             return token -> {
                 Map<String, Object> headers = Map.of("alg", "none");
-                Map<String, Object> claims = Map.of("sub", "mock-mcp-user-sub", "oid",
-                    "mock-mcp-user-oid", "preferred_username", "mock-mcp-user@palsoftware.local",
-                    "name", "Mock MCP User", "aud", List.of(allowedAudience), "scp",
-                    List.of(requiredScope), "roles", List.of(userClaim));
-                return new Jwt(token, Instant.now(), Instant.now().plusSeconds(3600), headers,
-                    claims);
+                Map<String, Object> claims =
+                        Map.of(
+                                "sub",
+                                "mock-mcp-user-sub",
+                                "oid",
+                                "mock-mcp-user-oid",
+                                "preferred_username",
+                                "mock-mcp-user@palsoftware.local",
+                                "name",
+                                "Mock MCP User",
+                                "aud",
+                                List.of(allowedAudience),
+                                "scp",
+                                List.of(requiredScope),
+                                "roles",
+                                List.of(userClaim));
+                return new Jwt(
+                        token, Instant.now(), Instant.now().plusSeconds(3600), headers, claims);
             };
         } else {
             NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
             OAuth2TokenValidator<Jwt> audienceValidator = new AudienceValidator(allowedAudience);
             OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer(issuerUri);
             OAuth2TokenValidator<Jwt> combinedValidator =
-                new DelegatingOAuth2TokenValidator<>(withIssuer, audienceValidator);
+                    new DelegatingOAuth2TokenValidator<>(withIssuer, audienceValidator);
             jwtDecoder.setJwtValidator(combinedValidator);
             return jwtDecoder;
         }
@@ -509,7 +614,8 @@ public class SecurityConfig {
             Object rolesClaim = jwt.getClaim("roles");
             if (rolesClaim instanceof List<?> rolesList) {
                 authorities.addAll(
-                    AreaAccessContext.mapRoleClaimsToAuthorities(rolesList, adminClaim, userClaim));
+                        AreaAccessContext.mapRoleClaimsToAuthorities(
+                                rolesList, adminClaim, userClaim));
             }
             return authorities;
         });
@@ -542,32 +648,37 @@ public class SecurityConfig {
             List<String> audiences = jwt.getAudience();
             if (audiences != null) {
                 String cleanAudience =
-                    allowedAudience.startsWith("api://") ? allowedAudience.substring(6)
-                        : allowedAudience;
+                        allowedAudience.startsWith("api://")
+                                ? allowedAudience.substring(6)
+                                : allowedAudience;
                 if (audiences.contains(allowedAudience) || audiences.contains(cleanAudience)) {
                     return OAuth2TokenValidatorResult.success();
                 }
             }
             return OAuth2TokenValidatorResult.failure(
-                new OAuth2Error("invalid_token", "The required audience is missing", null));
+                    new OAuth2Error("invalid_token", "The required audience is missing", null));
         }
     }
 
     public static class CustomAuthenticationSuccessHandler
-        extends SavedRequestAwareAuthenticationSuccessHandler {
+            extends SavedRequestAwareAuthenticationSuccessHandler {
         @Override
-        public void onAuthenticationSuccess(HttpServletRequest request,
-            HttpServletResponse response, Authentication authentication)
-            throws ServletException, IOException {
+        public void onAuthenticationSuccess(
+                HttpServletRequest request,
+                HttpServletResponse response,
+                Authentication authentication)
+                throws ServletException, IOException {
             SavedRequest savedRequest = new HttpSessionRequestCache().getRequest(request, response);
             if (savedRequest != null) {
                 super.onAuthenticationSuccess(request, response, authentication);
                 return;
             }
 
-            boolean hasAdminAccess = authentication.getAuthorities().stream()
-                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
-                    || "ROLE_AREA_ADMIN".equals(a.getAuthority()));
+            boolean hasAdminAccess =
+                    authentication.getAuthorities().stream()
+                            .anyMatch(a ->
+                                    "ROLE_ADMIN".equals(a.getAuthority())
+                                            || "ROLE_AREA_ADMIN".equals(a.getAuthority()));
 
             if (hasAdminAccess) {
                 getRedirectStrategy().sendRedirect(request, response, "/admin");

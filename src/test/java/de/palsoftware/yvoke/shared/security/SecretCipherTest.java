@@ -49,15 +49,16 @@ class SecretCipherTest {
         // as any caller double-encrypted; the caller must decide, not the cipher.
         SecretCipher cipher = new SecretCipher("a-strong-secret-key", SALT, prodEnv());
         String once = cipher.encrypt("token");
-        assertThatThrownBy(() -> cipher.encrypt(once)).isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("already encrypted");
+        assertThatThrownBy(() -> cipher.encrypt(once))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already encrypted");
     }
 
     @Test
     void encryptRejectsAlreadyEncryptedValueEvenWithoutKey() {
         SecretCipher cipher = new SecretCipher("", SALT, devEnv());
         assertThatThrownBy(() -> cipher.encrypt("enc:whatever"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -81,13 +82,15 @@ class SecretCipherTest {
     void missingKeyOutsideDevProfileFailsClosed() {
         // SEC-05: refuse to start (rather than persist plaintext) when no key is set in a real env.
         assertThatThrownBy(() -> new SecretCipher("", SALT, prodEnv()))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("secret-key");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("secret-key");
     }
 
     @Test
     void placeholderKeyOutsideDevProfileFailsClosed() {
         assertThatThrownBy(() -> new SecretCipher("placeholder-secret-key", SALT, prodEnv()))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("secret-key");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("secret-key");
     }
 
     @Test
@@ -100,7 +103,8 @@ class SecretCipherTest {
     void configuredKeyWithoutSaltFailsClosed() {
         // SEC-15: a key with no per-deployment salt must not fall back to a shared default.
         assertThatThrownBy(() -> new SecretCipher("a-strong-secret-key", "", prodEnv()))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("secret-salt");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("secret-salt");
     }
 
     @Test
@@ -130,7 +134,7 @@ class SecretCipherTest {
         String encrypted = new SecretCipher("key-one", SALT, prodEnv()).encrypt("secret");
         SecretCipher other = new SecretCipher("key-two", SALT, prodEnv());
         assertThatThrownBy(() -> other.decryptOrThrow(encrypted))
-            .isInstanceOf(SecretDecryptionException.class);
+                .isInstanceOf(SecretDecryptionException.class);
     }
 
     @Test
@@ -138,14 +142,14 @@ class SecretCipherTest {
         String encrypted = new SecretCipher("same-key", SALT, prodEnv()).encrypt("secret");
         SecretCipher other = new SecretCipher("same-key", "9f2b1a4c8e0d6357", prodEnv());
         assertThatThrownBy(() -> other.decryptOrThrow(encrypted))
-            .isInstanceOf(SecretDecryptionException.class);
+                .isInstanceOf(SecretDecryptionException.class);
     }
 
     @Test
     void decryptOrThrowRaisesWhenNoKeyIsConfigured() {
         SecretCipher cipher = new SecretCipher("", SALT, devEnv());
         assertThatThrownBy(() -> cipher.decryptOrThrow("enc:whatever"))
-            .isInstanceOf(SecretDecryptionException.class);
+                .isInstanceOf(SecretDecryptionException.class);
         // ...but plaintext is still readable in the key-less dev mode.
         assertThat(cipher.decryptOrThrow("plain")).isEqualTo("plain");
     }
@@ -174,16 +178,18 @@ class SecretCipherTest {
     void keyIdDiffersForDifferentSaltOrKey() {
         String base = new SecretCipher("a-strong-secret-key", SALT, prodEnv()).keyId();
         assertThat(new SecretCipher("a-strong-secret-key", "9f2b1a4c8e0d6357", prodEnv()).keyId())
-            .isNotEqualTo(base);
+                .isNotEqualTo(base);
         assertThat(new SecretCipher("another-secret-key", SALT, prodEnv()).keyId())
-            .isNotEqualTo(base);
+                .isNotEqualTo(base);
     }
 
     @Test
     void keyIdNeverLeaksTheKeyMaterial() {
         String keyId = new SecretCipher("a-strong-secret-key", SALT, prodEnv()).keyId();
-        assertThat(keyId).doesNotContain("a-strong-secret-key").doesNotContain(SALT)
-            .matches("[0-9a-f]{16}");
+        assertThat(keyId)
+                .doesNotContain("a-strong-secret-key")
+                .doesNotContain(SALT)
+                .matches("[0-9a-f]{16}");
     }
 
     @Test
@@ -207,8 +213,10 @@ class SecretCipherTest {
 
     private static String sha256Hex(String value) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of()
+                    .formatHex(
+                            MessageDigest.getInstance("SHA-256")
+                                    .digest(value.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
@@ -225,6 +233,7 @@ class SecretCipherTest {
         assertThat(cipher.decrypt(malformed)).isEmpty();
         assertThat(cipher.canDecrypt(malformed)).isFalse();
         assertThatThrownBy(() -> cipher.decryptOrThrow(malformed))
-            .isInstanceOf(SecretDecryptionException.class).hasMessageNotContaining(malformed);
+                .isInstanceOf(SecretDecryptionException.class)
+                .hasMessageNotContaining(malformed);
     }
 }

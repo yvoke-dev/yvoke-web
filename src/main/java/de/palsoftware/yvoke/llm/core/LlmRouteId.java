@@ -7,12 +7,11 @@ import java.util.stream.Collectors;
 /**
  * The provider clients a model can be routed to.
  *
- * <p>
- * One vocabulary for both {@code app.ai.provider} (the default route) and
- * {@code app.ai.model-routes} (per-model overrides), so the two cannot drift into naming the same
- * client differently. Retired providers are deliberately absent rather than present-and-rejected:
- * an id that is not in this enum cannot be routed to at all, which is what stops a stale manifest
- * quietly reaching a client that is no longer wired.
+ * <p>One vocabulary for both {@code app.ai.provider} (the default route) and {@code
+ * app.ai.model-routes} (per-model overrides), so the two cannot drift into naming the same client
+ * differently. Retired providers are deliberately absent rather than present-and-rejected: an id
+ * that is not in this enum cannot be routed to at all, which is what stops a stale manifest quietly
+ * reaching a client that is no longer wired.
  */
 public enum LlmRouteId {
 

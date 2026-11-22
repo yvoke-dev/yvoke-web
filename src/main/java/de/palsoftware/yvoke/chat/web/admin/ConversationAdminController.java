@@ -43,27 +43,29 @@ public class ConversationAdminController {
 
     @GetMapping("/conversations")
     public String listConversations(
-        @RequestParam(name = "userIds", required = false) List<String> rawUserIds,
-        @RequestParam(name = "timeRange", defaultValue = "all") String timeRange,
-        @RequestParam(name = "fromDate", required = false) String rawFromDate,
-        @RequestParam(name = "toDate", required = false) String rawToDate,
-        @RequestParam(name = "feedback", defaultValue = "all") String feedback,
-        @RequestParam(name = "page", defaultValue = "0") int page,
-        @RequestParam(name = "size", defaultValue = "20") int size, Model model) {
+            @RequestParam(name = "userIds", required = false) List<String> rawUserIds,
+            @RequestParam(name = "timeRange", defaultValue = "all") String timeRange,
+            @RequestParam(name = "fromDate", required = false) String rawFromDate,
+            @RequestParam(name = "toDate", required = false) String rawToDate,
+            @RequestParam(name = "feedback", defaultValue = "all") String feedback,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size,
+            Model model) {
 
         log.info("ConversationAdminController: Accessing Conversations view");
 
         Set<String> areas = AreaAccessContext.allowedAdminAreasLower().orElse(null);
         ConversationFilter filter;
         try {
-            filter = ConversationAdminFilterParser.parse(rawUserIds, timeRange, rawFromDate,
-                rawToDate, feedback, areas, clock);
+            filter =
+                    ConversationAdminFilterParser.parse(
+                            rawUserIds, timeRange, rawFromDate, rawToDate, feedback, areas, clock);
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
 
         ConversationAdminView view =
-            conversationAdminService.getConversationAdminView(filter, page, size);
+                conversationAdminService.getConversationAdminView(filter, page, size);
 
         List<String> selectedUserIds = new ArrayList<>();
         if (filter.includeAnonymous()) {
@@ -77,16 +79,18 @@ public class ConversationAdminController {
         model.addAttribute("userOptions", view.userOptions());
         model.addAttribute("selectedUserIds", selectedUserIds);
         model.addAttribute("selectedTimeRange", filter.timeFilter().preset());
-        model.addAttribute("fromDate",
-            filter.timeFilter().fromDate() != null
-                ? filter.timeFilter().fromDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
-                : "");
-        model.addAttribute("toDate",
-            filter.timeFilter().toDate() != null
-                ? filter.timeFilter().toDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
-                : "");
-        model.addAttribute("selectedFeedback",
-            filter.feedbackFilter().name().toLowerCase(Locale.ROOT));
+        model.addAttribute(
+                "fromDate",
+                filter.timeFilter().fromDate() != null
+                        ? filter.timeFilter().fromDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
+                        : "");
+        model.addAttribute(
+                "toDate",
+                filter.timeFilter().toDate() != null
+                        ? filter.timeFilter().toDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
+                        : "");
+        model.addAttribute(
+                "selectedFeedback", filter.feedbackFilter().name().toLowerCase(Locale.ROOT));
         model.addAttribute("currentPage", view.currentPage());
         model.addAttribute("totalPages", view.totalPages());
         model.addAttribute("totalCount", view.totalCount());

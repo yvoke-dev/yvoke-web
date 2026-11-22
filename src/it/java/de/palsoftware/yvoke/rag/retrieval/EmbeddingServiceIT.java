@@ -22,22 +22,23 @@ public class EmbeddingServiceIT {
     private static final int EXPECTED_DIMENSION = 1024;
     private static final double COSINE_THRESHOLD = 0.95;
 
-    @Autowired
-    private EmbeddingService embeddingService;
+    @Autowired private EmbeddingService embeddingService;
 
-    @Autowired
-    private Environment environment;
+    @Autowired private Environment environment;
 
     @Test
     public void testEmbeddingServiceIntegration() throws Exception {
         // Retrieve API key to verify if it is real
         String apiKey = environment.getProperty("app.ai.embedding.api-key");
         boolean isRealKey =
-            apiKey != null && !apiKey.isBlank() && !apiKey.equals("mock-key-for-skeleton")
-                && !apiKey.equals("placeholder-voyage-api-key");
+                apiKey != null
+                        && !apiKey.isBlank()
+                        && !apiKey.equals("mock-key-for-skeleton")
+                        && !apiKey.equals("placeholder-voyage-api-key");
 
-        Assumptions.assumeTrue(isRealKey,
-            "Skipping Voyage AI embedding integration test: no real VOYAGE_API_KEY configured.");
+        Assumptions.assumeTrue(
+                isRealKey,
+                "Skipping Voyage AI embedding integration test: no real VOYAGE_API_KEY configured.");
 
         // Embed single text
         float[] vector = embeddingService.embed(KNOWN_TEXT);
@@ -52,12 +53,15 @@ public class EmbeddingServiceIT {
         double similarity = calculateCosineSimilarity(vector, referenceVector);
         log.info("Calculated cosine similarity: {}", similarity);
 
-        assertThat(similarity).withFailMessage("Cosine similarity %.4f is below threshold %.2f",
-            similarity, COSINE_THRESHOLD).isGreaterThanOrEqualTo(COSINE_THRESHOLD);
+        assertThat(similarity)
+                .withFailMessage(
+                        "Cosine similarity %.4f is below threshold %.2f",
+                        similarity, COSINE_THRESHOLD)
+                .isGreaterThanOrEqualTo(COSINE_THRESHOLD);
 
         // Embed batch text
         List<float[]> batchVectors =
-            embeddingService.embedBatch(List.of(KNOWN_TEXT, "Another piece of documentation"));
+                embeddingService.embedBatch(List.of(KNOWN_TEXT, "Another piece of documentation"));
         assertThat(batchVectors).hasSize(2);
         assertThat(batchVectors.get(0).length).isEqualTo(EXPECTED_DIMENSION);
         assertThat(batchVectors.get(1).length).isEqualTo(EXPECTED_DIMENSION);
@@ -65,7 +69,7 @@ public class EmbeddingServiceIT {
 
     private float[] loadReferenceVector() throws Exception {
         try (InputStream is =
-            getClass().getClassLoader().getResourceAsStream("reference_vector.txt")) {
+                getClass().getClassLoader().getResourceAsStream("reference_vector.txt")) {
             if (is == null) {
                 throw new IllegalStateException("reference_vector.txt not found in classpath");
             }

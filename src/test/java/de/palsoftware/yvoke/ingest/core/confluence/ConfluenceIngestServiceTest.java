@@ -1,6 +1,5 @@
 package de.palsoftware.yvoke.ingest.core.confluence;
 
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -61,9 +60,9 @@ class ConfluenceIngestServiceTest {
     private static final UUID INSTANCE_ID = UUID.randomUUID();
     private static final String SLUG = "icc-wiki";
     private static final String CRAWL_KIND =
-        IngestJobKind.CONFLUENCE_IMPORT.getValue() + ":" + SLUG;
+            IngestJobKind.CONFLUENCE_IMPORT.getValue() + ":" + SLUG;
     private static final String PAGE_KIND =
-        IngestJobKind.CONFLUENCE_PAGE_IMPORT.getValue() + ":" + SLUG;
+            IngestJobKind.CONFLUENCE_PAGE_IMPORT.getValue() + ":" + SLUG;
     private static final String SOURCE_FILE = "https://example.com/wiki/spaces/SPACE/pages/page-1";
 
     private ConfluenceInstanceRepository instanceRepository;
@@ -84,7 +83,7 @@ class ConfluenceIngestServiceTest {
     private static final class NoopTransactionManager implements PlatformTransactionManager {
         @Override
         public TransactionStatus getTransaction(TransactionDefinition definition)
-            throws TransactionException {
+                throws TransactionException {
             return new SimpleTransactionStatus();
         }
 
@@ -110,21 +109,31 @@ class ConfluenceIngestServiceTest {
         when(applicationContext.getBean(JobService.class)).thenReturn(jobService);
         // Enqueue is idempotent per unit of work: the default is "this call created the job".
         when(jobService.enqueue(any()))
-            .thenAnswer(invocation -> EnqueueResult.created(UUID.randomUUID()));
+                .thenAnswer(invocation -> EnqueueResult.created(UUID.randomUUID()));
         // Cooperative cancellation reads the live status; RUNNING is "carry on".
         when(jobRepository.findStatusById(any())).thenReturn(Optional.of(JobStatus.RUNNING));
 
         configureTag("v1");
 
         // One embedding per input keeps the stub honest when a page splits into several chunks.
-        when(embeddingService.embedBatch(any())).thenAnswer(invocation -> {
-            List<?> inputs = invocation.getArgument(0);
-            return inputs.stream().map(in -> new float[1024]).toList();
-        });
+        when(embeddingService.embedBatch(any()))
+                .thenAnswer(invocation -> {
+                    List<?> inputs = invocation.getArgument(0);
+                    return inputs.stream().map(in -> new float[1024]).toList();
+                });
 
-        service = new ConfluenceIngestService(instanceRepository, confluenceClient,
-            confluenceConverter, embeddingService, documentRepository, sectionSummarizer,
-            jobRepository, transactionManager, applicationContext, resolvingPrompts());
+        service =
+                new ConfluenceIngestService(
+                        instanceRepository,
+                        confluenceClient,
+                        confluenceConverter,
+                        embeddingService,
+                        documentRepository,
+                        sectionSummarizer,
+                        jobRepository,
+                        transactionManager,
+                        applicationContext,
+                        resolvingPrompts());
     }
 
     /**
@@ -134,8 +143,10 @@ class ConfluenceIngestServiceTest {
      */
     private static IngestPrompts resolvingPrompts() {
         SystemPromptService prompts = mock(SystemPromptService.class);
-        when(prompts.requirePrompt(any(), any())).thenReturn(
-            new SystemPrompt(SUMMARIZE_PROMPT, SystemPromptType.SUMMARIZE, "SUMMARIZE.", ""));
+        when(prompts.requirePrompt(any(), any()))
+                .thenReturn(
+                        new SystemPrompt(
+                                SUMMARIZE_PROMPT, SystemPromptType.SUMMARIZE, "SUMMARIZE.", ""));
         return new IngestPrompts(prompts);
     }
 
@@ -150,9 +161,25 @@ class ConfluenceIngestServiceTest {
     }
 
     private void configureInstance(String tag, String includeLabels) {
-        instance = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", SLUG, "https://example.com/wiki",
-            "svc@example.com", "enc:token", "keyA", "SPACE", "123", includeLabels, "", "coll", tag,
-            false, true, null, null);
+        instance =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        SLUG,
+                        "https://example.com/wiki",
+                        "svc@example.com",
+                        "enc:token",
+                        "keyA",
+                        "SPACE",
+                        "123",
+                        includeLabels,
+                        "",
+                        "coll",
+                        tag,
+                        false,
+                        true,
+                        null,
+                        null);
         when(instanceRepository.findBySlug(SLUG)).thenReturn(Optional.of(instance));
         when(instanceRepository.findById(INSTANCE_ID)).thenReturn(Optional.of(instance));
         when(instanceRepository.existsById(INSTANCE_ID)).thenReturn(true);
@@ -171,9 +198,25 @@ class ConfluenceIngestServiceTest {
 
     private JobContext crawlJobContext(String kind, Map<String, Object> settings) {
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = new IngestionJob(UUID.randomUUID(), kind, "sourceRef", List.of(),
-            UUID.randomUUID(), "col", null, null, 0, 0, null, null, OffsetDateTime.now(), null,
-            null, settings, null);
+        IngestionJob job =
+                new IngestionJob(
+                        UUID.randomUUID(),
+                        kind,
+                        "sourceRef",
+                        List.of(),
+                        UUID.randomUUID(),
+                        "col",
+                        null,
+                        null,
+                        0,
+                        0,
+                        null,
+                        null,
+                        OffsetDateTime.now(),
+                        null,
+                        null,
+                        settings,
+                        null);
         when(ctx.job()).thenReturn(job);
         return ctx;
     }
@@ -220,32 +263,56 @@ class ConfluenceIngestServiceTest {
 
     private JobContext pageJobContext(Map<String, Object> settings, String collection) {
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = new IngestionJob(UUID.randomUUID(), PAGE_KIND, "sourceRef", List.of(),
-            UUID.randomUUID(), collection, null, null, 0, 0, null, null, OffsetDateTime.now(), null,
-            null, settings, null);
+        IngestionJob job =
+                new IngestionJob(
+                        UUID.randomUUID(),
+                        PAGE_KIND,
+                        "sourceRef",
+                        List.of(),
+                        UUID.randomUUID(),
+                        collection,
+                        null,
+                        null,
+                        0,
+                        0,
+                        null,
+                        null,
+                        OffsetDateTime.now(),
+                        null,
+                        null,
+                        settings,
+                        null);
         when(ctx.job()).thenReturn(job);
         return ctx;
     }
 
     @SafeVarargs
     private void crawlReturns(Map<String, Object>... pages) {
-        doAnswer(invocation -> {
-            Consumer<List<Map<String, Object>>> consumer = invocation.getArgument(1);
-            consumer.accept(List.of(pages));
-            return null;
-        }).when(confluenceClient).crawlAllDescendantPages(eq(instance), any());
+        doAnswer(
+                        invocation -> {
+                            Consumer<List<Map<String, Object>>> consumer =
+                                    invocation.getArgument(1);
+                            consumer.accept(List.of(pages));
+                            return null;
+                        })
+                .when(confluenceClient)
+                .crawlAllDescendantPages(eq(instance), any());
     }
 
     /** A paged crawl: the consumer is handed one batch per call, as the real client does. */
     @SafeVarargs
     private void crawlReturnsBatches(List<Map<String, Object>>... batches) {
-        doAnswer(invocation -> {
-            Consumer<List<Map<String, Object>>> consumer = invocation.getArgument(1);
-            for (List<Map<String, Object>> batch : batches) {
-                consumer.accept(batch);
-            }
-            return null;
-        }).when(confluenceClient).crawlAllDescendantPages(eq(instance), any());
+        doAnswer(
+                        invocation -> {
+                            Consumer<List<Map<String, Object>>> consumer =
+                                    invocation.getArgument(1);
+                            for (List<Map<String, Object>> batch : batches) {
+                                consumer.accept(batch);
+                            }
+                            return null;
+                        })
+                .when(confluenceClient)
+                .crawlAllDescendantPages(eq(instance), any());
     }
 
     private static Map<String, Object> page(String id, String title, int version) {
@@ -258,9 +325,25 @@ class ConfluenceIngestServiceTest {
         // for hours. If the slug it was enqueued under is later taken by a DIFFERENT Confluence
         // site, resolving by slug at execution time runs the crawl against that other site — with
         // this instance's credentials — and lands its pages in that site's collection.
-        ConfluenceInstance impostor = new ConfluenceInstance(UUID.randomUUID(), "Other Wiki", SLUG,
-            "https://other.example.com/wiki", "other@example.com", "enc:other", "keyB", "OTHER",
-            "999", "", "", "other-coll", null, false, true, null, null);
+        ConfluenceInstance impostor =
+                new ConfluenceInstance(
+                        UUID.randomUUID(),
+                        "Other Wiki",
+                        SLUG,
+                        "https://other.example.com/wiki",
+                        "other@example.com",
+                        "enc:other",
+                        "keyB",
+                        "OTHER",
+                        "999",
+                        "",
+                        "",
+                        "other-coll",
+                        null,
+                        false,
+                        true,
+                        null,
+                        null);
         when(instanceRepository.findBySlug(SLUG)).thenReturn(Optional.of(impostor));
 
         crawlReturns(page("page-1", "Page 1", 4));
@@ -292,7 +375,7 @@ class ConfluenceIngestServiceTest {
         assertThat(counts.docs()).isEqualTo(1);
 
         ArgumentCaptor<EnqueueRequest> requestCaptor =
-            ArgumentCaptor.forClass(EnqueueRequest.class);
+                ArgumentCaptor.forClass(EnqueueRequest.class);
         verify(jobService).enqueue(requestCaptor.capture());
 
         EnqueueRequest request = requestCaptor.getValue();
@@ -317,7 +400,8 @@ class ConfluenceIngestServiceTest {
         service.ingest(ctx);
 
         assertThat(reportedMessages(ctx))
-            .anyMatch(message -> message.contains("8 page(s)") && message.contains("kb-public"));
+                .anyMatch(
+                        message -> message.contains("8 page(s)") && message.contains("kb-public"));
     }
 
     /** The count is one extra request per crawl, never one per page. */
@@ -355,7 +439,7 @@ class ConfluenceIngestServiceTest {
         configureInstance("v1", "kb-public");
         crawlReturns(page("page-1", "Page 1", 4));
         when(confluenceClient.countPagesIgnoringIncludeLabels(instance))
-            .thenThrow(new IllegalStateException("Confluence rate-limited the count"));
+                .thenThrow(new IllegalStateException("Confluence rate-limited the count"));
 
         JobCounts counts = service.ingest(crawlJobContext());
 
@@ -373,8 +457,9 @@ class ConfluenceIngestServiceTest {
         when(confluenceClient.countPagesIgnoringIncludeLabels(instance)).thenReturn(12);
 
         assertThatThrownBy(() -> service.ingest(crawlJobContext()))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("No pages found")
-            .hasMessageContaining("12 page(s)");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("No pages found")
+                .hasMessageContaining("12 page(s)");
     }
 
     /**
@@ -384,51 +469,53 @@ class ConfluenceIngestServiceTest {
      * status, an unparseable stored version and a crawl result carrying no version at all all fall
      * through the unstubbed {@code Optional.empty()} branch and prove nothing about the predicate.
      *
-     * <p>
-     * Each one is a silent corpus failure if it ever starts skipping. A row that is not
-     * {@code completed} is the record of an ingest that ABORTED — suppressing it makes the
-     * half-written page permanently unrepairable, because no later crawl will ever offer it again.
-     * An unparseable or absent version means "we do not know which revision is stored", and
-     * skipping on unknown freezes the page at whatever revision it happened to hold while
-     * Confluence moves on. Neither surfaces: the crawl logs them as ordinary skips and the job goes
-     * green. The last page is the control — genuinely up to date, and still skipped — so the test
-     * cannot pass by simply never skipping.
+     * <p>Each one is a silent corpus failure if it ever starts skipping. A row that is not {@code
+     * completed} is the record of an ingest that ABORTED — suppressing it makes the half-written
+     * page permanently unrepairable, because no later crawl will ever offer it again. An
+     * unparseable or absent version means "we do not know which revision is stored", and skipping
+     * on unknown freezes the page at whatever revision it happened to hold while Confluence moves
+     * on. Neither surfaces: the crawl logs them as ordinary skips and the job goes green. The last
+     * page is the control — genuinely up to date, and still skipped — so the test cannot pass by
+     * simply never skipping.
      */
     @Test
     void aPageIsReIngestedUnlessItsStoredRowIsCompletedWithAParsableMatchingVersion() {
         String pageUrl = "https://example.com/wiki/spaces/SPACE/pages/";
         assertThat(SOURCE_FILE).isEqualTo(pageUrl + "page-1");
 
-        crawlReturns(page("page-1", "Aborted mid-ingest", 4), page("page-2", "Failed ingest", 4),
-            page("page-3", "Garbled stored version", 4),
-            Map.<String, Object>of("id", "page-4", "title", "Crawled without a version"),
-            page("page-5", "Genuinely unchanged", 4));
+        crawlReturns(
+                page("page-1", "Aborted mid-ingest", 4),
+                page("page-2", "Failed ingest", 4),
+                page("page-3", "Garbled stored version", 4),
+                Map.<String, Object>of("id", "page-4", "title", "Crawled without a version"),
+                page("page-5", "Genuinely unchanged", 4));
 
         // 'pending'/'failed' = the previous ingest never finished; the page must be offered again.
-        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(pageUrl + "page-1"),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("pending", "4")));
-        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(pageUrl + "page-2"),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("failed", "4")));
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), eq("v1"), eq(pageUrl + "page-1"), eq("confluence")))
+                .thenReturn(Optional.of(new DocumentMetadataAndStatus("pending", "4")));
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), eq("v1"), eq(pageUrl + "page-2"), eq("confluence")))
+                .thenReturn(Optional.of(new DocumentMetadataAndStatus("failed", "4")));
         // Completed, but the stored version is not a number, so nothing is known about it.
-        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(pageUrl + "page-3"),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4.1-SNAPSHOT")));
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), eq("v1"), eq(pageUrl + "page-3"), eq("confluence")))
+                .thenReturn(
+                        Optional.of(new DocumentMetadataAndStatus("completed", "4.1-SNAPSHOT")));
         // Completed at 4 — but the crawl result reports no version, so equality is unknowable.
-        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(pageUrl + "page-4"),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
-        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(pageUrl + "page-5"),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), eq("v1"), eq(pageUrl + "page-4"), eq("confluence")))
+                .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), eq("v1"), eq(pageUrl + "page-5"), eq("confluence")))
+                .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
 
         JobCounts counts = service.ingest(crawlJobContext());
 
         ArgumentCaptor<EnqueueRequest> enqueued = ArgumentCaptor.forClass(EnqueueRequest.class);
         verify(jobService, times(4)).enqueue(enqueued.capture());
         assertThat(enqueued.getAllValues().stream().map(r -> r.settings().get("pageId")).toList())
-            .containsExactly("page-1", "page-2", "page-3", "page-4");
+                .containsExactly("page-1", "page-2", "page-3", "page-4");
         assertThat(counts.docs()).isEqualTo(4);
     }
 
@@ -436,9 +523,9 @@ class ConfluenceIngestServiceTest {
     void testIngestSkipsEnqueuingIfVersionMatches() {
         crawlReturns(page("page-1", "Page 1", 4));
 
-        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(SOURCE_FILE),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), eq("v1"), eq(SOURCE_FILE), eq("confluence")))
+                .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
 
         JobCounts counts = service.ingest(crawlJobContext());
         assertThat(counts.docs()).isEqualTo(0); // 0 queued
@@ -462,11 +549,14 @@ class ConfluenceIngestServiceTest {
         // — the exact silent-empty outcome the validator exists to prevent. Widening this catch to
         // Exception or RuntimeException reintroduces that.
         crawlReturns(page("page-1", "Page 1", 4), page("page-2", "Page 2", 4));
-        when(jobService.enqueue(any())).thenThrow(
-            new IllegalArgumentException("Tag '9.9' is not declared on collection 'OIM'"));
+        when(jobService.enqueue(any()))
+                .thenThrow(
+                        new IllegalArgumentException(
+                                "Tag '9.9' is not declared on collection 'OIM'"));
 
         assertThatThrownBy(() -> service.ingest(crawlJobContext()))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not declared");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not declared");
 
         // It must abort on the FIRST page, not plough through the whole tree.
         verify(jobService, times(1)).enqueue(any());
@@ -475,8 +565,10 @@ class ConfluenceIngestServiceTest {
     @Test
     void testIngestKeepsCrawlingWhenAPageIsAlreadyQueued() {
         crawlReturns(page("page-1", "Page 1", 4), page("page-2", "Page 2", 4));
-        when(jobService.enqueue(any())).thenReturn(EnqueueResult.adopted(UUID.randomUUID()),
-            EnqueueResult.created(UUID.randomUUID()));
+        when(jobService.enqueue(any()))
+                .thenReturn(
+                        EnqueueResult.adopted(UUID.randomUUID()),
+                        EnqueueResult.created(UUID.randomUUID()));
 
         JobCounts counts = service.ingest(crawlJobContext());
 
@@ -496,14 +588,16 @@ class ConfluenceIngestServiceTest {
      */
     @Test
     void crawlStopsFanningOutPagesWhenItIsCancelled() {
-        crawlReturnsBatches(List.of(page("page-1", "Page 1", 4)),
-            List.of(page("page-2", "Page 2", 4), page("page-3", "Page 3", 4)));
+        crawlReturnsBatches(
+                List.of(page("page-1", "Page 1", 4)),
+                List.of(page("page-2", "Page 2", 4), page("page-3", "Page 3", 4)));
         // Running when the first batch arrives, stopped by the time the second one does.
-        when(jobRepository.findStatusById(any())).thenReturn(Optional.of(JobStatus.RUNNING),
-            Optional.of(JobStatus.CANCELLED));
+        when(jobRepository.findStatusById(any()))
+                .thenReturn(Optional.of(JobStatus.RUNNING), Optional.of(JobStatus.CANCELLED));
 
         assertThatThrownBy(() -> service.ingest(crawlJobContext()))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("cancelled");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cancelled");
 
         // Only the first batch was fanned out; the second batch's pages never reached the queue.
         verify(jobService, times(1)).enqueue(any());
@@ -520,14 +614,16 @@ class ConfluenceIngestServiceTest {
      */
     @Test
     void crawlStopsFanningOutPagesWhenItsInstanceIsDeletedMidCrawl() {
-        crawlReturnsBatches(List.of(page("page-1", "Page 1", 4)),
-            List.of(page("page-2", "Page 2", 4), page("page-3", "Page 3", 4)));
+        crawlReturnsBatches(
+                List.of(page("page-1", "Page 1", 4)),
+                List.of(page("page-2", "Page 2", 4), page("page-3", "Page 3", 4)));
         // Present when the first batch arrives, deleted by the time the second one does.
         when(instanceRepository.existsById(INSTANCE_ID)).thenReturn(true, false);
 
         assertThatThrownBy(() -> service.ingest(crawlJobContext()))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("iCC Wiki")
-            .hasMessageContaining("deleted");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("iCC Wiki")
+                .hasMessageContaining("deleted");
 
         // Only the first batch was fanned out; the second batch's pages never reached the queue.
         verify(jobService, times(1)).enqueue(any());
@@ -536,8 +632,9 @@ class ConfluenceIngestServiceTest {
     /** One lookup per batch, never one per page — a full-space crawl pages 50 at a time. */
     @Test
     void theInstanceExistenceCheckCostsOneLookupPerBatch() {
-        crawlReturnsBatches(List.of(page("page-1", "Page 1", 4), page("page-2", "Page 2", 4)),
-            List.of(page("page-3", "Page 3", 4)));
+        crawlReturnsBatches(
+                List.of(page("page-1", "Page 1", 4), page("page-2", "Page 2", 4)),
+                List.of(page("page-3", "Page 3", 4)));
 
         service.ingest(crawlJobContext());
 
@@ -553,10 +650,11 @@ class ConfluenceIngestServiceTest {
     void crawlCountsAnUnenqueueablePageAsASkipAndKeepsGoing() {
         crawlReturns(page("page-1", "Page 1", 4), page("page-2", "Page 2", 4));
         when(jobService.enqueue(any()))
-            .thenThrow(new IllegalStateException(
-                "Could not enqueue job (kind=confluence-page-import): an active job for the same"
-                    + " work kept appearing and finishing; retry."))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenThrow(
+                        new IllegalStateException(
+                                "Could not enqueue job (kind=confluence-page-import): an active job for the same"
+                                        + " work kept appearing and finishing; retry."))
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         JobCounts counts = service.ingest(crawlJobContext());
 
@@ -567,20 +665,17 @@ class ConfluenceIngestServiceTest {
     /**
      * Two halves of the page-job snapshot that no test has ever looked at, and both fail silently.
      *
-     * <p>
-     * {@code sourceRef} is not a label: it is one column of
-     * {@code ux_ingestion_jobs_active_work (kind, source_ref, collection_id, tags)}, the partial
-     * unique index that makes {@code JobService.enqueue} ADOPT an in-flight job instead of creating
-     * a second one. A re-triggered crawl draining alongside the first is an ordinary event here, so
-     * if the shape of this key changes — dropping the space, say, or switching to the page title —
-     * the two crawls stop colliding and every page is imported TWICE concurrently, each run
-     * deleting and re-inserting the other's chunks under one document id. Nothing errors; the two
-     * jobs both report success.
+     * <p>{@code sourceRef} is not a label: it is one column of {@code ux_ingestion_jobs_active_work
+     * (kind, source_ref, collection_id, tags)}, the partial unique index that makes {@code
+     * JobService.enqueue} ADOPT an in-flight job instead of creating a second one. A re-triggered
+     * crawl draining alongside the first is an ordinary event here, so if the shape of this key
+     * changes — dropping the space, say, or switching to the page title — the two crawls stop
+     * colliding and every page is imported TWICE concurrently, each run deleting and re-inserting
+     * the other's chunks under one document id. Nothing errors; the two jobs both report success.
      * {@code crawlSnapshotsTheResolvedTargetIntoEveryPageJobAndNeverTheToken} captures this very
      * request and asserts every settings key, but never {@code sourceRef()}.
      *
-     * <p>
-     * The second half is {@code required()}. Every {@code pageJobContext} fixture in this class
+     * <p>The second half is {@code required()}. Every {@code pageJobContext} fixture in this class
      * supplies domain/space/collection, so its throw has never executed once. It has to throw,
      * because the branch next door — a job with NO {@code instanceId} at all — deliberately falls
      * back to the LIVE instance row: a null-tolerant {@code required()} would send a partially
@@ -598,8 +693,8 @@ class ConfluenceIngestServiceTest {
         ArgumentCaptor<EnqueueRequest> captor = ArgumentCaptor.forClass(EnqueueRequest.class);
         verify(jobService).enqueue(captor.capture());
         assertThat(captor.getValue().sourceRef())
-            .as("the admission key of ux_ingestion_jobs_active_work: one job per space + page")
-            .isEqualTo("confluence/SPACE/page-1");
+                .as("the admission key of ux_ingestion_jobs_active_work: one job per space + page")
+                .isEqualTo("confluence/SPACE/page-1");
 
         // A snapshot that lost any one of its three target keys must FAIL, never quietly fall
         // through to the live instance's current collection.
@@ -609,15 +704,16 @@ class ConfluenceIngestServiceTest {
             JobContext ctx = pageJobContext(partial);
 
             assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))
-                .as("a page job missing its '%s' snapshot must fail loudly", key)
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining(key)
-                .hasMessageContaining("re-run the sync");
+                    .as("a page job missing its '%s' snapshot must fail loudly", key)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining(key)
+                    .hasMessageContaining("re-run the sync");
         }
 
         // ...and nothing was fetched or written on any of those three attempts.
         verify(confluenceClient, never()).getPageContent(any(), anyString());
-        verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
-            nullable(String.class), any(), any(), any());
+        verify(documentRepository, never())
+                .upsertDocumentBySourceFile(any(), nullable(String.class), any(), any(), any());
     }
 
     /**
@@ -629,21 +725,23 @@ class ConfluenceIngestServiceTest {
     void ingestPageAbortsBeforeWritingWhenTheJobIsCancelled() {
         JobContext ctx = pageJobContext(5);
         when(confluenceClient.getPageContent(instance, "page-1"))
-            .thenReturn(pageContent("<h1>Page 1 Content</h1>"));
-        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
-            anyString())).thenReturn("# Page 1 Content\n## Section 1\nSome body text.");
+                .thenReturn(pageContent("<h1>Page 1 Content</h1>"));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), anyBoolean(), eq("page-1"), anyString()))
+                .thenReturn("# Page 1 Content\n## Section 1\nSome body text.");
         // Running when the job starts, cancelled by the time the body has been fetched.
-        when(jobRepository.findStatusById(any())).thenReturn(Optional.of(JobStatus.RUNNING),
-            Optional.of(JobStatus.CANCELLED));
+        when(jobRepository.findStatusById(any()))
+                .thenReturn(Optional.of(JobStatus.RUNNING), Optional.of(JobStatus.CANCELLED));
 
         assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("cancelled");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cancelled");
 
         verify(confluenceClient).getPageContent(instance, "page-1");
-        verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
-            nullable(String.class), any(), any(), any());
-        verify(documentRepository, never()).insertChunks(any(), any(), nullable(String.class),
-            any(), any(), any());
+        verify(documentRepository, never())
+                .upsertDocumentBySourceFile(any(), nullable(String.class), any(), any(), any());
+        verify(documentRepository, never())
+                .insertChunks(any(), any(), nullable(String.class), any(), any(), any());
     }
 
     /** A job row that no longer exists cannot be written to either — treated as cancelled. */
@@ -653,7 +751,7 @@ class ConfluenceIngestServiceTest {
         when(jobRepository.findStatusById(any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))
-            .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class);
 
         verify(confluenceClient, never()).getPageContent(any(), anyString());
     }
@@ -662,9 +760,9 @@ class ConfluenceIngestServiceTest {
     void testIngestPageSkipsIfVersionMatchesAndCompleted() {
         JobContext ctx = pageJobContext(4);
 
-        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(SOURCE_FILE),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), eq("v1"), eq(SOURCE_FILE), eq("confluence")))
+                .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
 
         JobCounts counts = service.ingestPage(ctx, "page-1", "Page 1");
         assertThat(counts.docs()).isEqualTo(1);
@@ -678,25 +776,27 @@ class ConfluenceIngestServiceTest {
     void testIngestPagePerformsImportIfVersionDiffers() {
         JobContext ctx = pageJobContext(5);
 
-        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(SOURCE_FILE),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), eq("v1"), eq(SOURCE_FILE), eq("confluence")))
+                .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
 
         when(confluenceClient.getPageContent(instance, "page-1"))
-            .thenReturn(pageContent("<h1>Page 1 Content</h1>"));
-        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
-            anyString())).thenReturn("# Page 1 Content\n## Section 1\nSome body text.");
+                .thenReturn(pageContent("<h1>Page 1 Content</h1>"));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), anyBoolean(), eq("page-1"), anyString()))
+                .thenReturn("# Page 1 Content\n## Section 1\nSome body text.");
 
         UUID docId = UUID.randomUUID();
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(docId);
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(docId);
 
         JobCounts counts = service.ingestPage(ctx, "page-1", "Page 1");
         assertThat(counts.docs()).isEqualTo(1);
         assertThat(counts.chunks()).isGreaterThan(0);
 
-        verify(documentRepository).updateMetadataKey(eq(docId), eq("confluence_page_version"),
-            eq(5));
+        verify(documentRepository)
+                .updateMetadataKey(eq(docId), eq("confluence_page_version"), eq(5));
         verify(sectionSummarizer).generateSummaries(eq(docId), any(), any(), eq(ctx), any());
     }
 
@@ -718,11 +818,12 @@ class ConfluenceIngestServiceTest {
         JobContext ctx = pageJobContext(settings);
 
         when(confluenceClient.getPageContent(any(), eq("page-1")))
-            .thenReturn(pageContent("<p>x</p>"));
+                .thenReturn(pageContent("<p>x</p>"));
         when(confluenceConverter.convertToMarkdown(any(), anyBoolean(), eq("page-1"), anyString()))
-            .thenReturn("# Heading\n\nBody prose.");
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(UUID.randomUUID());
+                .thenReturn("# Heading\n\nBody prose.");
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(UUID.randomUUID());
 
         service.ingestPage(ctx, "page-1", "Page 1");
 
@@ -737,23 +838,42 @@ class ConfluenceIngestServiceTest {
         // space and attachment policy. The SITE stays the same — repointing the connector at
         // another site is refused outright (see the cross-site tests below), because the body
         // would then be fetched from a site the snapshot knows nothing about.
-        ConfluenceInstance retargeted = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", SLUG,
-            "https://example.com/wiki", "svc@example.com", "enc:token", "keyA", "OTHER", "999", "",
-            "", "other-coll", "v9", true, true, null, null);
+        ConfluenceInstance retargeted =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        SLUG,
+                        "https://example.com/wiki",
+                        "svc@example.com",
+                        "enc:token",
+                        "keyA",
+                        "OTHER",
+                        "999",
+                        "",
+                        "",
+                        "other-coll",
+                        "v9",
+                        true,
+                        true,
+                        null,
+                        null);
         when(instanceRepository.findById(INSTANCE_ID)).thenReturn(Optional.of(retargeted));
 
         when(confluenceClient.getPageContent(retargeted, "page-1"))
-            .thenReturn(pageContent("<p>x</p>"));
-        when(confluenceConverter.convertToMarkdown(eq(retargeted), eq(false), eq("page-1"),
-            anyString())).thenReturn("Body prose.");
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(UUID.randomUUID());
+                .thenReturn(pageContent("<p>x</p>"));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(retargeted), eq(false), eq("page-1"), anyString()))
+                .thenReturn("Body prose.");
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(UUID.randomUUID());
 
         service.ingestPage(ctx, "page-1", "Page 1");
 
         // Target: the snapshot, not the edited row.
-        verify(documentRepository).upsertDocumentBySourceFile(eq("coll"), eq("v1"), eq(SOURCE_FILE),
-            eq("confluence"), eq("Page 1"));
+        verify(documentRepository)
+                .upsertDocumentBySourceFile(
+                        eq("coll"), eq("v1"), eq(SOURCE_FILE), eq("confluence"), eq("Page 1"));
         // Credentials: resolved by the id recorded at crawl time — the ONLY thing read live.
         verify(instanceRepository).findById(INSTANCE_ID);
         verify(instanceRepository, never()).findBySlug(anyString());
@@ -771,17 +891,24 @@ class ConfluenceIngestServiceTest {
         verify(jobService).enqueue(captor.capture());
         Map<String, Object> settings = captor.getValue().settings();
 
-        assertThat(settings).containsEntry("instanceId", INSTANCE_ID.toString())
-            .containsEntry("instanceName", "iCC Wiki")
-            .containsEntry("domain", "https://example.com/wiki").containsEntry("space", "SPACE")
-            .containsEntry("collection", "coll").containsEntry("tag", "v1")
-            .containsEntry("processAttachments", false);
+        assertThat(settings)
+                .containsEntry("instanceId", INSTANCE_ID.toString())
+                .containsEntry("instanceName", "iCC Wiki")
+                .containsEntry("domain", "https://example.com/wiki")
+                .containsEntry("space", "SPACE")
+                .containsEntry("collection", "coll")
+                .containsEntry("tag", "v1")
+                .containsEntry("processAttachments", false);
         // ingestion_jobs.settings is JSONB in the database and is rendered on the job detail page:
         // no credential may ever be written into it.
-        assertThat(settings.keySet()).noneMatch(key -> key.toLowerCase().contains("token")
-            || key.toLowerCase().contains("secret") || key.toLowerCase().contains("password"));
+        assertThat(settings.keySet())
+                .noneMatch(key ->
+                        key.toLowerCase().contains("token")
+                                || key.toLowerCase().contains("secret")
+                                || key.toLowerCase().contains("password"));
         assertThat(settings.values())
-            .noneMatch(value -> value != null && value.toString().contains(instance.apiTokenEnc()));
+                .noneMatch(value ->
+                        value != null && value.toString().contains(instance.apiTokenEnc()));
     }
 
     @Test
@@ -795,7 +922,7 @@ class ConfluenceIngestServiceTest {
         assertThat(captor.getValue().kind()).isEqualTo("confluence-page-import:icc-wiki");
         // The engine routes on the base kind (JobServiceTest pins the split).
         assertThat(captor.getValue().kind().split(":")[0])
-            .isEqualTo(IngestJobKind.CONFLUENCE_PAGE_IMPORT.getValue());
+                .isEqualTo(IngestJobKind.CONFLUENCE_PAGE_IMPORT.getValue());
     }
 
     @Test
@@ -814,9 +941,25 @@ class ConfluenceIngestServiceTest {
     @Test
     void crawlOfAJobWithoutAnInstanceSuffixFallsBackToTheDefaultInstance() {
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = new IngestionJob(UUID.randomUUID(),
-            IngestJobKind.CONFLUENCE_IMPORT.getValue(), "sourceRef", List.of(), UUID.randomUUID(),
-            "col", null, null, 0, 0, null, null, OffsetDateTime.now(), null, null, Map.of(), null);
+        IngestionJob job =
+                new IngestionJob(
+                        UUID.randomUUID(),
+                        IngestJobKind.CONFLUENCE_IMPORT.getValue(),
+                        "sourceRef",
+                        List.of(),
+                        UUID.randomUUID(),
+                        "col",
+                        null,
+                        null,
+                        0,
+                        0,
+                        null,
+                        null,
+                        OffsetDateTime.now(),
+                        null,
+                        null,
+                        Map.of(),
+                        null);
         when(ctx.job()).thenReturn(job);
         when(instanceRepository.findBySlug("default")).thenReturn(Optional.of(instance));
         crawlReturns(page("page-1", "Page 1", 4));
@@ -829,29 +972,63 @@ class ConfluenceIngestServiceTest {
     @Test
     void crawlOfAnUnknownInstanceFailsWithAMessageNamingIt() {
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = new IngestionJob(UUID.randomUUID(), "confluence-import:gone",
-            "sourceRef", List.of(), UUID.randomUUID(), "col", null, null, 0, 0, null, null,
-            OffsetDateTime.now(), null, null, Map.of(), null);
+        IngestionJob job =
+                new IngestionJob(
+                        UUID.randomUUID(),
+                        "confluence-import:gone",
+                        "sourceRef",
+                        List.of(),
+                        UUID.randomUUID(),
+                        "col",
+                        null,
+                        null,
+                        0,
+                        0,
+                        null,
+                        null,
+                        OffsetDateTime.now(),
+                        null,
+                        null,
+                        Map.of(),
+                        null);
         when(ctx.job()).thenReturn(job);
         when(instanceRepository.findBySlug("gone")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.ingest(ctx)).isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("gone");
+        assertThatThrownBy(() -> service.ingest(ctx))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("gone");
     }
 
     @Test
     void crawlOfADisabledInstanceFails() {
-        ConfluenceInstance disabled = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", SLUG,
-            "https://example.com/wiki", "svc@example.com", "enc:token", "keyA", "SPACE", "123", "",
-            "", "coll", "v1", false, false, null, null);
+        ConfluenceInstance disabled =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        SLUG,
+                        "https://example.com/wiki",
+                        "svc@example.com",
+                        "enc:token",
+                        "keyA",
+                        "SPACE",
+                        "123",
+                        "",
+                        "",
+                        "coll",
+                        "v1",
+                        false,
+                        false,
+                        null,
+                        null);
         when(instanceRepository.findBySlug(SLUG)).thenReturn(Optional.of(disabled));
         // The crawl resolves by the snapshotted id, so that is the lookup that must yield the
         // disabled row for this test to exercise the check at all.
         when(instanceRepository.findById(INSTANCE_ID)).thenReturn(Optional.of(disabled));
 
         assertThatThrownBy(() -> service.ingest(crawlJobContext()))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("iCC Wiki")
-            .hasMessageContaining("disabled");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("iCC Wiki")
+                .hasMessageContaining("disabled");
         verify(confluenceClient, never()).crawlAllDescendantPages(any(), any());
     }
 
@@ -861,8 +1038,9 @@ class ConfluenceIngestServiceTest {
         when(instanceRepository.findById(INSTANCE_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("iCC Wiki")
-            .hasMessageContaining("re-run the sync");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("iCC Wiki")
+                .hasMessageContaining("re-run the sync");
     }
 
     // ---------------------------------------------------------------------
@@ -878,22 +1056,39 @@ class ConfluenceIngestServiceTest {
     void pageJobWhoseInstanceWasRepointedAtAnotherSiteFailsAndWritesNothing() {
         JobContext ctx = pageJobContext(7);
 
-        ConfluenceInstance otherSite = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", SLUG,
-            "https://other-wiki.example.com/wiki", "svc@example.com", "enc:token", "keyA", "SPACE",
-            "123", "", "", "coll", "v1", false, true, null, null);
+        ConfluenceInstance otherSite =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        SLUG,
+                        "https://other-wiki.example.com/wiki",
+                        "svc@example.com",
+                        "enc:token",
+                        "keyA",
+                        "SPACE",
+                        "123",
+                        "",
+                        "",
+                        "coll",
+                        "v1",
+                        false,
+                        true,
+                        null,
+                        null);
         when(instanceRepository.findById(INSTANCE_ID)).thenReturn(Optional.of(otherSite));
 
         assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("iCC Wiki")
-            .hasMessageContaining("https://example.com/wiki")
-            .hasMessageContaining("https://other-wiki.example.com/wiki")
-            .hasMessageContaining("re-run the sync");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("iCC Wiki")
+                .hasMessageContaining("https://example.com/wiki")
+                .hasMessageContaining("https://other-wiki.example.com/wiki")
+                .hasMessageContaining("re-run the sync");
 
         verify(confluenceClient, never()).getPageContent(any(), anyString());
-        verify(confluenceConverter, never()).convertToMarkdown(any(), anyBoolean(), anyString(),
-            anyString());
-        verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
-            nullable(String.class), any(), any(), any());
+        verify(confluenceConverter, never())
+                .convertToMarkdown(any(), anyBoolean(), anyString(), anyString());
+        verify(documentRepository, never())
+                .upsertDocumentBySourceFile(any(), nullable(String.class), any(), any(), any());
     }
 
     /** The comparison is over canonical domains, so casing and a trailing slash are not a move. */
@@ -902,16 +1097,16 @@ class ConfluenceIngestServiceTest {
         Map<String, Object> settings = pageSettings(4);
         settings.put("domain", "HTTPS://Example.COM/wiki/");
         JobContext ctx = pageJobContext(settings);
-        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(SOURCE_FILE),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), eq("v1"), eq(SOURCE_FILE), eq("confluence")))
+                .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
 
         // Stubbed because the page IS fetched here: this test pins the moved-site guard (casing
         // and a trailing slash are not a move, so nothing throws), not the version skip — the
         // skip cannot fire, because source_file is built from the raw domain while the guard
         // compares canonical ones.
         when(confluenceClient.getPageContent(any(), anyString()))
-            .thenReturn(pageContent("<p>body</p>"));
+                .thenReturn(pageContent("<p>body</p>"));
 
         assertThat(service.ingestPage(ctx, "page-1", "Page 1").docs()).isEqualTo(1);
     }
@@ -926,18 +1121,36 @@ class ConfluenceIngestServiceTest {
     @Test
     void pageJobOfADisabledInstanceStopsInsteadOfDrainingTheQueue() {
         JobContext ctx = pageJobContext(4);
-        ConfluenceInstance disabled = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", SLUG,
-            "https://example.com/wiki", "svc@example.com", "enc:token", "keyA", "SPACE", "123", "",
-            "", "coll", "v1", false, false, null, null);
+        ConfluenceInstance disabled =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        SLUG,
+                        "https://example.com/wiki",
+                        "svc@example.com",
+                        "enc:token",
+                        "keyA",
+                        "SPACE",
+                        "123",
+                        "",
+                        "",
+                        "coll",
+                        "v1",
+                        false,
+                        false,
+                        null,
+                        null);
         when(instanceRepository.findById(INSTANCE_ID)).thenReturn(Optional.of(disabled));
 
         assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("iCC Wiki")
-            .hasMessageContaining("disabled").hasMessageContaining("re-enable");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("iCC Wiki")
+                .hasMessageContaining("disabled")
+                .hasMessageContaining("re-enable");
 
         verify(confluenceClient, never()).getPageContent(any(), anyString());
-        verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
-            nullable(String.class), any(), any(), any());
+        verify(documentRepository, never())
+                .upsertDocumentBySourceFile(any(), nullable(String.class), any(), any(), any());
     }
 
     /**
@@ -946,11 +1159,22 @@ class ConfluenceIngestServiceTest {
      */
     @Test
     void legacyPageJobWithoutASnapshotFallsBackToTheInstance() {
-        JobContext ctx = pageJobContext(new HashMap<>(Map.of("pageId", "page-1", "title", "Page 1",
-            "pageVersion", 4, IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT)), "coll");
-        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(SOURCE_FILE),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
+        JobContext ctx =
+                pageJobContext(
+                        new HashMap<>(
+                                Map.of(
+                                        "pageId",
+                                        "page-1",
+                                        "title",
+                                        "Page 1",
+                                        "pageVersion",
+                                        4,
+                                        IngestPrompts.SETTING_SUMMARIZE_PROMPT,
+                                        SUMMARIZE_PROMPT)),
+                        "coll");
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), eq("v1"), eq(SOURCE_FILE), eq("confluence")))
+                .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "4")));
 
         JobCounts counts = service.ingestPage(ctx, "page-1", "Page 1");
 
@@ -968,17 +1192,29 @@ class ConfluenceIngestServiceTest {
      */
     @Test
     void legacyPageJobWhoseCollectionNoLongerMatchesTheInstanceIsRefused() {
-        JobContext ctx = pageJobContext(new HashMap<>(Map.of("pageId", "page-1", "title", "Page 1",
-            "pageVersion", 4, IngestPrompts.SETTING_SUMMARIZE_PROMPT, SUMMARIZE_PROMPT)),
-            "old-coll");
+        JobContext ctx =
+                pageJobContext(
+                        new HashMap<>(
+                                Map.of(
+                                        "pageId",
+                                        "page-1",
+                                        "title",
+                                        "Page 1",
+                                        "pageVersion",
+                                        4,
+                                        IngestPrompts.SETTING_SUMMARIZE_PROMPT,
+                                        SUMMARIZE_PROMPT)),
+                        "old-coll");
 
         assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Page 1"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("old-coll")
-            .hasMessageContaining("coll").hasMessageContaining("re-run the sync");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("old-coll")
+                .hasMessageContaining("coll")
+                .hasMessageContaining("re-run the sync");
 
         verify(confluenceClient, never()).getPageContent(any(), anyString());
-        verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
-            nullable(String.class), any(), any(), any());
+        verify(documentRepository, never())
+                .upsertDocumentBySourceFile(any(), nullable(String.class), any(), any(), any());
     }
 
     @Test
@@ -988,16 +1224,18 @@ class ConfluenceIngestServiceTest {
         JobContext ctx = pageJobContext(settings);
 
         when(confluenceClient.getPageContent(instance, "page-1"))
-            .thenReturn(pageContent("<p>x</p>"));
-        when(confluenceConverter.convertToMarkdown(eq(instance), eq(true), eq("page-1"),
-            anyString())).thenReturn("Body prose.");
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(UUID.randomUUID());
+                .thenReturn(pageContent("<p>x</p>"));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), eq(true), eq("page-1"), anyString()))
+                .thenReturn("Body prose.");
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(UUID.randomUUID());
 
         service.ingestPage(ctx, "page-1", "Page 1");
 
-        verify(confluenceConverter).convertToMarkdown(eq(instance), eq(true), eq("page-1"),
-            anyString());
+        verify(confluenceConverter)
+                .convertToMarkdown(eq(instance), eq(true), eq("page-1"), anyString());
     }
 
     // ---------------------------------------------------------------------
@@ -1008,11 +1246,13 @@ class ConfluenceIngestServiceTest {
     void pageWithoutAnyHeadingStillProducesChunks() {
         JobContext ctx = pageJobContext((Integer) null);
         when(confluenceClient.getPageContent(instance, "page-1"))
-            .thenReturn(pageContent("<p>prose</p>"));
-        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
-            anyString())).thenReturn("Plain prose with no heading whatsoever.");
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(UUID.randomUUID());
+                .thenReturn(pageContent("<p>prose</p>"));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), anyBoolean(), eq("page-1"), anyString()))
+                .thenReturn("Plain prose with no heading whatsoever.");
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(UUID.randomUUID());
 
         JobCounts counts = service.ingestPage(ctx, "page-1", "Prose Page");
 
@@ -1024,11 +1264,13 @@ class ConfluenceIngestServiceTest {
     void pageWhoseOnlyHeadingIsALeadingH1StillProducesChunks() {
         JobContext ctx = pageJobContext((Integer) null);
         when(confluenceClient.getPageContent(instance, "page-1"))
-            .thenReturn(pageContent("<h1>Overview</h1>"));
-        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
-            anyString())).thenReturn("# Overview\n\nThe only body text on the page.");
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(UUID.randomUUID());
+                .thenReturn(pageContent("<h1>Overview</h1>"));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), anyBoolean(), eq("page-1"), anyString()))
+                .thenReturn("# Overview\n\nThe only body text on the page.");
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(UUID.randomUUID());
 
         JobCounts counts = service.ingestPage(ctx, "page-1", "Overview Page");
 
@@ -1046,26 +1288,34 @@ class ConfluenceIngestServiceTest {
     void pageWithNoIngestibleContentIsRecordedAsACompletedZeroChunkDocument() {
         JobContext ctx = pageJobContext(3);
         when(confluenceClient.getPageContent(instance, "page-1"))
-            .thenReturn(pageContent("<p>&nbsp;</p>"));
-        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
-            anyString())).thenReturn("   \n\n");
+                .thenReturn(pageContent("<p>&nbsp;</p>"));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), anyBoolean(), eq("page-1"), anyString()))
+                .thenReturn("   \n\n");
         UUID docId = UUID.randomUUID();
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(docId);
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(docId);
 
         JobCounts counts = service.ingestPage(ctx, "page-1", "Empty Page");
 
         assertThat(counts.docs()).isEqualTo(1);
         assertThat(counts.chunks()).isZero();
-        verify(documentRepository).updateMetadataKey(eq(docId), eq("confluence_page_version"),
-            eq(3));
+        verify(documentRepository)
+                .updateMetadataKey(eq(docId), eq("confluence_page_version"), eq(3));
         verify(documentRepository).updateIngestionStatus(eq(docId), eq("completed"));
         // Nothing to embed, nothing to summarize — and no stale chunks left behind.
         verify(embeddingService, never()).embedBatch(any());
         verify(sectionSummarizer, never()).generateSummaries(any(), any(), any(), any(), any());
         verify(documentRepository).deleteContentForDocument(eq(docId));
-        verify(documentRepository, never()).insertChunks(any(UUID.class), anyString(),
-            nullable(String.class), anyString(), anyString(), any());
+        verify(documentRepository, never())
+                .insertChunks(
+                        any(UUID.class),
+                        anyString(),
+                        nullable(String.class),
+                        anyString(),
+                        anyString(),
+                        any());
     }
 
     /**
@@ -1076,15 +1326,16 @@ class ConfluenceIngestServiceTest {
     void emptyPageIsSkippedByTheNextCrawlInsteadOfBeingReEnqueuedForever() {
         JobContext ctx = pageJobContext(3);
         when(confluenceClient.getPageContent(instance, "page-1")).thenReturn(pageContent(""));
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(UUID.randomUUID());
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(UUID.randomUUID());
 
         assertThat(service.ingestPage(ctx, "page-1", "Parent Page").docs()).isEqualTo(1);
 
         // Second crawl: the row written above is 'completed' at version 3.
-        when(documentRepository.getMetadataAndStatus(eq("coll"), eq("v1"), eq(SOURCE_FILE),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "3")));
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), eq("v1"), eq(SOURCE_FILE), eq("confluence")))
+                .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "3")));
         crawlReturns(page("page-1", "Parent Page", 3));
 
         JobCounts crawl = service.ingest(crawlJobContext());
@@ -1097,16 +1348,19 @@ class ConfluenceIngestServiceTest {
     void aFetchFailureStillFailsTheJobLoudly() {
         JobContext ctx = pageJobContext(3);
         when(confluenceClient.getPageContent(instance, "page-1"))
-            .thenThrow(new IllegalStateException("Confluence rate-limited the body fetch for"
-                + " page page-1 (HTTP 429) after 3 attempts"));
+                .thenThrow(
+                        new IllegalStateException(
+                                "Confluence rate-limited the body fetch for"
+                                        + " page page-1 (HTTP 429) after 3 attempts"));
 
         assertThatThrownBy(() -> service.ingestPage(ctx, "page-1", "Throttled Page"))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining("page-1");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("page-1");
 
         // No placeholder row: a transport failure must NOT be recorded as an empty page, or the
         // version-skip would suppress the page on every subsequent crawl.
-        verify(documentRepository, never()).upsertDocumentBySourceFile(any(),
-            nullable(String.class), any(), any(), any());
+        verify(documentRepository, never())
+                .upsertDocumentBySourceFile(any(), nullable(String.class), any(), any(), any());
     }
 
     // ---------------------------------------------------------------------
@@ -1119,19 +1373,27 @@ class ConfluenceIngestServiceTest {
     void embeddedTextEqualsStoredTextAndCarriesThePageTitle() {
         JobContext ctx = pageJobContext((Integer) null);
         when(confluenceClient.getPageContent(instance, "page-1"))
-            .thenReturn(pageContent("<h2>Setup</h2>"));
-        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
-            anyString())).thenReturn("Intro line.\n\n## Setup\n\nInstall the agent.");
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(UUID.randomUUID());
+                .thenReturn(pageContent("<h2>Setup</h2>"));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), anyBoolean(), eq("page-1"), anyString()))
+                .thenReturn("Intro line.\n\n## Setup\n\nInstall the agent.");
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(UUID.randomUUID());
 
         service.ingestPage(ctx, "page-1", "Kerberos SSO");
 
         ArgumentCaptor<List<String>> embedCaptor = ArgumentCaptor.forClass(List.class);
         verify(embeddingService).embedBatch(embedCaptor.capture());
         ArgumentCaptor<List<ChunkInsert>> chunkCaptor = ArgumentCaptor.forClass(List.class);
-        verify(documentRepository).insertChunks(any(UUID.class), anyString(),
-            nullable(String.class), anyString(), anyString(), chunkCaptor.capture());
+        verify(documentRepository)
+                .insertChunks(
+                        any(UUID.class),
+                        anyString(),
+                        nullable(String.class),
+                        anyString(),
+                        anyString(),
+                        chunkCaptor.capture());
 
         List<String> embedded = embedCaptor.getValue();
         List<String> stored = chunkCaptor.getValue().stream().map(ChunkInsert::text).toList();
@@ -1154,19 +1416,31 @@ class ConfluenceIngestServiceTest {
         // finished body, so a bound measured without it measures a configuration that no longer
         // ships.
         when(confluenceClient.getPageContent(instance, "page-1"))
-            .thenReturn(new ConfluencePageContent("<h2>Big</h2>",
-                "Alexandra Featherstonehaugh-Wolfeschlegelstein", "2026-08-15", 137));
-        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
-            anyString())).thenReturn("## Big\n\n" + (paragraph + "\n\n").repeat(8));
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(UUID.randomUUID());
+                .thenReturn(
+                        new ConfluencePageContent(
+                                "<h2>Big</h2>",
+                                "Alexandra Featherstonehaugh-Wolfeschlegelstein",
+                                "2026-08-15",
+                                137));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), anyBoolean(), eq("page-1"), anyString()))
+                .thenReturn("## Big\n\n" + (paragraph + "\n\n").repeat(8));
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(UUID.randomUUID());
 
         JobCounts counts = service.ingestPage(ctx, "page-1", "Big Page");
 
         assertThat(counts.chunks()).isGreaterThan(1);
         ArgumentCaptor<List<ChunkInsert>> chunkCaptor = ArgumentCaptor.forClass(List.class);
-        verify(documentRepository).insertChunks(any(UUID.class), anyString(),
-            nullable(String.class), anyString(), anyString(), chunkCaptor.capture());
+        verify(documentRepository)
+                .insertChunks(
+                        any(UUID.class),
+                        anyString(),
+                        nullable(String.class),
+                        anyString(),
+                        anyString(),
+                        chunkCaptor.capture());
         for (ChunkInsert chunk : chunkCaptor.getValue()) {
             // heading + breadcrumb overhead is bounded; the body itself must respect the cap.
             assertThat(chunk.text().length()).isLessThan(MarkdownTree.CHUNK_BODY_MAX_CHARS + 500);
@@ -1181,18 +1455,30 @@ class ConfluenceIngestServiceTest {
     void confluenceDocumentsAreKeyedOnSourceFileOnly() {
         JobContext ctx = pageJobContext((Integer) null);
         when(confluenceClient.getPageContent(instance, "page-1"))
-            .thenReturn(pageContent("<p>x</p>"));
-        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
-            anyString())).thenReturn("Body prose.");
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(UUID.randomUUID());
+                .thenReturn(pageContent("<p>x</p>"));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), anyBoolean(), eq("page-1"), anyString()))
+                .thenReturn("Body prose.");
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(UUID.randomUUID());
 
         service.ingestPage(ctx, "page-1", "Shared Title");
 
-        verify(documentRepository).upsertDocumentBySourceFile(eq("coll"), nullable(String.class),
-            eq(SOURCE_FILE), eq("confluence"), eq("Shared Title"));
-        verify(documentRepository, never()).upsertManualDocument(anyString(),
-            nullable(String.class), anyString(), anyString(), nullable(String.class));
+        verify(documentRepository)
+                .upsertDocumentBySourceFile(
+                        eq("coll"),
+                        nullable(String.class),
+                        eq(SOURCE_FILE),
+                        eq("confluence"),
+                        eq("Shared Title"));
+        verify(documentRepository, never())
+                .upsertManualDocument(
+                        anyString(),
+                        nullable(String.class),
+                        anyString(),
+                        anyString(),
+                        nullable(String.class));
     }
 
     // ---------------------------------------------------------------------
@@ -1203,9 +1489,9 @@ class ConfluenceIngestServiceTest {
     void blankTagIsPassedAsNoTagToTheVersionSkipLookup() {
         configureTag("");
         JobContext ctx = pageJobContext(7);
-        when(documentRepository.getMetadataAndStatus(eq("coll"), isNull(), eq(SOURCE_FILE),
-            eq("confluence")))
-            .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "7")));
+        when(documentRepository.getMetadataAndStatus(
+                        eq("coll"), isNull(), eq(SOURCE_FILE), eq("confluence")))
+                .thenReturn(Optional.of(new DocumentMetadataAndStatus("completed", "7")));
 
         JobCounts counts = service.ingestPage(ctx, "page-1", "Page 1");
 
@@ -1222,7 +1508,7 @@ class ConfluenceIngestServiceTest {
         service.ingest(crawlJobContext());
 
         ArgumentCaptor<EnqueueRequest> requestCaptor =
-            ArgumentCaptor.forClass(EnqueueRequest.class);
+                ArgumentCaptor.forClass(EnqueueRequest.class);
         verify(jobService).enqueue(requestCaptor.capture());
         assertThat(requestCaptor.getValue().tags()).isEmpty();
         assertThat(requestCaptor.getValue().tag()).isNull();
@@ -1234,42 +1520,51 @@ class ConfluenceIngestServiceTest {
     void ingestPageEmbedsMetadataIntoChunksAndStoresAuthorAndLastUpdatedInDocumentMetadata() {
         JobContext ctx = pageJobContext(2);
         when(confluenceClient.getPageContent(instance, "page-1"))
-            .thenReturn(new ConfluencePageContent("<h2>Section</h2><p>Content.</p>", "John Doe",
-                "2026-08-15", 2));
-        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-1"),
-            anyString())).thenReturn("## Section\n\nContent.");
+                .thenReturn(
+                        new ConfluencePageContent(
+                                "<h2>Section</h2><p>Content.</p>", "John Doe", "2026-08-15", 2));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), anyBoolean(), eq("page-1"), anyString()))
+                .thenReturn("## Section\n\nContent.");
         UUID docId = UUID.randomUUID();
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(docId);
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(docId);
 
         JobCounts counts = service.ingestPage(ctx, "page-1", "My Page");
 
         assertThat(counts.docs()).isEqualTo(1);
         assertThat(counts.chunks()).isEqualTo(1);
 
-        verify(documentRepository).updateMetadataKey(eq(docId), eq("confluence_page_version"),
-            eq(2));
+        verify(documentRepository)
+                .updateMetadataKey(eq(docId), eq("confluence_page_version"), eq(2));
         verify(documentRepository).updateMetadataKey(eq(docId), eq("author"), eq("John Doe"));
-        verify(documentRepository).updateMetadataKey(eq(docId), eq("last_updated"),
-            eq("2026-08-15"));
+        verify(documentRepository)
+                .updateMetadataKey(eq(docId), eq("last_updated"), eq("2026-08-15"));
 
         ArgumentCaptor<List<ChunkInsert>> chunkCaptor = ArgumentCaptor.forClass(List.class);
-        verify(documentRepository).insertChunks(eq(docId), anyString(), nullable(String.class),
-            anyString(), anyString(), chunkCaptor.capture());
+        verify(documentRepository)
+                .insertChunks(
+                        eq(docId),
+                        anyString(),
+                        nullable(String.class),
+                        anyString(),
+                        anyString(),
+                        chunkCaptor.capture());
         List<ChunkInsert> chunks = chunkCaptor.getValue();
         assertThat(chunks).isNotEmpty();
         for (ChunkInsert chunk : chunks) {
             assertThat(chunk.text())
-                .contains("🔗 Confluence Page: [View in Confluence](" + SOURCE_FILE + ")");
+                    .contains("🔗 Confluence Page: [View in Confluence](" + SOURCE_FILE + ")");
             assertThat(chunk.text())
-                .contains("👤 Author: John Doe | 📅 Last Updated: 2026-08-15 (v2)");
+                    .contains("👤 Author: John Doe | 📅 Last Updated: 2026-08-15 (v2)");
         }
 
         ArgumentCaptor<List<String>> embedCaptor = ArgumentCaptor.forClass(List.class);
         verify(embeddingService).embedBatch(embedCaptor.capture());
         List<String> embedded = embedCaptor.getValue();
         assertThat(embedded)
-            .containsExactlyElementsOf(chunks.stream().map(ChunkInsert::text).toList());
+                .containsExactlyElementsOf(chunks.stream().map(ChunkInsert::text).toList());
     }
 
     /**
@@ -1283,13 +1578,16 @@ class ConfluenceIngestServiceTest {
         JobContext ctx = mock(JobContext.class);
         when(ctx.job()).thenReturn(null);
         when(confluenceClient.getPageContent(instance, "page-null-job"))
-            .thenReturn(new ConfluencePageContent("<h2>Section</h2><p>Content.</p>", "John Doe",
-                "2026-08-15", 1));
-        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("page-null-job"),
-            anyString())).thenReturn("## Section\n\nContent.");
+                .thenReturn(
+                        new ConfluencePageContent(
+                                "<h2>Section</h2><p>Content.</p>", "John Doe", "2026-08-15", 1));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), anyBoolean(), eq("page-null-job"), anyString()))
+                .thenReturn("## Section\n\nContent.");
         UUID docId = UUID.randomUUID();
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(docId);
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(docId);
 
         JobCounts counts = service.ingestPage(ctx, "page-null-job", "Null Job Page");
 
@@ -1301,16 +1599,21 @@ class ConfluenceIngestServiceTest {
         when(instanceRepository.findBySlug("default")).thenReturn(Optional.of(instance));
 
         when(confluenceClient.getPageContent(instance, "parity-page"))
-            .thenReturn(new ConfluencePageContent(
-                "<h2>Section A</h2><p>Body A</p><h2>Section B</h2><p>Body B</p>", "Alice",
-                "2026-10-01", 3));
-        when(confluenceConverter.convertToMarkdown(eq(instance), anyBoolean(), eq("parity-page"),
-            anyString())).thenReturn("## Section A\n\nBody A\n\n## Section B\n\nBody B");
+                .thenReturn(
+                        new ConfluencePageContent(
+                                "<h2>Section A</h2><p>Body A</p><h2>Section B</h2><p>Body B</p>",
+                                "Alice",
+                                "2026-10-01",
+                                3));
+        when(confluenceConverter.convertToMarkdown(
+                        eq(instance), anyBoolean(), eq("parity-page"), anyString()))
+                .thenReturn("## Section A\n\nBody A\n\n## Section B\n\nBody B");
 
         UUID docIdNull = UUID.randomUUID();
         UUID docIdPresent = UUID.randomUUID();
-        when(documentRepository.upsertDocumentBySourceFile(any(), nullable(String.class), any(),
-            any(), any())).thenReturn(docIdNull, docIdPresent);
+        when(documentRepository.upsertDocumentBySourceFile(
+                        any(), nullable(String.class), any(), any(), any()))
+                .thenReturn(docIdNull, docIdPresent);
 
         // Case 1: job is null
         JobContext ctxNull = mock(JobContext.class);
@@ -1319,10 +1622,25 @@ class ConfluenceIngestServiceTest {
 
         // Case 2: job is present with summaries disabled
         JobContext ctxPresent = mock(JobContext.class);
-        IngestionJob job = new IngestionJob(UUID.randomUUID(), "confluence-page-import:default",
-            "confluence/SPACE/parity-page", List.of(), UUID.randomUUID(), "coll", JobStatus.RUNNING,
-            null, 0, 0, null, null, OffsetDateTime.now(), null, null,
-            Map.of("summarizeSections", false), null);
+        IngestionJob job =
+                new IngestionJob(
+                        UUID.randomUUID(),
+                        "confluence-page-import:default",
+                        "confluence/SPACE/parity-page",
+                        List.of(),
+                        UUID.randomUUID(),
+                        "coll",
+                        JobStatus.RUNNING,
+                        null,
+                        0,
+                        0,
+                        null,
+                        null,
+                        OffsetDateTime.now(),
+                        null,
+                        null,
+                        Map.of("summarizeSections", false),
+                        null);
         when(ctxPresent.job()).thenReturn(job);
         JobCounts countsPresent = service.ingestPage(ctxPresent, "parity-page", "Parity Page");
 

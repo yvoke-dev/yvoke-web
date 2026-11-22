@@ -14,13 +14,13 @@ class AssistantTranscriptTest {
     @Test
     void aBalancedThinkBlockIsRemoved() {
         assertThat(AssistantTranscript.toModelText("<think>internal</think>\nreal text"))
-            .isEqualTo("real text");
+                .isEqualTo("real text");
     }
 
     @Test
     void aThinkBlockSpanningNewlinesIsRemoved() {
         assertThat(AssistantTranscript.toModelText("<think>line one\nline two</think>\nanswer"))
-            .isEqualTo("answer");
+                .isEqualTo("answer");
     }
 
     @Test
@@ -28,7 +28,7 @@ class AssistantTranscriptTest {
         // ChatMessageService persists the partial sink buffer when a generation is cancelled, so a
         // stopped turn leaves a DB row that ends inside an open block and is then replayed.
         assertThat(AssistantTranscript.toModelText("answer so far\n<think>cut off mid thou"))
-            .isEqualTo("answer so far");
+                .isEqualTo("answer so far");
     }
 
     @Test
@@ -42,11 +42,13 @@ class AssistantTranscriptTest {
         // The wrench is written as a surrogate pair so an encoding-unaware edit cannot mangle the
         // expectation invisibly. The "??" forms are the mojibake that actually reaches replay.
         String transcript =
-            "🔧 *Calling tool:* a()\nreal text\n" + "🔧 Calling tool: b()\nsecond text\n"
-                + "?? *Calling tool:* c()\nthird text\n" + "?? Calling tool: d()\nfourth text";
+                "🔧 *Calling tool:* a()\nreal text\n"
+                        + "🔧 Calling tool: b()\nsecond text\n"
+                        + "?? *Calling tool:* c()\nthird text\n"
+                        + "?? Calling tool: d()\nfourth text";
 
         assertThat(AssistantTranscript.toModelText(transcript))
-            .isEqualTo("real text\nsecond text\nthird text\nfourth text");
+                .isEqualTo("real text\nsecond text\nthird text\nfourth text");
     }
 
     @Test
@@ -60,8 +62,9 @@ class AssistantTranscriptTest {
         // Stripping it here would delete the question from replayed history while the user's
         // follow-up is only the bare answer ("Option A"), leaving the model an answer to a question
         // it can no longer see. The orchestrator strips these itself, for its own answer text.
-        String xml = "<clarifying-question>\n<question>Which kit?</question>\n"
-            + "<option>9.3.1</option>\n</clarifying-question>";
+        String xml =
+                "<clarifying-question>\n<question>Which kit?</question>\n"
+                        + "<option>9.3.1</option>\n</clarifying-question>";
 
         assertThat(AssistantTranscript.toModelText(xml)).isEqualTo(xml);
     }
@@ -69,7 +72,7 @@ class AssistantTranscriptTest {
     @Test
     void theResultIsTrimmed() {
         assertThat(AssistantTranscript.toModelText("  \n<think>x</think>\nanswer\n  "))
-            .isEqualTo("answer");
+                .isEqualTo("answer");
     }
 
     @Test
@@ -94,7 +97,7 @@ class AssistantTranscriptTest {
     @Test
     void aThinkingTagIsNotMistakenForAThinkTag() {
         assertThat(AssistantTranscript.toModelText("<thinking>kept</thinking>"))
-            .isEqualTo("<thinking>kept</thinking>");
+                .isEqualTo("<thinking>kept</thinking>");
     }
 
     @Test
@@ -105,26 +108,27 @@ class AssistantTranscriptTest {
         // The literal close tag is still removed (it IS our marker, and the browser drops a stray
         // one too) — what must survive is every word of prose.
         assertThat(AssistantTranscript.toModelText("<think class=\"x\">kept</think>"))
-            .contains("kept").contains("<think class=\"x\">");
+                .contains("kept")
+                .contains("<think class=\"x\">");
     }
 
     @Test
     void aClosingTagWithInnerSpaceIsNotMatched() {
         assertThat(AssistantTranscript.toModelText("<think>a</think >b"))
-            .isEqualTo("<think>a</think >b");
+                .isEqualTo("<think>a</think >b");
     }
 
     @Test
     void aBareQuestionMarkPrefixIsNotTreatedAsAToolBanner() {
         // "??" alone would delete ordinary prose; only the two literal Calling-tool forms go.
         assertThat(AssistantTranscript.toModelText("?? did you mean this\nkept"))
-            .isEqualTo("?? did you mean this\nkept");
+                .isEqualTo("?? did you mean this\nkept");
     }
 
     @Test
     void bracketedTextIsNeverTouched() {
         assertThat(AssistantTranscript.toModelText("Error code [500123] occurred."))
-            .isEqualTo("Error code [500123] occurred.");
+                .isEqualTo("Error code [500123] occurred.");
     }
 
     @Test
@@ -134,8 +138,9 @@ class AssistantTranscriptTest {
         String multilineArgs = "{\n  \"query\": \"multiline\\nquery\"\n}";
         String sanitizedArgs = multilineArgs.replaceAll("\\R", " ");
         String banner =
-            String.format("🔧 *Calling tool:* search_corpus(%s) #call_12345\n\nReal prose response",
-                sanitizedArgs);
+                String.format(
+                        "🔧 *Calling tool:* search_corpus(%s) #call_12345\n\nReal prose response",
+                        sanitizedArgs);
 
         assertThat(AssistantTranscript.toModelText(banner)).isEqualTo("Real prose response");
     }
@@ -143,7 +148,7 @@ class AssistantTranscriptTest {
     @Test
     void testBannerWithToolCallIdStripped() {
         String banner =
-            "🔧 *Calling tool:* search_corpus({\"query\":\"test\"}) #call_abc999\n\nAnswer text";
+                "🔧 *Calling tool:* search_corpus({\"query\":\"test\"}) #call_abc999\n\nAnswer text";
         assertThat(AssistantTranscript.toModelText(banner)).isEqualTo("Answer text");
     }
 }

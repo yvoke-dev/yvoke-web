@@ -47,8 +47,12 @@ public class AgentRunAdminController {
         if (!AreaAccessContext.canAdministerArea(runArea.orElse(null))) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Agent run not found: " + id);
         }
-        RunDetailPage page = agentRunAdminViewService.runDetail(id).orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Agent run not found: " + id));
+        RunDetailPage page =
+                agentRunAdminViewService
+                        .runDetail(id)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Agent run not found: " + id));
         model.addAttribute("run", page.run());
         model.addAttribute("steps", page.steps());
         model.addAttribute("activeTab", "agent-runs");

@@ -21,9 +21,14 @@ class TurnAreaScopeTest {
     @Test
     void turnScopeNarrowsGlobalUserToSinglePlaybookAreaAndDeniesNullArea() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("global", "n/a",
-                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
-                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "global",
+                                "n/a",
+                                List.of(
+                                        new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                                        new SimpleGrantedAuthority(
+                                                AreaAccessContext.AREA_USER_ALL))));
         TurnAreaScopeHolder.set(Set.of("oim"));
 
         assertThat(AreaAccessContext.canAccessEffectiveUserArea("OIM")).isTrue();
@@ -35,9 +40,14 @@ class TurnAreaScopeTest {
     @Test
     void turnScopeNeverWidensBeyondAuthenticatedUserAreas() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("oim-only", "n/a",
-                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
-                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "oim-only",
+                                "n/a",
+                                List.of(
+                                        new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                                        new SimpleGrantedAuthority(
+                                                AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
         TurnAreaScopeHolder.set(Set.of("*"));
 
         assertThat(AreaAccessContext.canAccessEffectiveUserArea("OIM")).isTrue();
@@ -48,9 +58,14 @@ class TurnAreaScopeTest {
     @Test
     void withoutTurnScopeAreaRestrictedCallerIsDeniedUnassignedNullArea() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("oim-only", "n/a",
-                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
-                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "oim-only",
+                                "n/a",
+                                List.of(
+                                        new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                                        new SimpleGrantedAuthority(
+                                                AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
 
         assertThat(AreaAccessContext.canAccessEffectiveUserArea("OIM")).isTrue();
         assertThat(AreaAccessContext.canAccessEffectiveUserArea(null)).isFalse();

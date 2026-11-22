@@ -49,12 +49,13 @@ public class RestClientConfig {
      */
     @Bean
     public RestClient.Builder confluenceRestClientBuilder() {
-        DnsResolver ssrfSafeDnsResolver = new SystemDefaultDnsResolver() {
-            @Override
-            public InetAddress[] resolve(String host) throws UnknownHostException {
-                return SsrfAddressValidator.resolveAndValidate(host);
-            }
-        };
+        DnsResolver ssrfSafeDnsResolver =
+                new SystemDefaultDnsResolver() {
+                    @Override
+                    public InetAddress[] resolve(String host) throws UnknownHostException {
+                        return SsrfAddressValidator.resolveAndValidate(host);
+                    }
+                };
         return RestClient.builder().requestFactory(pooledFactory(false, ssrfSafeDnsResolver));
     }
 
@@ -74,33 +75,40 @@ public class RestClientConfig {
         return RestClient.builder().requestFactory(pooledFactory(true, null));
     }
 
-    HttpComponentsClientHttpRequestFactory pooledFactory(boolean followRedirects,
-        DnsResolver dnsResolver) {
+    HttpComponentsClientHttpRequestFactory pooledFactory(
+            boolean followRedirects, DnsResolver dnsResolver) {
         ConnectionConfig connectionConfig =
-            ConnectionConfig.custom().setConnectTimeout(Timeout.ofMilliseconds(connectTimeout))
-                .setSocketTimeout(Timeout.ofMilliseconds(readTimeout)).build();
+                ConnectionConfig.custom()
+                        .setConnectTimeout(Timeout.ofMilliseconds(connectTimeout))
+                        .setSocketTimeout(Timeout.ofMilliseconds(readTimeout))
+                        .build();
 
         PoolingHttpClientConnectionManagerBuilder cmBuilder =
-            PoolingHttpClientConnectionManagerBuilder.create()
-                .setDefaultConnectionConfig(connectionConfig).setMaxConnTotal(20)
-                .setMaxConnPerRoute(10);
+                PoolingHttpClientConnectionManagerBuilder.create()
+                        .setDefaultConnectionConfig(connectionConfig)
+                        .setMaxConnTotal(20)
+                        .setMaxConnPerRoute(10);
         if (dnsResolver != null) {
             cmBuilder.setDnsResolver(dnsResolver);
         }
         HttpClientConnectionManager connectionManager = cmBuilder.build();
 
-        RequestConfig requestConfig = RequestConfig.custom()
-            .setConnectionRequestTimeout(Timeout.ofMilliseconds(connectTimeout)).build();
+        RequestConfig requestConfig =
+                RequestConfig.custom()
+                        .setConnectionRequestTimeout(Timeout.ofMilliseconds(connectTimeout))
+                        .build();
 
-        HttpClientBuilder httpClientBuilder = HttpClients.custom()
-            .setConnectionManager(connectionManager).setDefaultRequestConfig(requestConfig);
+        HttpClientBuilder httpClientBuilder =
+                HttpClients.custom()
+                        .setConnectionManager(connectionManager)
+                        .setDefaultRequestConfig(requestConfig);
         if (!followRedirects) {
             httpClientBuilder.disableRedirectHandling();
         }
         CloseableHttpClient httpClient = httpClientBuilder.build();
 
         HttpComponentsClientHttpRequestFactory factory =
-            new HttpComponentsClientHttpRequestFactory(httpClient);
+                new HttpComponentsClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(readTimeout);
         return factory;
     }

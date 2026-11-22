@@ -16,11 +16,9 @@ import org.springframework.security.core.GrantedAuthority;
 /**
  * Authentication provider for mock/local development environments.
  *
- * <p>
- * Supports simulated Entra ID role claims passed in the password field (comma-separated, e.g.
- * {@code "Docs.Admin,Platform.User"}) or legacy mock credentials ({@code "admin"} /
- * {@code "user"}).
- * </p>
+ * <p>Supports simulated Entra ID role claims passed in the password field (comma-separated, e.g.
+ * {@code "Docs.Admin,Platform.User"}) or legacy mock credentials ({@code "admin"} / {@code
+ * "user"}).
  */
 public class MockAuthenticationProvider implements AuthenticationProvider {
 
@@ -28,11 +26,11 @@ public class MockAuthenticationProvider implements AuthenticationProvider {
     private final String adminClaim;
     private final String userClaim;
 
-    public MockAuthenticationProvider(UserService userService, String adminClaim,
-        String userClaim) {
+    public MockAuthenticationProvider(
+            UserService userService, String adminClaim, String userClaim) {
         this.userService = Objects.requireNonNull(userService, "userService must not be null");
         this.adminClaim =
-            (adminClaim != null && !adminClaim.isBlank()) ? adminClaim.trim() : "Admin";
+                (adminClaim != null && !adminClaim.isBlank()) ? adminClaim.trim() : "Admin";
         this.userClaim = (userClaim != null && !userClaim.isBlank()) ? userClaim.trim() : "User";
     }
 
@@ -42,32 +40,34 @@ public class MockAuthenticationProvider implements AuthenticationProvider {
 
     @Override
     public Authentication authenticate(Authentication authentication)
-        throws AuthenticationException {
+            throws AuthenticationException {
         String username = authentication.getName();
-        String password = authentication.getCredentials() != null
-            ? authentication.getCredentials().toString().trim()
-            : "";
+        String password =
+                authentication.getCredentials() != null
+                        ? authentication.getCredentials().toString().trim()
+                        : "";
 
         List<String> rawClaims = resolveRoleClaims(username, password);
 
         Collection<GrantedAuthority> authorities =
-            AreaAccessContext.mapRoleClaimsToAuthorities(rawClaims, adminClaim, userClaim);
+                AreaAccessContext.mapRoleClaimsToAuthorities(rawClaims, adminClaim, userClaim);
 
         if (authorities == null || authorities.isEmpty()) {
             throw new BadCredentialsException(
-                "No valid role authorities granted for provided credentials");
+                    "No valid role authorities granted for provided credentials");
         }
 
         String cleanUsername =
-            (username != null && !username.isBlank()) ? username.trim() : "mock-user";
+                (username != null && !username.isBlank()) ? username.trim() : "mock-user";
         String entraOid =
-            "mock-" + cleanUsername.toLowerCase().replaceAll("[^a-z0-9_-]", "-") + "-oid";
+                "mock-" + cleanUsername.toLowerCase().replaceAll("[^a-z0-9_-]", "-") + "-oid";
         String email =
-            cleanUsername.toLowerCase().replaceAll("[^a-z0-9_.-]", "-") + "@palsoftware.local";
+                cleanUsername.toLowerCase().replaceAll("[^a-z0-9_.-]", "-") + "@palsoftware.local";
         String displayName = "Mock " + cleanUsername;
 
         MockOidcUser oidcUser =
-            new MockOidcUser(entraOid, email, displayName, new ArrayList<>(authorities), rawClaims);
+                new MockOidcUser(
+                        entraOid, email, displayName, new ArrayList<>(authorities), rawClaims);
 
         userService.syncUser(oidcUser);
 
@@ -77,8 +77,10 @@ public class MockAuthenticationProvider implements AuthenticationProvider {
     private List<String> resolveRoleClaims(String username, String password) {
         // If password is provided and is NOT the legacy literal "password"
         if (!password.isEmpty() && !"password".equalsIgnoreCase(password)) {
-            return Arrays.stream(password.split(",")).map(String::trim).filter(s -> !s.isEmpty())
-                .toList();
+            return Arrays.stream(password.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .toList();
         }
 
         // Backward-compatibility: if password is empty or "password", map legacy usernames
@@ -92,9 +94,10 @@ public class MockAuthenticationProvider implements AuthenticationProvider {
         // If username itself contains a valid role pattern (e.g. "Docs.Admin")
         if (username != null && !username.isBlank()) {
             String trimmed = username.trim();
-            if (trimmed.equalsIgnoreCase(adminClaim) || trimmed.equalsIgnoreCase(userClaim)
-                || trimmed.toLowerCase().endsWith(".admin")
-                || trimmed.toLowerCase().endsWith(".user")) {
+            if (trimmed.equalsIgnoreCase(adminClaim)
+                    || trimmed.equalsIgnoreCase(userClaim)
+                    || trimmed.toLowerCase().endsWith(".admin")
+                    || trimmed.toLowerCase().endsWith(".user")) {
                 return List.of(trimmed);
             }
         }

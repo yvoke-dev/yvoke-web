@@ -137,16 +137,17 @@ class SecurityConfigRouteGuardAdversarialTest {
         env.setActiveProfiles("test");
         env.setProperty("app.security.mock", "true");
         env.setProperty("app.security.api-key", "test-global-key");
-        env.setProperty("app.security.area-api-keys",
-            "{\"OIM\":\"oim-secret\",\"PingID\":\"pingid-secret\"}");
+        env.setProperty(
+                "app.security.area-api-keys",
+                "{\"OIM\":\"oim-secret\",\"PingID\":\"pingid-secret\"}");
         env.setProperty("app.security.roles.admin-claim", "Admin");
         env.setProperty("app.security.roles.user-claim", "User");
         env.setProperty("app.security.mcp.allowed-audience", "api://test-aud");
         env.setProperty("app.security.mcp.required-scope", "api://test-aud/scope");
-        env.setProperty("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
-            "https://example/keys");
-        env.setProperty("spring.security.oauth2.resourceserver.jwt.issuer-uri",
-            "https://example/issuer");
+        env.setProperty(
+                "spring.security.oauth2.resourceserver.jwt.jwk-set-uri", "https://example/keys");
+        env.setProperty(
+                "spring.security.oauth2.resourceserver.jwt.issuer-uri", "https://example/issuer");
         env.setProperty("app.security.mcp.resource-url", "http://localhost:8080/mcp");
         env.setProperty("app.rate-limit.enabled", "true");
         env.setProperty("app.rate-limit.mcp-capacity", "120");
@@ -177,30 +178,54 @@ class SecurityConfigRouteGuardAdversarialTest {
     // =========================================================================
 
     @ParameterizedTest
-    @ValueSource(strings = {"/admin/costs", "/admin/costs/explorer", "/admin/pricing",
-        "/admin/pricing/edit", "/admin/audit", "/admin/audit/logs", "/admin/areas/delete"})
+    @ValueSource(
+            strings = {
+                "/admin/costs",
+                "/admin/costs/explorer",
+                "/admin/pricing",
+                "/admin/pricing/edit",
+                "/admin/audit",
+                "/admin/audit/logs",
+                "/admin/areas/delete"
+            })
     @DisplayName("Superadmin-only routes forbid plain ROLE_USER")
     void superadminRoutesForbidPlainUser(String path) throws Exception {
         mockMvc.perform(get(path).with(user("regularUser").roles("USER")))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/admin/costs", "/admin/costs/explorer", "/admin/pricing",
-        "/admin/pricing/edit", "/admin/audit", "/admin/audit/logs", "/admin/areas/delete"})
+    @ValueSource(
+            strings = {
+                "/admin/costs",
+                "/admin/costs/explorer",
+                "/admin/pricing",
+                "/admin/pricing/edit",
+                "/admin/audit",
+                "/admin/audit/logs",
+                "/admin/areas/delete"
+            })
     @DisplayName("Superadmin-only routes strictly forbid ROLE_AREA_ADMIN without ROLE_ADMIN")
     void superadminRoutesForbidAreaAdmin(String path) throws Exception {
         mockMvc.perform(get(path).with(user("areaAdmin").roles("AREA_ADMIN", "USER")))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/admin/costs", "/admin/costs/explorer", "/admin/pricing",
-        "/admin/pricing/edit", "/admin/audit", "/admin/audit/logs", "/admin/areas/delete"})
+    @ValueSource(
+            strings = {
+                "/admin/costs",
+                "/admin/costs/explorer",
+                "/admin/pricing",
+                "/admin/pricing/edit",
+                "/admin/audit",
+                "/admin/audit/logs",
+                "/admin/areas/delete"
+            })
     @DisplayName("Superadmin-only routes permit ROLE_ADMIN")
     void superadminRoutesPermitAdmin(String path) throws Exception {
         mockMvc.perform(get(path).with(user("superAdmin").roles("ADMIN", "USER")))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     // =========================================================================
@@ -213,7 +238,7 @@ class SecurityConfigRouteGuardAdversarialTest {
     @DisplayName("General admin routes permit ROLE_AREA_ADMIN")
     void generalAdminRoutesPermitAreaAdmin(String path) throws Exception {
         mockMvc.perform(get(path).with(user("areaAdmin").roles("AREA_ADMIN", "USER")))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @ParameterizedTest
@@ -221,7 +246,7 @@ class SecurityConfigRouteGuardAdversarialTest {
     @DisplayName("General admin routes permit ROLE_ADMIN")
     void generalAdminRoutesPermitAdmin(String path) throws Exception {
         mockMvc.perform(get(path).with(user("superAdmin").roles("ADMIN", "USER")))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @ParameterizedTest
@@ -229,7 +254,7 @@ class SecurityConfigRouteGuardAdversarialTest {
     @DisplayName("General admin routes forbid plain ROLE_USER")
     void generalAdminRoutesForbidUser(String path) throws Exception {
         mockMvc.perform(get(path).with(user("regularUser").roles("USER")))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     // =========================================================================
@@ -238,32 +263,38 @@ class SecurityConfigRouteGuardAdversarialTest {
     // =========================================================================
 
     @Test
-    @DisplayName("Trace endpoint strictly forbids plain ROLE_USER even though it starts with /chat/")
+    @DisplayName(
+            "Trace endpoint strictly forbids plain ROLE_USER even though it starts with /chat/")
     void traceEndpointForbidsPlainUser() throws Exception {
         mockMvc.perform(
-            get("/chat/conv-123/messages/msg-456/trace").with(user("regularUser").roles("USER")))
-            .andExpect(status().isForbidden());
+                        get("/chat/conv-123/messages/msg-456/trace")
+                                .with(user("regularUser").roles("USER")))
+                .andExpect(status().isForbidden());
     }
 
     @Test
     @DisplayName("Trace endpoint permits ROLE_AREA_ADMIN through route guard")
     void traceEndpointPermitsAreaAdmin() throws Exception {
-        mockMvc.perform(get("/chat/conv-123/messages/msg-456/trace")
-            .with(user("areaAdmin").roles("AREA_ADMIN", "USER"))).andExpect(status().isOk());
+        mockMvc.perform(
+                        get("/chat/conv-123/messages/msg-456/trace")
+                                .with(user("areaAdmin").roles("AREA_ADMIN", "USER")))
+                .andExpect(status().isOk());
     }
 
     @Test
     @DisplayName("Trace endpoint permits ROLE_ADMIN through route guard")
     void traceEndpointPermitsAdmin() throws Exception {
-        mockMvc.perform(get("/chat/conv-123/messages/msg-456/trace")
-            .with(user("superAdmin").roles("ADMIN", "USER"))).andExpect(status().isOk());
+        mockMvc.perform(
+                        get("/chat/conv-123/messages/msg-456/trace")
+                                .with(user("superAdmin").roles("ADMIN", "USER")))
+                .andExpect(status().isOk());
     }
 
     @Test
     @DisplayName("Regular /chat/{id} endpoint permits plain ROLE_USER")
     void regularChatEndpointPermitsPlainUser() throws Exception {
         mockMvc.perform(get("/chat/conv-123").with(user("regularUser").roles("USER")))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -272,7 +303,7 @@ class SecurityConfigRouteGuardAdversarialTest {
         mockMvc.perform(get("/admin/costs")).andExpect(status().is3xxRedirection());
 
         mockMvc.perform(get("/chat/conv-123/messages/msg-456/trace"))
-            .andExpect(status().is3xxRedirection());
+                .andExpect(status().is3xxRedirection());
 
         mockMvc.perform(get("/chat/conv-123")).andExpect(status().is3xxRedirection());
     }
@@ -287,15 +318,17 @@ class SecurityConfigRouteGuardAdversarialTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"/api/ingest/v1/upload", "/api/document/v1", "/api/jobs/v1/123"})
-    @DisplayName("API Key routes authenticate valid global key as api-key-client with ROLE_INGEST and AREA_INGEST_*")
+    @DisplayName(
+            "API Key routes authenticate valid global key as api-key-client with ROLE_INGEST and AREA_INGEST_*")
     void apiKeyGlobalKeyAuthenticates(String path) throws Exception {
         mockMvc.perform(get(path).header("X-API-Key", "test-global-key"))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"/api/ingest/v1/upload", "/api/document/v1", "/api/jobs/v1/123"})
-    @DisplayName("API Key routes authenticate valid area key as api-key-client:OIM with ROLE_INGEST and AREA_INGEST_OIM")
+    @DisplayName(
+            "API Key routes authenticate valid area key as api-key-client:OIM with ROLE_INGEST and AREA_INGEST_OIM")
     void apiKeyAreaKeyAuthenticates(String path) throws Exception {
         mockMvc.perform(get(path).header("X-API-Key", "oim-secret")).andExpect(status().isOk());
     }
@@ -305,9 +338,10 @@ class SecurityConfigRouteGuardAdversarialTest {
     @DisplayName("API Key routes reject invalid key with 401 and verbatim 'Invalid API Key'")
     void apiKeyInvalidKeyRejectedWith401(String path) throws Exception {
         mockMvc.perform(get(path).header("X-API-Key", "wrong-secret"))
-            .andExpect(status().isUnauthorized())
-            .andExpect(result -> assertThat(result.getResponse().getContentAsString())
-                .isEqualTo("Invalid API Key"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(result ->
+                        assertThat(result.getResponse().getContentAsString())
+                                .isEqualTo("Invalid API Key"));
     }
 
     @ParameterizedTest
@@ -315,7 +349,7 @@ class SecurityConfigRouteGuardAdversarialTest {
     @DisplayName("API Key routes forbid plain ROLE_USER session")
     void apiKeyRoutesForbidPlainUserSession(String path) throws Exception {
         mockMvc.perform(get(path).with(user("regularUser").roles("USER")))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     @ParameterizedTest
@@ -323,6 +357,6 @@ class SecurityConfigRouteGuardAdversarialTest {
     @DisplayName("API Key routes permit browser admin session (ROLE_ADMIN)")
     void apiKeyRoutesPermitAdminSession(String path) throws Exception {
         mockMvc.perform(get(path).with(user("superAdmin").roles("ADMIN")))
-            .andExpect(status().isOk());
+                .andExpect(status().isOk());
     }
 }

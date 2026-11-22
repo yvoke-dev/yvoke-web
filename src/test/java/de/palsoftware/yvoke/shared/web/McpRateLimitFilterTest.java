@@ -23,20 +23,24 @@ class McpRateLimitFilterTest {
     @Test
     void throttlesMcpCallsPerAuthenticatedPrincipalWith429AndRetryAfter() throws Exception {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("alice-sub", "token", "ROLE_USER"));
+                .setAuthentication(
+                        new TestingAuthenticationToken("alice-sub", "token", "ROLE_USER"));
         McpRateLimitFilter filter =
-            new McpRateLimitFilter(new GenerationRateLimiter(true, 2, 60, () -> 1_000L), 60);
+                new McpRateLimitFilter(new GenerationRateLimiter(true, 2, 60, () -> 1_000L), 60);
 
         AtomicInteger passed = new AtomicInteger();
         for (int i = 0; i < 2; i++) {
             MockHttpServletRequest req = new MockHttpServletRequest("POST", "/mcp");
             MockHttpServletResponse res = new MockHttpServletResponse();
-            filter.doFilter(req, res, new MockFilterChain() {
-                @Override
-                public void doFilter(ServletRequest request, ServletResponse response) {
-                    passed.incrementAndGet();
-                }
-            });
+            filter.doFilter(
+                    req,
+                    res,
+                    new MockFilterChain() {
+                        @Override
+                        public void doFilter(ServletRequest request, ServletResponse response) {
+                            passed.incrementAndGet();
+                        }
+                    });
             assertThat(res.getStatus()).isEqualTo(200);
         }
         assertThat(passed.get()).isEqualTo(2);
@@ -51,7 +55,7 @@ class McpRateLimitFilterTest {
 
         // Different principal still has its own bucket
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("bob-sub", "token", "ROLE_USER"));
+                .setAuthentication(new TestingAuthenticationToken("bob-sub", "token", "ROLE_USER"));
         MockHttpServletRequest bobReq = new MockHttpServletRequest("POST", "/mcp");
         MockHttpServletResponse bobRes = new MockHttpServletResponse();
         filter.doFilter(bobReq, bobRes, new MockFilterChain());

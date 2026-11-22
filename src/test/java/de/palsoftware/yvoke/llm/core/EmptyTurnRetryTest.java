@@ -32,10 +32,13 @@ class EmptyTurnRetryTest {
     void aTurnThatProducedOutputIsRunOnce() {
         AtomicInteger attempts = new AtomicInteger();
 
-        EmptyTurnRetry.run("Gemini", "gemini-3.6-flash", n -> {
-            attempts.incrementAndGet();
-            return produced();
-        });
+        EmptyTurnRetry.run(
+                "Gemini",
+                "gemini-3.6-flash",
+                n -> {
+                    attempts.incrementAndGet();
+                    return produced();
+                });
 
         assertThat(attempts.get()).isEqualTo(1);
     }
@@ -48,9 +51,12 @@ class EmptyTurnRetryTest {
     void aCleanlyCompletedEmptyTurnIsRequestedOnceMore() {
         AtomicInteger attempts = new AtomicInteger();
 
-        EmptyTurnRetry.run("Gemini", "gemini-3.6-flash", n -> {
-            return attempts.incrementAndGet() == 1 ? empty(true) : produced();
-        });
+        EmptyTurnRetry.run(
+                "Gemini",
+                "gemini-3.6-flash",
+                n -> {
+                    return attempts.incrementAndGet() == 1 ? empty(true) : produced();
+                });
 
         assertThat(attempts.get()).isEqualTo(2);
     }
@@ -63,13 +69,19 @@ class EmptyTurnRetryTest {
     void aTruncatedEmptyTurnIsNotRequestedAgain() {
         AtomicInteger attempts = new AtomicInteger();
 
-        assertThatThrownBy(() -> EmptyTurnRetry.run("Gemini", "gemini-3.6-flash", n -> {
-            attempts.incrementAndGet();
-            return empty(false);
-        })).isInstanceOf(LlmCallFailedException.class);
+        assertThatThrownBy(() ->
+                        EmptyTurnRetry.run(
+                                "Gemini",
+                                "gemini-3.6-flash",
+                                n -> {
+                                    attempts.incrementAndGet();
+                                    return empty(false);
+                                }))
+                .isInstanceOf(LlmCallFailedException.class);
 
         assertThat(attempts.get())
-            .as("a truncated or severed empty turn must cost exactly one request").isEqualTo(1);
+                .as("a truncated or severed empty turn must cost exactly one request")
+                .isEqualTo(1);
     }
 
     /** Two empty completions in a row is systematic, not a glitch: stop and report. */
@@ -77,12 +89,18 @@ class EmptyTurnRetryTest {
     void aSecondEmptyTurnFailsInsteadOfLoopingForever() {
         AtomicInteger attempts = new AtomicInteger();
 
-        assertThatThrownBy(() -> EmptyTurnRetry.run("Azure OpenAI Responses", "gpt-5.6-luna", n -> {
-            attempts.incrementAndGet();
-            return empty(true);
-        })).isInstanceOf(LlmCallFailedException.class)
-            .hasMessageContaining("Azure OpenAI Responses").hasMessageContaining("2 attempt(s)")
-            .hasMessageContaining("finishReason=whatever");
+        assertThatThrownBy(() ->
+                        EmptyTurnRetry.run(
+                                "Azure OpenAI Responses",
+                                "gpt-5.6-luna",
+                                n -> {
+                                    attempts.incrementAndGet();
+                                    return empty(true);
+                                }))
+                .isInstanceOf(LlmCallFailedException.class)
+                .hasMessageContaining("Azure OpenAI Responses")
+                .hasMessageContaining("2 attempt(s)")
+                .hasMessageContaining("finishReason=whatever");
 
         assertThat(attempts.get()).isEqualTo(2);
     }
@@ -95,8 +113,9 @@ class EmptyTurnRetryTest {
     @Test
     void theFailureCarriesTheUsageTheProviderBilled() {
         assertThatThrownBy(() -> EmptyTurnRetry.run("Gemini", "m", n -> empty(true)))
-            .isInstanceOf(LlmCallFailedException.class)
-            .extracting(e -> ((LlmCallFailedException) e).usage()).isEqualTo(USAGE);
+                .isInstanceOf(LlmCallFailedException.class)
+                .extracting(e -> ((LlmCallFailedException) e).usage())
+                .isEqualTo(USAGE);
     }
 
     /** The attempt number reaches the client, which needs it for logging and for its own guards. */
@@ -104,10 +123,13 @@ class EmptyTurnRetryTest {
     void theAttemptNumberIsOneBasedAndIncreases() {
         AtomicInteger seen = new AtomicInteger();
 
-        EmptyTurnRetry.run("Gemini", "m", n -> {
-            assertThat(n).isEqualTo(seen.incrementAndGet());
-            return n == 1 ? empty(true) : produced();
-        });
+        EmptyTurnRetry.run(
+                "Gemini",
+                "m",
+                n -> {
+                    assertThat(n).isEqualTo(seen.incrementAndGet());
+                    return n == 1 ? empty(true) : produced();
+                });
 
         assertThat(seen.get()).isEqualTo(2);
     }

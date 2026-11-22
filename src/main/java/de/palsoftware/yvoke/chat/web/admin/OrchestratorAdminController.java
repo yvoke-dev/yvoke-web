@@ -51,10 +51,14 @@ public class OrchestratorAdminController {
     private final ObjectMapper objectMapper;
     private final AdminAuditLogger auditLogger;
 
-    public OrchestratorAdminController(OrchestratorProfileService profileService,
-        PlaybookService playbookService, ChatConversationService chatConversationService,
-        OrchestratorProperties properties, AreaService areaService, ObjectMapper objectMapper,
-        AdminAuditLogger auditLogger) {
+    public OrchestratorAdminController(
+            OrchestratorProfileService profileService,
+            PlaybookService playbookService,
+            ChatConversationService chatConversationService,
+            OrchestratorProperties properties,
+            AreaService areaService,
+            ObjectMapper objectMapper,
+            AdminAuditLogger auditLogger) {
         this.areaService = areaService;
         this.profileService = profileService;
         this.playbookService = playbookService;
@@ -68,26 +72,36 @@ public class OrchestratorAdminController {
     public String viewOrchestrators(Model model) {
         log.info("Accessing Orchestrators Admin view");
         List<Playbook> allPlaybooks =
-            AreaAccessContext.filterByAdminArea(playbookService.listAllPlaybooks(), Playbook::area);
+                AreaAccessContext.filterByAdminArea(
+                        playbookService.listAllPlaybooks(), Playbook::area);
 
-        List<Playbook> orchestratorPlaybooks = allPlaybooks.stream()
-            .filter(p -> "orchestrator".equalsIgnoreCase(p.targetAgent())).toList();
+        List<Playbook> orchestratorPlaybooks =
+                allPlaybooks.stream()
+                        .filter(p -> "orchestrator".equalsIgnoreCase(p.targetAgent()))
+                        .toList();
 
-        List<Playbook> reviewerPlaybooks = allPlaybooks.stream()
-            .filter(p -> "reviewer".equalsIgnoreCase(p.targetAgent())).toList();
+        List<Playbook> reviewerPlaybooks =
+                allPlaybooks.stream()
+                        .filter(p -> "reviewer".equalsIgnoreCase(p.targetAgent()))
+                        .toList();
 
-        List<Playbook> specialistPlaybooks = AreaAccessContext
-            .filterByAdminArea(playbookService.listSpecializedPlaybooks(), Playbook::area);
+        List<Playbook> specialistPlaybooks =
+                AreaAccessContext.filterByAdminArea(
+                        playbookService.listSpecializedPlaybooks(), Playbook::area);
 
-        model.addAttribute("profiles", AreaAccessContext
-            .filterByAdminArea(profileService.listAllProfiles(), OrchestratorProfile::area));
-        model.addAttribute("areas",
-            AreaAccessContext.filterByAdminArea(areaService.listAreaNames(), a -> a));
+        model.addAttribute(
+                "profiles",
+                AreaAccessContext.filterByAdminArea(
+                        profileService.listAllProfiles(), OrchestratorProfile::area));
+        model.addAttribute(
+                "areas", AreaAccessContext.filterByAdminArea(areaService.listAreaNames(), a -> a));
         model.addAttribute("playbooks", allPlaybooks);
-        model.addAttribute("orchestratorPlaybooks",
-            orchestratorPlaybooks.isEmpty() ? allPlaybooks : orchestratorPlaybooks);
-        model.addAttribute("reviewerPlaybooks",
-            reviewerPlaybooks.isEmpty() ? allPlaybooks : reviewerPlaybooks);
+        model.addAttribute(
+                "orchestratorPlaybooks",
+                orchestratorPlaybooks.isEmpty() ? allPlaybooks : orchestratorPlaybooks);
+        model.addAttribute(
+                "reviewerPlaybooks",
+                reviewerPlaybooks.isEmpty() ? allPlaybooks : reviewerPlaybooks);
         model.addAttribute("specialistPlaybooks", specialistPlaybooks);
         model.addAttribute("allowedModels", chatConversationService.getAllowedModels());
         // The form and both of its JS prefill paths used to carry these numbers as literals, which
@@ -100,37 +114,41 @@ public class OrchestratorAdminController {
     }
 
     /**
-     * {@code maxReviewRounds} and {@code maxSpecialistCalls} are deliberately boxed and
-     * {@code required = false} rather than carrying a {@code defaultValue}: a literal here is a
-     * second definition of a limit that already has one, and that is exactly how this endpoint kept
-     * writing 2 after the limit became 3. An absent parameter resolves through
-     * {@code OrchestratorProperties}, which reads {@code application.yml}.
+     * {@code maxReviewRounds} and {@code maxSpecialistCalls} are deliberately boxed and {@code
+     * required = false} rather than carrying a {@code defaultValue}: a literal here is a second
+     * definition of a limit that already has one, and that is exactly how this endpoint kept
+     * writing 2 after the limit became 3. An absent parameter resolves through {@code
+     * OrchestratorProperties}, which reads {@code application.yml}.
      */
     @PostMapping
-    public String createOrUpdateProfile(@RequestParam String name,
-        @RequestParam(required = false) Integer maxReviewRounds,
-        @RequestParam(required = false) Integer maxSpecialistCalls,
-        @RequestParam String orchestratorPlaybook, @RequestParam String reviewerPlaybook,
-        @RequestParam(required = false) List<String> specialistPlaybooks,
-        @RequestParam(required = false) String orchestratorModel,
-        @RequestParam(required = false) String orchestratorThinkingLevel,
-        @RequestParam(required = false) String reviewerModel,
-        @RequestParam(required = false) String reviewerThinkingLevel,
-        @RequestParam(required = false) String specialistModel,
-        @RequestParam(required = false) String specialistThinkingLevel,
-        @RequestParam(required = false, defaultValue = "false") boolean prototype,
-        @RequestParam String area, RedirectAttributes redirectAttributes) {
+    public String createOrUpdateProfile(
+            @RequestParam String name,
+            @RequestParam(required = false) Integer maxReviewRounds,
+            @RequestParam(required = false) Integer maxSpecialistCalls,
+            @RequestParam String orchestratorPlaybook,
+            @RequestParam String reviewerPlaybook,
+            @RequestParam(required = false) List<String> specialistPlaybooks,
+            @RequestParam(required = false) String orchestratorModel,
+            @RequestParam(required = false) String orchestratorThinkingLevel,
+            @RequestParam(required = false) String reviewerModel,
+            @RequestParam(required = false) String reviewerThinkingLevel,
+            @RequestParam(required = false) String specialistModel,
+            @RequestParam(required = false) String specialistThinkingLevel,
+            @RequestParam(required = false, defaultValue = "false") boolean prototype,
+            @RequestParam String area,
+            RedirectAttributes redirectAttributes) {
 
         if (!AreaAccessContext.canAdministerArea(area)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Not authorized to manage profiles in area: " + area);
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Not authorized to manage profiles in area: " + area);
         }
 
         Optional<OrchestratorProfile> existing = profileService.getProfile(name);
         if (existing.isPresent()) {
             if (!AreaAccessContext.canAdministerArea(existing.get().area())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Cannot overwrite profile in area: " + existing.get().area());
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Cannot overwrite profile in area: " + existing.get().area());
             }
             if (!existing.get().area().equalsIgnoreCase(area)) {
                 redirectAttributes.addFlashAttribute("error", "Cannot change profile area.");
@@ -138,28 +156,52 @@ public class OrchestratorAdminController {
             }
         }
 
-        String playbookError = validateProfilePlaybooks(area, orchestratorPlaybook,
-            reviewerPlaybook, specialistPlaybooks);
+        String playbookError =
+                validateProfilePlaybooks(
+                        area, orchestratorPlaybook, reviewerPlaybook, specialistPlaybooks);
         if (playbookError != null) {
             redirectAttributes.addFlashAttribute("error", playbookError);
             return "redirect:/admin/orchestrators";
         }
 
         int rounds =
-            maxReviewRounds != null ? maxReviewRounds : properties.resolvedMaxReviewRounds();
-        int calls = maxSpecialistCalls != null ? maxSpecialistCalls
-            : properties.resolvedMaxSpecialistCalls();
+                maxReviewRounds != null ? maxReviewRounds : properties.resolvedMaxReviewRounds();
+        int calls =
+                maxSpecialistCalls != null
+                        ? maxSpecialistCalls
+                        : properties.resolvedMaxSpecialistCalls();
 
         OrchestratorProfile profile =
-            new OrchestratorProfile(name, rounds, calls, orchestratorPlaybook, reviewerPlaybook,
-                specialistPlaybooks != null ? specialistPlaybooks : List.of(), orchestratorModel,
-                orchestratorThinkingLevel, reviewerModel, reviewerThinkingLevel, specialistModel,
-                specialistThinkingLevel, prototype, null, null, area);
+                new OrchestratorProfile(
+                        name,
+                        rounds,
+                        calls,
+                        orchestratorPlaybook,
+                        reviewerPlaybook,
+                        specialistPlaybooks != null ? specialistPlaybooks : List.of(),
+                        orchestratorModel,
+                        orchestratorThinkingLevel,
+                        reviewerModel,
+                        reviewerThinkingLevel,
+                        specialistModel,
+                        specialistThinkingLevel,
+                        prototype,
+                        null,
+                        null,
+                        area);
         profileService.saveProfile(profile);
-        auditLogger.log("SAVE_ORCHESTRATOR_PROFILE", name.trim(),
-            Map.of("area", area.trim(), "maxReviewRounds", rounds, "maxSpecialistCalls", calls));
-        redirectAttributes.addFlashAttribute("success",
-            "Orchestrator profile '" + name + "' saved successfully.");
+        auditLogger.log(
+                "SAVE_ORCHESTRATOR_PROFILE",
+                name.trim(),
+                Map.of(
+                        "area",
+                        area.trim(),
+                        "maxReviewRounds",
+                        rounds,
+                        "maxSpecialistCalls",
+                        calls));
+        redirectAttributes.addFlashAttribute(
+                "success", "Orchestrator profile '" + name + "' saved successfully.");
         return "redirect:/admin/orchestrators";
     }
 
@@ -167,67 +209,85 @@ public class OrchestratorAdminController {
     public ResponseEntity<Resource> exportProfile(@RequestParam String name) {
         Optional<OrchestratorProfile> profile = profileService.getProfile(name);
         if (profile.isEmpty() || !AreaAccessContext.canAdministerArea(profile.get().area())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Orchestrator profile not found: " + name);
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Orchestrator profile not found: " + name);
         }
         String json = profileService.exportProfileToJson(name);
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
         ByteArrayResource resource = new ByteArrayResource(bytes);
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION,
-                ContentDisposition.attachment().filename(name + ".json", StandardCharsets.UTF_8)
-                    .build().toString())
-            .contentType(MediaType.APPLICATION_JSON).contentLength(bytes.length).body(resource);
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(name + ".json", StandardCharsets.UTF_8)
+                                .build()
+                                .toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .contentLength(bytes.length)
+                .body(resource);
     }
 
     @PostMapping("/import")
-    public String importProfile(@RequestParam("file") MultipartFile file,
-        @RequestParam(required = false) String area, RedirectAttributes redirectAttributes)
-        throws IOException {
+    public String importProfile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(required = false) String area,
+            RedirectAttributes redirectAttributes)
+            throws IOException {
         String content =
-            BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
+                BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
         OrchestratorProfile parsed;
         try {
             parsed = objectMapper.readValue(content, OrchestratorProfile.class);
         } catch (Exception e) {
             throw new IllegalArgumentException(
-                "Failed to parse orchestrator profile JSON: " + e.getMessage(), e);
+                    "Failed to parse orchestrator profile JSON: " + e.getMessage(), e);
         }
         String targetArea =
-            (parsed.area() != null && !parsed.area().isBlank()) ? parsed.area() : area;
-        if (targetArea == null || targetArea.isBlank()
-            || !AreaAccessContext.canAdministerArea(targetArea)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Not authorized for area: " + targetArea);
+                (parsed.area() != null && !parsed.area().isBlank()) ? parsed.area() : area;
+        if (targetArea == null
+                || targetArea.isBlank()
+                || !AreaAccessContext.canAdministerArea(targetArea)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Not authorized for area: " + targetArea);
         }
         Optional<OrchestratorProfile> existing = profileService.getProfile(parsed.name());
         if (existing.isPresent()) {
             if (!AreaAccessContext.canAdministerArea(existing.get().area())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Existing profile belongs to another area: " + parsed.name());
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Existing profile belongs to another area: " + parsed.name());
             }
             if (!existing.get().area().equalsIgnoreCase(targetArea)) {
                 redirectAttributes.addFlashAttribute("error", "Cannot change profile area.");
                 return "redirect:/admin/orchestrators";
             }
         }
-        String playbookError = validateProfilePlaybooks(targetArea, parsed.orchestratorPlaybook(),
-            parsed.reviewerPlaybook(), parsed.specialistPlaybooks());
+        String playbookError =
+                validateProfilePlaybooks(
+                        targetArea,
+                        parsed.orchestratorPlaybook(),
+                        parsed.reviewerPlaybook(),
+                        parsed.specialistPlaybooks());
         if (playbookError != null) {
             redirectAttributes.addFlashAttribute("error", playbookError);
             return "redirect:/admin/orchestrators";
         }
         OrchestratorProfile imported = profileService.importProfileFromJson(content, area);
-        auditLogger.log("IMPORT_ORCHESTRATOR_PROFILE", imported.name(),
-            Map.of("area", imported.area() != null ? imported.area() : ""));
-        redirectAttributes.addFlashAttribute("success",
-            "Orchestrator profile '" + imported.name() + "' imported successfully.");
+        auditLogger.log(
+                "IMPORT_ORCHESTRATOR_PROFILE",
+                imported.name(),
+                Map.of("area", imported.area() != null ? imported.area() : ""));
+        redirectAttributes.addFlashAttribute(
+                "success", "Orchestrator profile '" + imported.name() + "' imported successfully.");
         return "redirect:/admin/orchestrators";
     }
 
     @Nullable
-    private String validateProfilePlaybooks(String area, String orchestratorPlaybook,
-        String reviewerPlaybook, @Nullable List<String> specialistPlaybooks) {
+    private String validateProfilePlaybooks(
+            String area,
+            String orchestratorPlaybook,
+            String reviewerPlaybook,
+            @Nullable List<String> specialistPlaybooks) {
         if (orchestratorPlaybook == null || orchestratorPlaybook.isBlank()) {
             return "Referenced orchestrator playbook not found in area: " + orchestratorPlaybook;
         }
@@ -260,14 +320,16 @@ public class OrchestratorAdminController {
     public String deleteProfile(@RequestParam String name, RedirectAttributes redirectAttributes) {
         Optional<OrchestratorProfile> profile = profileService.getProfile(name);
         if (profile.isEmpty() || !AreaAccessContext.canAdministerArea(profile.get().area())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Orchestrator profile not found: " + name);
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Orchestrator profile not found: " + name);
         }
         profileService.deleteProfile(name);
-        auditLogger.log("DELETE_ORCHESTRATOR_PROFILE", profile.get().name(),
-            Map.of("area", profile.get().area() != null ? profile.get().area() : ""));
-        redirectAttributes.addFlashAttribute("success",
-            "Orchestrator profile '" + name + "' deleted successfully.");
+        auditLogger.log(
+                "DELETE_ORCHESTRATOR_PROFILE",
+                profile.get().name(),
+                Map.of("area", profile.get().area() != null ? profile.get().area() : ""));
+        redirectAttributes.addFlashAttribute(
+                "success", "Orchestrator profile '" + name + "' deleted successfully.");
         return "redirect:/admin/orchestrators";
     }
 }

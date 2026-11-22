@@ -25,8 +25,8 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     }
 
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
-        Object handler) {
+    public boolean preHandle(
+            HttpServletRequest request, HttpServletResponse response, Object handler) {
         String uri = request.getRequestURI();
         if (uri != null && uri.equals("/admin/search")) {
             // Only rate-limit searches that actually execute embedding/rerank calls (non-blank
@@ -43,16 +43,19 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             principal = "validate:" + principal;
         }
         if (!rateLimiter.tryAcquire(principal)) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                "Rate limit exceeded. Please wait before sending more requests.");
+            throw new ResponseStatusException(
+                    HttpStatus.TOO_MANY_REQUESTS,
+                    "Rate limit exceeded. Please wait before sending more requests.");
         }
         return true;
     }
 
     private static String resolvePrincipal(HttpServletRequest request) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.isAuthenticated() && auth.getName() != null
-            && !"anonymousUser".equals(auth.getName())) {
+        if (auth != null
+                && auth.isAuthenticated()
+                && auth.getName() != null
+                && !"anonymousUser".equals(auth.getName())) {
             return "user:" + auth.getName();
         }
         return "ip:" + request.getRemoteAddr();

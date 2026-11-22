@@ -27,29 +27,27 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
      * request is not over when this filter returns. {@code /api/jobs/{id}/progress} returns an
      * {@code SseEmitter}, so the container re-dispatches with {@code DispatcherType.ASYNC}, and
      * {@code OncePerRequestFilter.shouldNotFilterAsyncDispatch()} is {@code true}, so this filter
-     * is skipped on that dispatch while {@code AuthorizationFilter} (built with
-     * {@code filterAsyncDispatch=true}) still authorizes it. Writing only to
-     * {@code SecurityContextHolder} therefore left the second dispatch anonymous and 403ed the
-     * subscription — and because the response was already committed, the denial surfaced as "Unable
-     * to handle the Spring Security Exception because the response is already committed" and tore
-     * the stream down.
+     * is skipped on that dispatch while {@code AuthorizationFilter} (built with {@code
+     * filterAsyncDispatch=true}) still authorizes it. Writing only to {@code SecurityContextHolder}
+     * therefore left the second dispatch anonymous and 403ed the subscription — and because the
+     * response was already committed, the denial surfaced as "Unable to handle the Spring Security
+     * Exception because the response is already committed" and tore the stream down.
      *
-     * <p>
-     * This must NOT be the chain's own repository: that one is a
-     * {@code DelegatingSecurityContextRepository} whose delegates include
-     * {@code HttpSessionSecurityContextRepository}, and saving through it would persist
-     * {@code ROLE_INGEST} into a browser admin's session — stealing their authority for every later
-     * page load and attributing their actions to {@code api-user}. The request-attribute name is a
+     * <p>This must NOT be the chain's own repository: that one is a {@code
+     * DelegatingSecurityContextRepository} whose delegates include {@code
+     * HttpSessionSecurityContextRepository}, and saving through it would persist {@code
+     * ROLE_INGEST} into a browser admin's session — stealing their authority for every later page
+     * load and attributing their actions to {@code api-user}. The request-attribute name is a
      * static constant on {@code RequestAttributeSecurityContextRepository}, so an instance owned
      * here writes exactly the attribute the chain's delegating repository reads back.
      */
     private static final SecurityContextRepository CONTEXT_REPOSITORY =
-        new RequestAttributeSecurityContextRepository();
+            new RequestAttributeSecurityContextRepository();
 
     private static final SimpleGrantedAuthority ROLE_INGEST_AUTHORITY =
-        new SimpleGrantedAuthority("ROLE_INGEST");
+            new SimpleGrantedAuthority("ROLE_INGEST");
     private static final SimpleGrantedAuthority AREA_INGEST_ALL_AUTHORITY =
-        new SimpleGrantedAuthority("AREA_INGEST_*");
+            new SimpleGrantedAuthority("AREA_INGEST_*");
 
     private final String apiKeyHeader;
     private final byte[] globalKeyBytes;
@@ -59,11 +57,13 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         this(apiKeyHeader, apiKeyValue, Map.of());
     }
 
-    public ApiKeyAuthenticationFilter(String apiKeyHeader, String apiKeyValue,
-        Map<String, String> areaApiKeys) {
+    public ApiKeyAuthenticationFilter(
+            String apiKeyHeader, String apiKeyValue, Map<String, String> areaApiKeys) {
         this.apiKeyHeader = apiKeyHeader;
-        this.globalKeyBytes = (apiKeyValue == null || apiKeyValue.isBlank()) ? null
-            : apiKeyValue.getBytes(StandardCharsets.UTF_8);
+        this.globalKeyBytes =
+                (apiKeyValue == null || apiKeyValue.isBlank())
+                        ? null
+                        : apiKeyValue.getBytes(StandardCharsets.UTF_8);
 
         Map<String, byte[]> areaKeys = new LinkedHashMap<>();
         if (areaApiKeys != null) {
@@ -77,8 +77,9 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-        FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(
+            HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
 
         String requestKey = request.getHeader(apiKeyHeader);
 
@@ -103,8 +104,10 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
 
             if (globalMatched) {
                 UsernamePasswordAuthenticationToken auth =
-                    new UsernamePasswordAuthenticationToken("api-key-client", null,
-                        List.of(ROLE_INGEST_AUTHORITY, AREA_INGEST_ALL_AUTHORITY));
+                        new UsernamePasswordAuthenticationToken(
+                                "api-key-client",
+                                null,
+                                List.of(ROLE_INGEST_AUTHORITY, AREA_INGEST_ALL_AUTHORITY));
                 // A FRESH context, not getContext().setAuthentication(...): the latter mutates
                 // whatever SecurityContextHolderFilter loaded, which on this deliberately
                 // session-capable chain can be the very object held in a browser admin's session.
@@ -114,9 +117,13 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
                 CONTEXT_REPOSITORY.saveContext(context, request, response);
             } else if (matchedArea != null) {
                 String upperArea = matchedArea.trim().toUpperCase(Locale.ROOT);
-                UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                    "api-key-client:" + matchedArea, null, List.of(ROLE_INGEST_AUTHORITY,
-                        new SimpleGrantedAuthority("AREA_INGEST_" + upperArea)));
+                UsernamePasswordAuthenticationToken auth =
+                        new UsernamePasswordAuthenticationToken(
+                                "api-key-client:" + matchedArea,
+                                null,
+                                List.of(
+                                        ROLE_INGEST_AUTHORITY,
+                                        new SimpleGrantedAuthority("AREA_INGEST_" + upperArea)));
                 // A FRESH context, not getContext().setAuthentication(...): the latter mutates
                 // whatever SecurityContextHolderFilter loaded, which on this deliberately
                 // session-capable chain can be the very object held in a browser admin's session.

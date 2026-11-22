@@ -40,20 +40,25 @@ public class McpToolsConfig {
      * custom {@code ContextAwareToolCallback} schemas, so their scanned registrations are skipped
      * to keep a single source of truth per tool schema.
      */
-    public static final Set<Class<?>> CALLBACK_PUBLISHED = Set.of(SearchCorpusTool.class,
-        GetSectionTool.class, ListDocumentsTool.class, VerifyCitationsTool.class);
+    public static final Set<Class<?>> CALLBACK_PUBLISHED =
+            Set.of(
+                    SearchCorpusTool.class,
+                    GetSectionTool.class,
+                    ListDocumentsTool.class,
+                    VerifyCitationsTool.class);
 
     /**
-     * The tools both the in-app assistant ({@code RagService}, through its
-     * {@code List<ToolCallback>} constructor argument) and MCP clients get. It starts from the
-     * client-only names, so no shared registration, by hand or by scan, can put one of them in
-     * front of the in-app assistant. Registration fails fast on missing beans, class-load errors,
-     * or duplicate tool names rather than silently starting with a depleted tool catalogue.
+     * The tools both the in-app assistant ({@code RagService}, through its {@code
+     * List<ToolCallback>} constructor argument) and MCP clients get. It starts from the client-only
+     * names, so no shared registration, by hand or by scan, can put one of them in front of the
+     * in-app assistant. Registration fails fast on missing beans, class-load errors, or duplicate
+     * tool names rather than silently starting with a depleted tool catalogue.
      */
     @Bean
-    public List<ToolCallback> sharedToolCallbacks(ApplicationContext applicationContext,
-        @Value("${app.retrieval.max-limit}") int maxLimit,
-        @Qualifier("clientOnlyToolCallbacks") ToolCallbackProvider clientOnlyToolCallbacks) {
+    public List<ToolCallback> sharedToolCallbacks(
+            ApplicationContext applicationContext,
+            @Value("${app.retrieval.max-limit}") int maxLimit,
+            @Qualifier("clientOnlyToolCallbacks") ToolCallbackProvider clientOnlyToolCallbacks) {
         List<ToolCallback> callbacksList = new ArrayList<>();
         Set<String> registeredNames = new HashSet<>();
         for (ToolCallback clientOnly : clientOnlyToolCallbacks.getToolCallbacks()) {
@@ -64,16 +69,20 @@ public class McpToolsConfig {
         }
 
         ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
-        List<ToolCallback> handRegistered = List.of(
-            new SearchCorpusToolCallback(
-                applicationContext.getBean(SearchCorpusTool.class), objectMapper, maxLimit),
-            new AskClarifyingQuestionToolCallback(objectMapper),
-            new GetSectionToolCallback(applicationContext.getBean(GetSectionTool.class),
-                objectMapper),
-            new ListDocumentsToolCallback(applicationContext.getBean(ListDocumentsTool.class),
-                objectMapper),
-            new VerifyCitationsToolCallback(applicationContext.getBean(VerifyCitationsTool.class),
-                objectMapper));
+        List<ToolCallback> handRegistered =
+                List.of(
+                        new SearchCorpusToolCallback(
+                                applicationContext.getBean(SearchCorpusTool.class),
+                                objectMapper,
+                                maxLimit),
+                        new AskClarifyingQuestionToolCallback(objectMapper),
+                        new GetSectionToolCallback(
+                                applicationContext.getBean(GetSectionTool.class), objectMapper),
+                        new ListDocumentsToolCallback(
+                                applicationContext.getBean(ListDocumentsTool.class), objectMapper),
+                        new VerifyCitationsToolCallback(
+                                applicationContext.getBean(VerifyCitationsTool.class),
+                                objectMapper));
 
         for (ToolCallback callback : handRegistered) {
             registerUnique(callback, registeredNames, callbacksList, "hand-registered");
@@ -83,7 +92,7 @@ public class McpToolsConfig {
             // Registered by hand above with a context-aware callback. Skipping the class keeps
             // exactly one source of truth for each tool's schema.
             if (CALLBACK_PUBLISHED.contains(clazz)
-                || clazz.isAnnotationPresent(ClientOnlyTools.class)) {
+                    || clazz.isAnnotationPresent(ClientOnlyTools.class)) {
                 continue;
             }
             registerBeanTools(applicationContext, clazz, registeredNames, callbacksList);
@@ -116,11 +125,11 @@ public class McpToolsConfig {
     // which would eagerly instantiate other unrelated beans and cause circular reference errors.
     public static List<Class<?>> scanToolClasses() {
         ClassPathScanningCandidateComponentProvider scanner =
-            new ClassPathScanningCandidateComponentProvider(false);
+                new ClassPathScanningCandidateComponentProvider(false);
         scanner.addIncludeFilter(new AnnotationTypeFilter(Component.class));
         List<Class<?>> classes = new ArrayList<>();
-        for (BeanDefinition bd : scanner
-            .findCandidateComponents("de.palsoftware.yvoke.mcp.tools")) {
+        for (BeanDefinition bd :
+                scanner.findCandidateComponents("de.palsoftware.yvoke.mcp.tools")) {
             String className = bd.getBeanClassName();
             if (className == null) {
                 continue;
@@ -128,27 +137,33 @@ public class McpToolsConfig {
             try {
                 classes.add(Class.forName(className));
             } catch (ClassNotFoundException e) {
-                throw new IllegalStateException("Failed to load MCP tool candidate: " + className,
-                    e);
+                throw new IllegalStateException(
+                        "Failed to load MCP tool candidate: " + className, e);
             }
         }
         classes.sort(Comparator.comparing(Class::getName));
         return classes;
     }
 
-    private static void registerUnique(ToolCallback callback, Set<String> registeredNames,
-        List<ToolCallback> callbacksList, String source) {
+    private static void registerUnique(
+            ToolCallback callback,
+            Set<String> registeredNames,
+            List<ToolCallback> callbacksList,
+            String source) {
         String name = callback.getToolDefinition().name();
         if (!registeredNames.add(name)) {
             throw new IllegalStateException(
-                "Duplicate MCP tool name '" + name + "' (" + source + ")");
+                    "Duplicate MCP tool name '" + name + "' (" + source + ")");
         }
         callbacksList.add(callback);
         log.info("Registered {} MCP tool callback: {}", source, name);
     }
 
-    private static void registerBeanTools(ApplicationContext applicationContext, Class<?> clazz,
-        Set<String> registeredNames, List<ToolCallback> callbacksList) {
+    private static void registerBeanTools(
+            ApplicationContext applicationContext,
+            Class<?> clazz,
+            Set<String> registeredNames,
+            List<ToolCallback> callbacksList) {
         Object bean = applicationContext.getBean(clazz);
         for (ToolCallback callback : ToolCallbacks.from(bean)) {
             registerUnique(callback, registeredNames, callbacksList, clazz.getSimpleName());

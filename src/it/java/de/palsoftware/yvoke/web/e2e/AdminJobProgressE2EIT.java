@@ -17,33 +17,39 @@ import org.springframework.beans.factory.annotation.Autowired;
 /**
  * J6 — the admin job-detail page updated by <em>live</em> SSE progress. The background worker is
  * disabled for all e2e contexts (in {@link AbstractE2E}), so the test itself drives the job row and
- * publishes snapshots through the genuine
- * {@code JobProgressBroker → SseEmitter → EventSource → DOM} path (no custom handler, no poll
- * timing) — and crucially, no worker in any shared-DB context can claim the queued job out from
- * under it. Reuses the base e2e context (no distinct property combo).
+ * publishes snapshots through the genuine {@code JobProgressBroker → SseEmitter → EventSource →
+ * DOM} path (no custom handler, no poll timing) — and crucially, no worker in any shared-DB context
+ * can claim the queued job out from under it. Reuses the base e2e context (no distinct property
+ * combo).
  */
 class AdminJobProgressE2EIT extends AbstractE2E {
 
-    @Autowired
-    private CollectionRepository collectionRepository;
-    @Autowired
-    private JobService jobService;
-    @Autowired
-    private JobRepository jobRepository;
+    @Autowired private CollectionRepository collectionRepository;
+    @Autowired private JobService jobService;
+    @Autowired private JobRepository jobRepository;
 
     @Test
     void jobDetailPageReflectsLiveSseProgress() {
         String collection = "e2e-jobs-" + UUID.randomUUID();
         collectionRepository.create(collection, "e2e progress test", "OIM");
         // kind "noop" has no handler — harmless because the worker is disabled.
-        UUID jobId = jobService.enqueue(new EnqueueRequest("noop", "e2e://" + UUID.randomUUID(),
-            List.of(), collection, Map.of())).jobId();
+        UUID jobId =
+                jobService
+                        .enqueue(
+                                new EnqueueRequest(
+                                        "noop",
+                                        "e2e://" + UUID.randomUUID(),
+                                        List.of(),
+                                        collection,
+                                        Map.of()))
+                        .jobId();
 
         loginAs("admin");
 
         // The page opens an EventSource because the server-rendered status is still non-terminal.
-        page.waitForRequest(r -> r.url().contains("/api/jobs/v1/") && r.url().endsWith("/progress"),
-            () -> page.navigate(url("/admin/jobs/" + jobId)));
+        page.waitForRequest(
+                r -> r.url().contains("/api/jobs/v1/") && r.url().endsWith("/progress"),
+                () -> page.navigate(url("/admin/jobs/" + jobId)));
 
         assertThat(page.locator("#statusBadge")).containsText("Queued");
         assertThat(page.locator("#progressText")).hasText("0%");

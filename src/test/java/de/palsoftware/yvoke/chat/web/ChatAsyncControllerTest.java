@@ -61,9 +61,13 @@ class ChatAsyncControllerTest {
 
     private static void authenticateAsAreaAdmin(String area) {
         SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(new TestingAuthenticationToken("area_admin", "pass",
-            List.of(new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
-                new SimpleGrantedAuthority("AREA_ADMIN_" + area.toUpperCase()))));
+        context.setAuthentication(
+                new TestingAuthenticationToken(
+                        "area_admin",
+                        "pass",
+                        List.of(
+                                new SimpleGrantedAuthority("ROLE_AREA_ADMIN"),
+                                new SimpleGrantedAuthority("AREA_ADMIN_" + area.toUpperCase()))));
         SecurityContextHolder.setContext(context);
     }
 
@@ -80,8 +84,22 @@ class ChatAsyncControllerTest {
     }
 
     private static Message messageWithStatus(UUID conversationId, String status) {
-        return new Message(UUID.randomUUID(), conversationId, "assistant", "content", null,
-            List.of(), List.of(), Instant.now(), null, null, null, null, null, status, null);
+        return new Message(
+                UUID.randomUUID(),
+                conversationId,
+                "assistant",
+                "content",
+                null,
+                List.of(),
+                List.of(),
+                Instant.now(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                status,
+                null);
     }
 
     @Test
@@ -89,13 +107,15 @@ class ChatAsyncControllerTest {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         when(chatMessageService.prepareAndSubmitAsync(any(UUID.class), anyString(), any(), any()))
-            .thenThrow(new AccessDeniedException("Access denied to conversation"));
+                .thenThrow(new AccessDeniedException("Access denied to conversation"));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
-        assertThrows(AccessDeniedException.class,
-            () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
     }
 
     @Test
@@ -103,14 +123,16 @@ class ChatAsyncControllerTest {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
-        doThrow(new AccessDeniedException("Forbidden")).when(chatConversationService)
-            .verifyOwnership(any(UUID.class), eq(false));
+        doThrow(new AccessDeniedException("Forbidden"))
+                .when(chatConversationService)
+                .verifyOwnership(any(UUID.class), eq(false));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+                new ChatAsyncController(chatMessageService, chatConversationService, limiter);
 
-        assertThrows(AccessDeniedException.class,
-            () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
 
         verify(limiter, never()).tryAcquire();
         verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any(), any());
@@ -121,10 +143,11 @@ class ChatAsyncControllerTest {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
         ResponseEntity<Map<String, String>> response =
-            controller.sendMessageAsync(UUID.randomUUID(), "   ", null);
+                controller.sendMessageAsync(UUID.randomUUID(), "   ", null);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any(), any());
@@ -138,20 +161,22 @@ class ChatAsyncControllerTest {
         UUID expectedAssistantMessageId = UUID.randomUUID();
         String content = "Hello assistant";
 
-        when(
-            chatMessageService.prepareAndSubmitAsync(eq(conversationId), eq(content), any(), any()))
-            .thenReturn(expectedAssistantMessageId);
+        when(chatMessageService.prepareAndSubmitAsync(
+                        eq(conversationId), eq(content), any(), any()))
+                .thenReturn(expectedAssistantMessageId);
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
         ResponseEntity<Map<String, String>> response =
-            controller.sendMessageAsync(conversationId, content, null);
+                controller.sendMessageAsync(conversationId, content, null);
 
         assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
-        assertEquals(expectedAssistantMessageId.toString(),
-            response.getBody().get("assistantMessageId"));
-        verify(chatMessageService).prepareAndSubmitAsync(eq(conversationId), eq(content), any(),
-            any());
+        assertEquals(
+                expectedAssistantMessageId.toString(),
+                response.getBody().get("assistantMessageId"));
+        verify(chatMessageService)
+                .prepareAndSubmitAsync(eq(conversationId), eq(content), any(), any());
     }
 
     @Test
@@ -166,13 +191,14 @@ class ChatAsyncControllerTest {
         Message doneMessage = messageWithStatus(conversationId, "done");
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
         // 1. Test Generating
         when(chatMessageService.getMessageStatus(messageId))
-            .thenReturn(Optional.of(generatingMessage));
+                .thenReturn(Optional.of(generatingMessage));
         ResponseEntity<Map<String, Object>> responseGen =
-            controller.getMessageStatus(conversationId, messageId);
+                controller.getMessageStatus(conversationId, messageId);
         assertEquals(HttpStatus.OK, responseGen.getStatusCode());
         assertEquals("generating", responseGen.getBody().get("status"));
         verify(chatConversationService).verifyOwnership(conversationId, false);
@@ -180,7 +206,7 @@ class ChatAsyncControllerTest {
         // 2. Test Error
         when(chatMessageService.getMessageStatus(messageId)).thenReturn(Optional.of(errorMessage));
         ResponseEntity<Map<String, Object>> responseErr =
-            controller.getMessageStatus(conversationId, messageId);
+                controller.getMessageStatus(conversationId, messageId);
         assertEquals(HttpStatus.OK, responseErr.getStatusCode());
         assertEquals("error", responseErr.getBody().get("status"));
         assertEquals(MessageDto.from(errorMessage, null), responseErr.getBody().get("message"));
@@ -188,7 +214,7 @@ class ChatAsyncControllerTest {
         // 3. Test Done
         when(chatMessageService.getMessageStatus(messageId)).thenReturn(Optional.of(doneMessage));
         ResponseEntity<Map<String, Object>> responseDone =
-            controller.getMessageStatus(conversationId, messageId);
+                controller.getMessageStatus(conversationId, messageId);
         assertEquals(HttpStatus.OK, responseDone.getStatusCode());
         assertEquals("done", responseDone.getBody().get("status"));
         assertEquals(MessageDto.from(doneMessage, null), responseDone.getBody().get("message"));
@@ -196,7 +222,7 @@ class ChatAsyncControllerTest {
         // 4. Test Not Found
         when(chatMessageService.getMessageStatus(messageId)).thenReturn(Optional.empty());
         ResponseEntity<Map<String, Object>> responseNotFound =
-            controller.getMessageStatus(conversationId, messageId);
+                controller.getMessageStatus(conversationId, messageId);
         assertEquals(HttpStatus.NOT_FOUND, responseNotFound.getStatusCode());
     }
 
@@ -214,13 +240,14 @@ class ChatAsyncControllerTest {
 
         Message cancelledMessage = messageWithStatus(conversationId, "cancelled");
         when(chatMessageService.getMessageStatus(messageId))
-            .thenReturn(Optional.of(cancelledMessage));
+                .thenReturn(Optional.of(cancelledMessage));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
         ResponseEntity<Map<String, Object>> response =
-            controller.getMessageStatus(conversationId, messageId);
+                controller.getMessageStatus(conversationId, messageId);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals("cancelled", response.getBody().get("status"));
@@ -238,8 +265,7 @@ class ChatAsyncControllerTest {
      * is the same family of failure that once presented an HTTP 429 to the user as "[Generation
      * stopped by user]".
      *
-     * <p>
-     * The fixed "done" default is what keeps the response vocabulary closed. Replacing it with
+     * <p>The fixed "done" default is what keeps the response vocabulary closed. Replacing it with
      * {@code message.status()} looks like a strict improvement ("report what the row actually
      * says") and passes every other test in this file, because they cover only the four values the
      * controller already names explicitly — generating, error, cancelled and a row literally stored
@@ -256,17 +282,20 @@ class ChatAsyncControllerTest {
         when(chatMessageService.getMessageStatus(messageId)).thenReturn(Optional.of(queuedMessage));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
         ResponseEntity<Map<String, Object>> response =
-            controller.getMessageStatus(conversationId, messageId);
+                controller.getMessageStatus(conversationId, messageId);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals("done", response.getBody().get("status"));
         assertEquals(MessageDto.from(queuedMessage, null), response.getBody().get("message"));
-        assertNotEquals("queued", response.getBody().get("status"),
-            "an unrecognised status must not be echoed back to a client that has no branch for it: "
-                + response.getBody().get("status"));
+        assertNotEquals(
+                "queued",
+                response.getBody().get("status"),
+                "an unrecognised status must not be echoed back to a client that has no branch for it: "
+                        + response.getBody().get("status"));
     }
 
     @Test
@@ -282,12 +311,13 @@ class ChatAsyncControllerTest {
         // Without a cross-check this leaks another conversation's message content (SEC-08 / IDOR).
         Message foreignMessage = messageWithStatus(otherConversationId, "done");
         when(chatMessageService.getMessageStatus(messageId))
-            .thenReturn(Optional.of(foreignMessage));
+                .thenReturn(Optional.of(foreignMessage));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
         ResponseEntity<Map<String, Object>> response =
-            controller.getMessageStatus(conversationId, messageId);
+                controller.getMessageStatus(conversationId, messageId);
 
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
         // The foreign message's content must never be surfaced.
@@ -301,14 +331,17 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
 
-        doThrow(new AccessDeniedException("Access denied")).when(chatConversationService)
-            .verifyOwnership(any(UUID.class), anyBoolean());
+        doThrow(new AccessDeniedException("Access denied"))
+                .when(chatConversationService)
+                .verifyOwnership(any(UUID.class), anyBoolean());
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
-        assertThrows(AccessDeniedException.class,
-            () -> controller.getMessageStatus(conversationId, messageId));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> controller.getMessageStatus(conversationId, messageId));
         verify(chatMessageService, never()).getMessageStatus(any());
     }
 
@@ -320,13 +353,16 @@ class ChatAsyncControllerTest {
         when(limiter.tryAcquire()).thenReturn(false);
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+                new ChatAsyncController(chatMessageService, chatConversationService, limiter);
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-            () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
+        ResponseStatusException ex =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
-        assertEquals("The assistant is at capacity right now. Please retry in a moment.",
-            ex.getReason());
+        assertEquals(
+                "The assistant is at capacity right now. Please retry in a moment.",
+                ex.getReason());
 
         verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any());
         verify(chatMessageService, never()).prepareAndSubmitAsync(any(), any(), any(), any());
@@ -340,13 +376,14 @@ class ChatAsyncControllerTest {
         GenerationConcurrencyLimiter limiter = allowingLimiter();
 
         when(chatMessageService.prepareAndSubmitAsync(any(), any(), any(), any()))
-            .thenThrow(new AccessDeniedException("Access denied to conversation"));
+                .thenThrow(new AccessDeniedException("Access denied to conversation"));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+                new ChatAsyncController(chatMessageService, chatConversationService, limiter);
 
-        assertThrows(AccessDeniedException.class,
-            () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> controller.sendMessageAsync(UUID.randomUUID(), "hello", null));
 
         verify(limiter).tryAcquire();
         verify(limiter).release();
@@ -362,16 +399,16 @@ class ChatAsyncControllerTest {
 
         AtomicReference<Runnable> onCompleteRef = new AtomicReference<>();
         when(chatMessageService.prepareAndSubmitAsync(eq(convId), eq("hello"), any(), any()))
-            .thenAnswer(inv -> {
-                onCompleteRef.set(inv.getArgument(3));
-                return assistantMessageId;
-            });
+                .thenAnswer(inv -> {
+                    onCompleteRef.set(inv.getArgument(3));
+                    return assistantMessageId;
+                });
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+                new ChatAsyncController(chatMessageService, chatConversationService, limiter);
 
         ResponseEntity<Map<String, String>> response =
-            controller.sendMessageAsync(convId, "hello", null);
+                controller.sendMessageAsync(convId, "hello", null);
 
         assertEquals(HttpStatus.ACCEPTED, response.getStatusCode());
         verify(limiter).tryAcquire();
@@ -390,10 +427,10 @@ class ChatAsyncControllerTest {
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+                new ChatAsyncController(chatMessageService, chatConversationService, limiter);
 
         ResponseEntity<Map<String, String>> response =
-            controller.sendMessageAsync(UUID.randomUUID(), "   ", null);
+                controller.sendMessageAsync(UUID.randomUUID(), "   ", null);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         verify(limiter, never()).tryAcquire();
@@ -410,17 +447,27 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
         when(chatConversationService.verifyOwnership(conversationId, true))
-            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
-                "web", "finance"));
+                .thenReturn(
+                        new Conversation(
+                                conversationId,
+                                null,
+                                "T",
+                                Map.of(),
+                                null,
+                                null,
+                                List.of(),
+                                "web",
+                                "finance"));
 
         when(chatMessageService.getMessageTrace(conversationId, messageId))
-            .thenReturn(Optional.empty());
+                .thenReturn(Optional.empty());
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
         ResponseEntity<MessageTraceDto> response =
-            controller.getMessageTrace(conversationId, messageId);
+                controller.getMessageTrace(conversationId, messageId);
 
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
         verify(chatConversationService).verifyOwnership(conversationId, true);
@@ -434,19 +481,46 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
         when(chatConversationService.verifyOwnership(conversationId, true))
-            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
-                "web", "finance"));
+                .thenReturn(
+                        new Conversation(
+                                conversationId,
+                                null,
+                                "T",
+                                Map.of(),
+                                null,
+                                null,
+                                List.of(),
+                                "web",
+                                "finance"));
 
-        MessageTrace trace = new MessageTrace("single", messageId, conversationId, "done",
-            "content", "model", "pb-single", 3, 10, 20, 30, 0, 0, List.of(), List.of(), null, null);
+        MessageTrace trace =
+                new MessageTrace(
+                        "single",
+                        messageId,
+                        conversationId,
+                        "done",
+                        "content",
+                        "model",
+                        "pb-single",
+                        3,
+                        10,
+                        20,
+                        30,
+                        0,
+                        0,
+                        List.of(),
+                        List.of(),
+                        null,
+                        null);
         when(chatMessageService.getMessageTrace(conversationId, messageId))
-            .thenReturn(Optional.of(trace));
+                .thenReturn(Optional.of(trace));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
         ResponseEntity<MessageTraceDto> response =
-            controller.getMessageTrace(conversationId, messageId);
+                controller.getMessageTrace(conversationId, messageId);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertThat(response.getBody()).isNotNull();
@@ -471,19 +545,46 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
         when(chatConversationService.verifyOwnership(conversationId, true))
-            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
-                "web", "finance"));
+                .thenReturn(
+                        new Conversation(
+                                conversationId,
+                                null,
+                                "T",
+                                Map.of(),
+                                null,
+                                null,
+                                List.of(),
+                                "web",
+                                "finance"));
 
-        MessageTrace trace = new MessageTrace("single", messageId, conversationId, "generating", "",
-            "model", null, null, null, null, null, null, null, List.of(), List.of(), null, null);
+        MessageTrace trace =
+                new MessageTrace(
+                        "single",
+                        messageId,
+                        conversationId,
+                        "generating",
+                        "",
+                        "model",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        null,
+                        null);
         when(chatMessageService.getMessageTrace(conversationId, messageId))
-            .thenReturn(Optional.of(trace));
+                .thenReturn(Optional.of(trace));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
         ResponseEntity<MessageTraceDto> response =
-            controller.getMessageTrace(conversationId, messageId);
+                controller.getMessageTrace(conversationId, messageId);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertThat(response.getBody()).isNotNull();
@@ -502,10 +603,12 @@ class ChatAsyncControllerTest {
         UUID messageId = UUID.randomUUID();
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
-        assertThrows(AccessDeniedException.class,
-            () -> controller.getMessageTrace(conversationId, messageId));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> controller.getMessageTrace(conversationId, messageId));
         verify(chatConversationService, never()).verifyOwnership(any(), anyBoolean());
         verify(chatMessageService, never()).getMessageTrace(any(), any());
     }
@@ -518,14 +621,17 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
 
-        doThrow(new AccessDeniedException("Forbidden")).when(chatConversationService)
-            .verifyOwnership(conversationId, true);
+        doThrow(new AccessDeniedException("Forbidden"))
+                .when(chatConversationService)
+                .verifyOwnership(conversationId, true);
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
-        assertThrows(AccessDeniedException.class,
-            () -> controller.getMessageTrace(conversationId, messageId));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> controller.getMessageTrace(conversationId, messageId));
         verify(chatMessageService, never()).getMessageTrace(any(), any());
     }
 
@@ -538,26 +644,89 @@ class ChatAsyncControllerTest {
         UUID messageId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         when(chatConversationService.verifyOwnership(conversationId, true))
-            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
-                "web", "finance"));
+                .thenReturn(
+                        new Conversation(
+                                conversationId,
+                                null,
+                                "T",
+                                Map.of(),
+                                null,
+                                null,
+                                List.of(),
+                                "web",
+                                "finance"));
 
-        AgentRun run = new AgentRun(runId, conversationId, messageId, null, "oim", "done", "{}", 1,
-            "approved", 100, 200, 300, 40, 50, null, Instant.now(), Instant.now());
-        AgentStep step1 = new AgentStep(UUID.randomUUID(), runId, 0, "orchestrator", 1, "plan", 2,
-            "gpt-4o", "medium", "input", "output", "[]", "ok", 50, 100, 150, 20, 25, Instant.now(),
-            "ok", null);
+        AgentRun run =
+                new AgentRun(
+                        runId,
+                        conversationId,
+                        messageId,
+                        null,
+                        "oim",
+                        "done",
+                        "{}",
+                        1,
+                        "approved",
+                        100,
+                        200,
+                        300,
+                        40,
+                        50,
+                        null,
+                        Instant.now(),
+                        Instant.now());
+        AgentStep step1 =
+                new AgentStep(
+                        UUID.randomUUID(),
+                        runId,
+                        0,
+                        "orchestrator",
+                        1,
+                        "plan",
+                        2,
+                        "gpt-4o",
+                        "medium",
+                        "input",
+                        "output",
+                        "[]",
+                        "ok",
+                        50,
+                        100,
+                        150,
+                        20,
+                        25,
+                        Instant.now(),
+                        "ok",
+                        null);
 
         MessageTrace trace =
-            new MessageTrace("mas", messageId, conversationId, "done", "mas content", "oim", null,
-                null, 100, 200, 300, 40, 50, null, null, run, List.of(step1));
+                new MessageTrace(
+                        "mas",
+                        messageId,
+                        conversationId,
+                        "done",
+                        "mas content",
+                        "oim",
+                        null,
+                        null,
+                        100,
+                        200,
+                        300,
+                        40,
+                        50,
+                        null,
+                        null,
+                        run,
+                        List.of(step1));
         when(chatMessageService.getMessageTrace(conversationId, messageId))
-            .thenReturn(Optional.of(trace));
+                .thenReturn(Optional.of(trace));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
         ResponseEntity<MessageTraceDto> response =
-            controller.getMessageTrace(conversationId, messageId);
+                controller.getMessageTrace(conversationId, messageId);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertThat(response.getBody()).isNotNull();
@@ -588,19 +757,46 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
         when(chatConversationService.verifyOwnership(conversationId, true))
-            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
-                "web", "finance"));
+                .thenReturn(
+                        new Conversation(
+                                conversationId,
+                                null,
+                                "T",
+                                Map.of(),
+                                null,
+                                null,
+                                List.of(),
+                                "web",
+                                "finance"));
 
-        MessageTrace trace = new MessageTrace("single", messageId, conversationId, "done",
-            "content", "model", "pb-single", 3, 10, 20, 30, 0, 0, List.of(), List.of(), null, null);
+        MessageTrace trace =
+                new MessageTrace(
+                        "single",
+                        messageId,
+                        conversationId,
+                        "done",
+                        "content",
+                        "model",
+                        "pb-single",
+                        3,
+                        10,
+                        20,
+                        30,
+                        0,
+                        0,
+                        List.of(),
+                        List.of(),
+                        null,
+                        null);
         when(chatMessageService.getMessageTrace(conversationId, messageId))
-            .thenReturn(Optional.of(trace));
+                .thenReturn(Optional.of(trace));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
         ResponseEntity<MessageTraceDto> response =
-            controller.getMessageTrace(conversationId, messageId);
+                controller.getMessageTrace(conversationId, messageId);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         verify(chatConversationService).verifyOwnership(conversationId, true);
@@ -614,14 +810,26 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
         when(chatConversationService.verifyOwnership(conversationId, true))
-            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
-                "web", "hr"));
+                .thenReturn(
+                        new Conversation(
+                                conversationId,
+                                null,
+                                "T",
+                                Map.of(),
+                                null,
+                                null,
+                                List.of(),
+                                "web",
+                                "hr"));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-            () -> controller.getMessageTrace(conversationId, messageId));
+        ResponseStatusException ex =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> controller.getMessageTrace(conversationId, messageId));
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
         verify(chatMessageService, never()).getMessageTrace(any(), any());
     }
@@ -634,14 +842,26 @@ class ChatAsyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
         when(chatConversationService.verifyOwnership(conversationId, true))
-            .thenReturn(new Conversation(conversationId, null, "T", Map.of(), null, null, List.of(),
-                "web", null));
+                .thenReturn(
+                        new Conversation(
+                                conversationId,
+                                null,
+                                "T",
+                                Map.of(),
+                                null,
+                                null,
+                                List.of(),
+                                "web",
+                                null));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-            () -> controller.getMessageTrace(conversationId, messageId));
+        ResponseStatusException ex =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> controller.getMessageTrace(conversationId, messageId));
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
         verify(chatMessageService, never()).getMessageTrace(any(), any());
     }
@@ -652,23 +872,30 @@ class ChatAsyncControllerTest {
         ChatConversationService chatConversationService = mock(ChatConversationService.class);
         UUID conversationId = UUID.randomUUID();
 
-        when(chatMessageService.prepareAndSubmitAsync(eq(conversationId), anyString(),
-            eq("diff-playbook"), any()))
-            .thenThrow(new IllegalArgumentException(
-                "Playbook cannot be changed once a conversation has started."));
+        when(chatMessageService.prepareAndSubmitAsync(
+                        eq(conversationId), anyString(), eq("diff-playbook"), any()))
+                .thenThrow(
+                        new IllegalArgumentException(
+                                "Playbook cannot be changed once a conversation has started."));
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, allowingLimiter());
+                new ChatAsyncController(
+                        chatMessageService, chatConversationService, allowingLimiter());
 
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
-            .setControllerAdvice(new ApiExceptionHandler()).build();
+        MockMvc mockMvc =
+                MockMvcBuilders.standaloneSetup(controller)
+                        .setControllerAdvice(new ApiExceptionHandler())
+                        .build();
 
-        mockMvc
-            .perform(MockMvcRequestBuilders.post("/chat/" + conversationId + "/send-async")
-                .param("content", "Follow up message").param("promptName", "diff-playbook"))
-            .andExpect(MockMvcResultMatchers.status().isBadRequest())
-            .andExpect(MockMvcResultMatchers.jsonPath("$.error")
-                .value("Playbook cannot be changed once a conversation has started."));
+        mockMvc.perform(
+                        MockMvcRequestBuilders.post("/chat/" + conversationId + "/send-async")
+                                .param("content", "Follow up message")
+                                .param("promptName", "diff-playbook"))
+                .andExpect(MockMvcResultMatchers.status().isBadRequest())
+                .andExpect(
+                        MockMvcResultMatchers.jsonPath("$.error")
+                                .value(
+                                        "Playbook cannot be changed once a conversation has started."));
     }
 
     @Test
@@ -678,20 +905,21 @@ class ChatAsyncControllerTest {
         GenerationConcurrencyLimiter limiter = new GenerationConcurrencyLimiter(1);
         UUID conversationId = UUID.randomUUID();
 
-        when(
-            chatMessageService.prepareAndSubmitAsync(eq(conversationId), anyString(), any(), any()))
-            .thenAnswer(inv -> {
-                Runnable onComplete = inv.getArgument(3);
-                onComplete.run();
-                onComplete.run();
-                throw new RuntimeException("post-run failure");
-            });
+        when(chatMessageService.prepareAndSubmitAsync(
+                        eq(conversationId), anyString(), any(), any()))
+                .thenAnswer(inv -> {
+                    Runnable onComplete = inv.getArgument(3);
+                    onComplete.run();
+                    onComplete.run();
+                    throw new RuntimeException("post-run failure");
+                });
 
         ChatAsyncController controller =
-            new ChatAsyncController(chatMessageService, chatConversationService, limiter);
+                new ChatAsyncController(chatMessageService, chatConversationService, limiter);
 
-        assertThrows(RuntimeException.class,
-            () -> controller.sendMessageAsync(conversationId, "hello", null));
+        assertThrows(
+                RuntimeException.class,
+                () -> controller.sendMessageAsync(conversationId, "hello", null));
 
         assertEquals(1, limiter.availablePermits());
         assertThat(limiter.tryAcquire()).isTrue();

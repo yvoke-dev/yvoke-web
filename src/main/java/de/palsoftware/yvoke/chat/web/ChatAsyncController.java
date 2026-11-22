@@ -35,18 +35,20 @@ public class ChatAsyncController {
     private final ChatConversationService chatConversationService;
     private final GenerationConcurrencyLimiter concurrencyLimiter;
 
-    public ChatAsyncController(ChatMessageService chatMessageService,
-        ChatConversationService chatConversationService,
-        GenerationConcurrencyLimiter concurrencyLimiter) {
+    public ChatAsyncController(
+            ChatMessageService chatMessageService,
+            ChatConversationService chatConversationService,
+            GenerationConcurrencyLimiter concurrencyLimiter) {
         this.chatMessageService = chatMessageService;
         this.chatConversationService = chatConversationService;
         this.concurrencyLimiter = concurrencyLimiter;
     }
 
     @PostMapping(value = "/chat/{id}/send-async", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, String>> sendMessageAsync(@PathVariable UUID id,
-        @RequestParam("content") String content,
-        @RequestParam(value = "promptName", required = false) String promptName) {
+    public ResponseEntity<Map<String, String>> sendMessageAsync(
+            @PathVariable UUID id,
+            @RequestParam("content") String content,
+            @RequestParam(value = "promptName", required = false) String promptName) {
         log.info("Async chat requested for conversation: {}, promptName: '{}'", id, promptName);
         if (content == null || content.isBlank()) {
             return ResponseEntity.badRequest().build();
@@ -55,32 +57,36 @@ public class ChatAsyncController {
         chatConversationService.verifyOwnership(id, false);
 
         if (!concurrencyLimiter.tryAcquire()) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                "The assistant is at capacity right now. Please retry in a moment.");
+            throw new ResponseStatusException(
+                    HttpStatus.TOO_MANY_REQUESTS,
+                    "The assistant is at capacity right now. Please retry in a moment.");
         }
         AtomicBoolean permitReleased = new AtomicBoolean(false);
-        Runnable releasePermitOnce = () -> {
-            if (permitReleased.compareAndSet(false, true)) {
-                concurrencyLimiter.release();
-            }
-        };
+        Runnable releasePermitOnce =
+                () -> {
+                    if (permitReleased.compareAndSet(false, true)) {
+                        concurrencyLimiter.release();
+                    }
+                };
         try {
-            UUID assistantMessageId = chatMessageService.prepareAndSubmitAsync(id, content,
-                promptName, releasePermitOnce);
+            UUID assistantMessageId =
+                    chatMessageService.prepareAndSubmitAsync(
+                            id, content, promptName, releasePermitOnce);
             return ResponseEntity.accepted()
-                .body(Map.of("assistantMessageId", assistantMessageId.toString()));
+                    .body(Map.of("assistantMessageId", assistantMessageId.toString()));
         } catch (Throwable e) {
             releasePermitOnce.run();
             log.error("Failed to prepare and submit async chat", e);
             throw e; // Let standard exception handler or Spring Security filter handle it (e.g.
-                     // AccessDeniedException)
+            // AccessDeniedException)
         }
     }
 
-    @GetMapping(value = "/chat/{id}/messages/{messageId}/status",
-        produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> getMessageStatus(@PathVariable UUID id,
-        @PathVariable UUID messageId) {
+    @GetMapping(
+            value = "/chat/{id}/messages/{messageId}/status",
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> getMessageStatus(
+            @PathVariable UUID id, @PathVariable UUID messageId) {
         // Verify ownership of the conversation first
         chatConversationService.verifyOwnership(id, false);
 
@@ -108,28 +114,32 @@ public class ChatAsyncController {
         if ("error".equals(message.status()) || "cancelled".equals(message.status())) {
             status = message.status();
         }
-        return ResponseEntity
-            .ok(Map.of("status", status, "message", MessageDto.from(message, null)));
+        return ResponseEntity.ok(
+                Map.of("status", status, "message", MessageDto.from(message, null)));
     }
 
-    @GetMapping(value = "/chat/{id}/messages/{messageId}/trace",
-        produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<MessageTraceDto> getMessageTrace(@PathVariable UUID id,
-        @PathVariable UUID messageId) {
+    @GetMapping(
+            value = "/chat/{id}/messages/{messageId}/trace",
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<MessageTraceDto> getMessageTrace(
+            @PathVariable UUID id, @PathVariable UUID messageId) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         boolean isSuper = AreaAccessContext.isSuperAdmin(auth);
         boolean isAreaAdmin =
-            AreaAccessContext.hasAuthority(auth, AreaAccessContext.ROLE_AREA_ADMIN);
+                AreaAccessContext.hasAuthority(auth, AreaAccessContext.ROLE_AREA_ADMIN);
         if (!isSuper && !isAreaAdmin) {
             throw new AccessDeniedException(
-                "Access denied: trace endpoint requires ROLE_ADMIN or ROLE_AREA_ADMIN");
+                    "Access denied: trace endpoint requires ROLE_ADMIN or ROLE_AREA_ADMIN");
         }
         Conversation conv = chatConversationService.verifyOwnership(id, true);
         if (!AreaAccessContext.canAdministerArea(auth, conv.area())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Conversation not found: " + id);
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Conversation not found: " + id);
         }
-        return chatMessageService.getMessageTrace(id, messageId).map(MessageTraceDto::from)
-            .map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+        return chatMessageService
+                .getMessageTrace(id, messageId)
+                .map(MessageTraceDto::from)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

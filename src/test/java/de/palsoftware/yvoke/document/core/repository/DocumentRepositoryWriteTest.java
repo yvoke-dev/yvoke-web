@@ -27,28 +27,30 @@ public class DocumentRepositoryWriteTest {
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final CollectionIdResolver collectionIdResolver = mock(CollectionIdResolver.class);
     private final DocumentRepository repository =
-        new DocumentRepository(jdbcClient, objectMapper, jdbcTemplate, collectionIdResolver);
+            new DocumentRepository(jdbcClient, objectMapper, jdbcTemplate, collectionIdResolver);
 
     @Test
     public void emptyStatusListIsNoOp() {
         repository.markChunkKgStatuses(List.of());
 
-        verify(jdbcTemplate, never()).batchUpdate(anyString(),
-            any(BatchPreparedStatementSetter.class));
+        verify(jdbcTemplate, never())
+                .batchUpdate(anyString(), any(BatchPreparedStatementSetter.class));
     }
 
     @Test
     public void issuesBatchUpdateWithStatusModelAndId() throws Exception {
         UUID c0 = UUID.randomUUID();
         UUID c1 = UUID.randomUUID();
-        List<ChunkKgStatus> statuses = List.of(new ChunkKgStatus(c0, true, "kg-model"),
-            new ChunkKgStatus(c1, false, "kg-model"));
+        List<ChunkKgStatus> statuses =
+                List.of(
+                        new ChunkKgStatus(c0, true, "kg-model"),
+                        new ChunkKgStatus(c1, false, "kg-model"));
 
         repository.markChunkKgStatuses(statuses);
 
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<BatchPreparedStatementSetter> setterCaptor =
-            ArgumentCaptor.forClass(BatchPreparedStatementSetter.class);
+                ArgumentCaptor.forClass(BatchPreparedStatementSetter.class);
         verify(jdbcTemplate).batchUpdate(sqlCaptor.capture(), setterCaptor.capture());
 
         // SQL updates the status columns and stamps the time; it must not touch other columns.
@@ -78,28 +80,40 @@ public class DocumentRepositoryWriteTest {
 
     @Test
     public void upsertManualDocument_blankKindThrowsException() {
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            repository.upsertManualDocument("coll", "v1", "file.txt", "   ", "title");
-        });
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            repository.upsertManualDocument("coll", "v1", "file.txt", null, "title");
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    repository.upsertManualDocument("coll", "v1", "file.txt", "   ", "title");
+                });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    repository.upsertManualDocument("coll", "v1", "file.txt", null, "title");
+                });
     }
 
     @Test
     public void updateIngestionStatus_invalidStatusThrowsException() {
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            repository.updateIngestionStatus(UUID.randomUUID(), "invalid-status");
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    repository.updateIngestionStatus(UUID.randomUUID(), "invalid-status");
+                });
     }
 
     @Test
     public void insertChunks_blankKindThrowsException() {
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            repository.insertChunks(UUID.randomUUID(), "coll", "v1", "file.txt", "   ", List.of());
-        });
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            repository.insertChunks(UUID.randomUUID(), "coll", "v1", "file.txt", null, List.of());
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    repository.insertChunks(
+                            UUID.randomUUID(), "coll", "v1", "file.txt", "   ", List.of());
+                });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    repository.insertChunks(
+                            UUID.randomUUID(), "coll", "v1", "file.txt", null, List.of());
+                });
     }
 }

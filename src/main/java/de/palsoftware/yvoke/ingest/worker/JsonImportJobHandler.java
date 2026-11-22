@@ -34,8 +34,11 @@ public class JsonImportJobHandler implements JobHandler {
     private final JobRepository jobRepository;
     private final UploadPathGuard uploadPathGuard;
 
-    public JsonImportJobHandler(JsonObjectService jsonObjectService, ObjectMapper objectMapper,
-        JobRepository jobRepository, UploadPathGuard uploadPathGuard) {
+    public JsonImportJobHandler(
+            JsonObjectService jsonObjectService,
+            ObjectMapper objectMapper,
+            JobRepository jobRepository,
+            UploadPathGuard uploadPathGuard) {
         this.jsonObjectService = jsonObjectService;
         this.objectMapper = objectMapper;
         this.jobRepository = jobRepository;
@@ -85,7 +88,7 @@ public class JsonImportJobHandler implements JobHandler {
         if (filename.toLowerCase().endsWith(".jsonl")) {
             // parse jsonl
             try (BufferedReader reader =
-                Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
+                    Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
                 String line;
                 int lineCount = 0;
                 while ((line = reader.readLine()) != null) {
@@ -96,8 +99,9 @@ public class JsonImportJobHandler implements JobHandler {
                     if (trimmed.isEmpty()) {
                         continue;
                     }
-                    Map<String, Object> obj = objectMapper.readValue(trimmed,
-                        new TypeReference<Map<String, Object>>() {});
+                    Map<String, Object> obj =
+                            objectMapper.readValue(
+                                    trimmed, new TypeReference<Map<String, Object>>() {});
                     objects.add(obj);
                     lineCount++;
                     if (lineCount % 1000 == 0) {
@@ -112,17 +116,19 @@ public class JsonImportJobHandler implements JobHandler {
             // or single object? Let's parse as List<Map> or Map and wrap in List
             try {
                 objects =
-                    objectMapper.readValue(file, new TypeReference<List<Map<String, Object>>>() {});
+                        objectMapper.readValue(
+                                file, new TypeReference<List<Map<String, Object>>>() {});
             } catch (Exception e) {
                 // maybe it's a single object
                 try {
                     Map<String, Object> singleObj =
-                        objectMapper.readValue(file, new TypeReference<Map<String, Object>>() {});
+                            objectMapper.readValue(
+                                    file, new TypeReference<Map<String, Object>>() {});
                     objects.add(singleObj);
                 } catch (Exception e2) {
                     throw new IllegalArgumentException(
-                        "File must contain a JSON array of objects or a single JSON object. Error: "
-                            + e.getMessage());
+                            "File must contain a JSON array of objects or a single JSON object. Error: "
+                                    + e.getMessage());
                 }
             }
         }
@@ -135,16 +141,23 @@ public class JsonImportJobHandler implements JobHandler {
         checkCancellation(ctx.job().id());
 
         ctx.report(JobStep.INSERT, 50);
-        log.info("Importing {} json objects into collection '{}'", objects.size(),
-            ctx.job().collectionName());
+        log.info(
+                "Importing {} json objects into collection '{}'",
+                objects.size(),
+                ctx.job().collectionName());
 
         String uniqueFieldPath = null;
         if (ctx.job().settings() != null && ctx.job().settings().containsKey("jsonUniqueField")) {
             uniqueFieldPath = (String) ctx.job().settings().get("jsonUniqueField");
         }
 
-        jsonObjectService.importObjects(ctx.job().collectionId(), ctx.job().collectionName(),
-            objects, filename, ctx.job().tags(), uniqueFieldPath);
+        jsonObjectService.importObjects(
+                ctx.job().collectionId(),
+                ctx.job().collectionName(),
+                objects,
+                filename,
+                ctx.job().tags(),
+                uniqueFieldPath);
 
         ctx.report(JobStep.INSERT, 100);
         return new JobCounts(0, 0, 0, 0, objects.size());

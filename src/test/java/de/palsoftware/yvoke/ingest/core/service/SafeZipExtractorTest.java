@@ -14,8 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class SafeZipExtractorTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void extractsNormalArchive() throws Exception {
@@ -44,9 +43,10 @@ class SafeZipExtractorTest {
         Path out = tempDir.resolve("out");
         Files.createDirectories(out);
 
-        assertThatThrownBy(
-            () -> new SafeZipExtractor(ZipExtractionProperties.defaults()).extract(zip, out))
-            .isInstanceOf(IOException.class).hasMessageContaining("zip-slip");
+        assertThatThrownBy(() ->
+                        new SafeZipExtractor(ZipExtractionProperties.defaults()).extract(zip, out))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("zip-slip");
     }
 
     @Test
@@ -62,10 +62,12 @@ class SafeZipExtractorTest {
         Path out = tempDir.resolve("out");
         Files.createDirectories(out);
 
-        SafeZipExtractor extractor = new SafeZipExtractor(
-            new ZipExtractionProperties(3, 1024 * 1024, 10 * 1024 * 1024, 100));
-        assertThatThrownBy(() -> extractor.extract(zip, out)).isInstanceOf(IOException.class)
-            .hasMessageContaining("entry count");
+        SafeZipExtractor extractor =
+                new SafeZipExtractor(
+                        new ZipExtractionProperties(3, 1024 * 1024, 10 * 1024 * 1024, 100));
+        assertThatThrownBy(() -> extractor.extract(zip, out))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("entry count");
     }
 
     @Test
@@ -80,9 +82,10 @@ class SafeZipExtractorTest {
         Files.createDirectories(out);
 
         SafeZipExtractor extractor =
-            new SafeZipExtractor(new ZipExtractionProperties(100, 1024, 10 * 1024 * 1024, 100));
-        assertThatThrownBy(() -> extractor.extract(zip, out)).isInstanceOf(IOException.class)
-            .hasMessageContaining("maximum uncompressed size");
+                new SafeZipExtractor(new ZipExtractionProperties(100, 1024, 10 * 1024 * 1024, 100));
+        assertThatThrownBy(() -> extractor.extract(zip, out))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("maximum uncompressed size");
     }
 
     @Test
@@ -99,9 +102,10 @@ class SafeZipExtractorTest {
         Files.createDirectories(out);
 
         SafeZipExtractor extractor =
-            new SafeZipExtractor(new ZipExtractionProperties(100, 1024, 1500, 100));
-        assertThatThrownBy(() -> extractor.extract(zip, out)).isInstanceOf(IOException.class)
-            .hasMessageContaining("total uncompressed size");
+                new SafeZipExtractor(new ZipExtractionProperties(100, 1024, 1500, 100));
+        assertThatThrownBy(() -> extractor.extract(zip, out))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("total uncompressed size");
     }
 
     @Test
@@ -117,9 +121,11 @@ class SafeZipExtractorTest {
         Path out = tempDir.resolve("out");
         Files.createDirectories(out);
 
-        SafeZipExtractor extractor = new SafeZipExtractor(
-            new ZipExtractionProperties(100, 10 * 1024 * 1024, 50 * 1024 * 1024, 50));
-        assertThatThrownBy(() -> extractor.extract(zip, out)).isInstanceOf(IOException.class)
-            .hasMessageContaining("compression ratio");
+        SafeZipExtractor extractor =
+                new SafeZipExtractor(
+                        new ZipExtractionProperties(100, 10 * 1024 * 1024, 50 * 1024 * 1024, 50));
+        assertThatThrownBy(() -> extractor.extract(zip, out))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("compression ratio");
     }
 }

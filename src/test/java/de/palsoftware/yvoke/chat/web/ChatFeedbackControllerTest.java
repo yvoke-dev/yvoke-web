@@ -39,11 +39,9 @@ class ChatFeedbackControllerTest {
 
     private static final String FRAGMENT = "chat/fragments/feedback-buttons";
 
-    @Mock
-    private ChatFeedbackService chatFeedbackService;
+    @Mock private ChatFeedbackService chatFeedbackService;
 
-    @InjectMocks
-    private ChatFeedbackController controller;
+    @InjectMocks private ChatFeedbackController controller;
 
     @Test
     void doesNotClaimFeedbackWasSavedWhenTheWriteDidNotLand() {
@@ -52,16 +50,24 @@ class ChatFeedbackControllerTest {
         // Feedback from the request params here, rendering "Feedback saved" over nothing.
         when(chatFeedbackService.getFeedback(messageId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> controller.submitFeedback(messageId, -1, "Answer was wrong.",
-            new ConcurrentModel())).isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining(messageId.toString());
+        assertThatThrownBy(() ->
+                        controller.submitFeedback(
+                                messageId, -1, "Answer was wrong.", new ConcurrentModel()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(messageId.toString());
     }
 
     @Test
     void rendersThePersistedRowAfterSubmittingAComment() {
         UUID messageId = UUID.randomUUID();
-        Feedback persisted = new Feedback(UUID.randomUUID(), messageId, -1, "Answer was wrong.",
-            Instant.now(), Instant.now());
+        Feedback persisted =
+                new Feedback(
+                        UUID.randomUUID(),
+                        messageId,
+                        -1,
+                        "Answer was wrong.",
+                        Instant.now(),
+                        Instant.now());
         when(chatFeedbackService.getFeedback(messageId)).thenReturn(Optional.of(persisted));
         Model model = new ConcurrentModel();
 
@@ -76,9 +82,9 @@ class ChatFeedbackControllerTest {
     void authorizesTheMessageBeforeEchoingBackARatingWithNoComment() {
         UUID messageId = UUID.randomUUID();
         Feedback stored =
-            new Feedback(UUID.randomUUID(), messageId, 1, null, Instant.now(), Instant.now());
+                new Feedback(UUID.randomUUID(), messageId, 1, null, Instant.now(), Instant.now());
         when(chatFeedbackService.submitRatingPreservingComment(messageId, 1))
-            .thenReturn(Optional.of(stored));
+                .thenReturn(Optional.of(stored));
         Model model = new ConcurrentModel();
 
         String view = controller.submitFeedback(messageId, 1, null, model);
@@ -94,31 +100,38 @@ class ChatFeedbackControllerTest {
     /**
      * The complement of the persisted-rating path: if the write did not land, that must surface.
      *
-     * <p>
-     * This branch used to synthesise a row — {@code orElseGet(() -> new Feedback(null, messageId,
-     * rating, ...))} — which was correct while a bare rating was deliberately not persisted. Now
-     * that every rating writes, an empty result means the write failed, and synthesising a row
-     * would render the widget exactly as though it had succeeded: the user sees their vote, the
-     * database has nothing. Without this test the throw is unreachable (every other rating test
-     * stubs a present Optional), so reverting it would leave the suite green.
+     * <p>This branch used to synthesise a row — {@code orElseGet(() -> new Feedback(null,
+     * messageId, rating, ...))} — which was correct while a bare rating was deliberately not
+     * persisted. Now that every rating writes, an empty result means the write failed, and
+     * synthesising a row would render the widget exactly as though it had succeeded: the user sees
+     * their vote, the database has nothing. Without this test the throw is unreachable (every other
+     * rating test stubs a present Optional), so reverting it would leave the suite green.
      */
     @Test
     void aRatingThatDidNotPersistIsAnErrorRatherThanASynthesisedRow() {
         UUID messageId = UUID.randomUUID();
         when(chatFeedbackService.submitRatingPreservingComment(messageId, 1))
-            .thenReturn(Optional.empty());
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(
-            () -> controller.submitFeedback(messageId, 1, null, new ConcurrentModel()))
-            .isInstanceOf(IllegalStateException.class).hasMessageContaining(messageId.toString());
+                        () -> controller.submitFeedback(messageId, 1, null, new ConcurrentModel()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(messageId.toString());
     }
 
     @Test
     void treatsAWhitespaceOnlyCommentAsNoComment() {
         UUID messageId = UUID.randomUUID();
         when(chatFeedbackService.submitRatingPreservingComment(messageId, -1))
-            .thenReturn(Optional.of(new Feedback(UUID.randomUUID(), messageId, -1, null,
-                Instant.now(), Instant.now())));
+                .thenReturn(
+                        Optional.of(
+                                new Feedback(
+                                        UUID.randomUUID(),
+                                        messageId,
+                                        -1,
+                                        null,
+                                        Instant.now(),
+                                        Instant.now())));
 
         controller.submitFeedback(messageId, -1, "   ", new ConcurrentModel());
 
@@ -133,10 +146,16 @@ class ChatFeedbackControllerTest {
     @Test
     void keepsTheStoredCommentWhenOnlyTheRatingChanges() {
         UUID messageId = UUID.randomUUID();
-        Feedback flipped = new Feedback(UUID.randomUUID(), messageId, 1, "was wrong, now fixed",
-            Instant.now(), Instant.now());
+        Feedback flipped =
+                new Feedback(
+                        UUID.randomUUID(),
+                        messageId,
+                        1,
+                        "was wrong, now fixed",
+                        Instant.now(),
+                        Instant.now());
         when(chatFeedbackService.submitRatingPreservingComment(messageId, 1))
-            .thenReturn(Optional.of(flipped));
+                .thenReturn(Optional.of(flipped));
         Model model = new ConcurrentModel();
 
         controller.submitFeedback(messageId, 1, null, model);
@@ -149,10 +168,11 @@ class ChatFeedbackControllerTest {
     void rejectsARatingThatIsNotAVote(int rating) {
         UUID messageId = UUID.randomUUID();
 
-        assertThatThrownBy(
-            () -> controller.submitFeedback(messageId, rating, "whatever", new ConcurrentModel()))
-            .isInstanceOf(ResponseStatusException.class)
-            .hasMessageContaining(HttpStatus.BAD_REQUEST.toString());
+        assertThatThrownBy(() ->
+                        controller.submitFeedback(
+                                messageId, rating, "whatever", new ConcurrentModel()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining(HttpStatus.BAD_REQUEST.toString());
 
         verifyNoInteractions(chatFeedbackService);
     }

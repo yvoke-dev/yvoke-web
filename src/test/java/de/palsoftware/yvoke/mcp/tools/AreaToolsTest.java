@@ -33,8 +33,11 @@ class AreaToolsTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "pass",
+                                List.of(new SimpleGrantedAuthority("AREA_USER_*"))));
         areaRepository = mock(AreaRepository.class);
         when(areaRepository.findAll()).thenReturn(List.of());
         when(areaRepository.findAllMembers()).thenReturn(Map.of());
@@ -49,17 +52,41 @@ class AreaToolsTest {
 
     @Test
     void oneAreaCarriesItsFieldsDefaultsAndMembers() throws Exception {
-        when(areaRepository.findAll()).thenReturn(List.of(
-            new Area("OIM", "Oracle Identity", "OIM docs", true, "oim-full", "OIM", null, null)));
+        when(areaRepository.findAll())
+                .thenReturn(
+                        List.of(
+                                new Area(
+                                        "OIM",
+                                        "Oracle Identity",
+                                        "OIM docs",
+                                        true,
+                                        "oim-full",
+                                        "OIM",
+                                        null,
+                                        null)));
         when(areaRepository.findAllMembers())
-            .thenReturn(Map.of("OIM", new AreaMembers(List.of("oim-chat"), List.of("OIM - Docs"),
-                List.of("oim-full"), List.of("OIM"))));
+                .thenReturn(
+                        Map.of(
+                                "OIM",
+                                new AreaMembers(
+                                        List.of("oim-chat"),
+                                        List.of("OIM - Docs"),
+                                        List.of("oim-full"),
+                                        List.of("OIM"))));
 
         JsonNode area = single(json.readTree(tools.listAreas()));
 
-        assertThat(fieldNames(area)).containsExactlyInAnyOrder("name", "title", "description",
-            "prototype", "defaultPlaybook", "defaultProfile", "collections", "playbooks",
-            "profiles");
+        assertThat(fieldNames(area))
+                .containsExactlyInAnyOrder(
+                        "name",
+                        "title",
+                        "description",
+                        "prototype",
+                        "defaultPlaybook",
+                        "defaultProfile",
+                        "collections",
+                        "playbooks",
+                        "profiles");
         assertThat(area.get("name").asText()).isEqualTo("OIM");
         assertThat(area.get("title").asText()).isEqualTo("Oracle Identity");
         assertThat(area.get("description").asText()).isEqualTo("OIM docs");
@@ -74,11 +101,21 @@ class AreaToolsTest {
     @Test
     void twoAreasEachListOnlyTheirOwnMembers() throws Exception {
         when(areaRepository.findAll()).thenReturn(List.of(area("OIM"), area("PingID")));
-        when(areaRepository.findAllMembers()).thenReturn(Map.of("OIM",
-            new AreaMembers(List.of("oim-chat"), List.of("OIM - Docs"), List.of("oim-full"),
-                List.of("OIM")),
-            "PingID", new AreaMembers(List.of("ping-chat"), List.of("Ping - Docs"),
-                List.of("ping-full"), List.of("Ping"))));
+        when(areaRepository.findAllMembers())
+                .thenReturn(
+                        Map.of(
+                                "OIM",
+                                new AreaMembers(
+                                        List.of("oim-chat"),
+                                        List.of("OIM - Docs"),
+                                        List.of("oim-full"),
+                                        List.of("OIM")),
+                                "PingID",
+                                new AreaMembers(
+                                        List.of("ping-chat"),
+                                        List.of("Ping - Docs"),
+                                        List.of("ping-full"),
+                                        List.of("Ping"))));
 
         JsonNode list = json.readTree(tools.listAreas());
 
@@ -115,11 +152,24 @@ class AreaToolsTest {
      */
     @Test
     void aDefaultThatIsNotAPickableMemberOfTheAreaIsNull() throws Exception {
-        when(areaRepository.findAll()).thenReturn(
-            List.of(new Area("OIM", "OIM", null, false, "oim-orchestrator", "Ping", null, null),
-                area("PingID")));
-        when(areaRepository.findAllMembers()).thenReturn(
-            Map.of("PingID", new AreaMembers(List.of(), List.of(), List.of(), List.of("Ping"))));
+        when(areaRepository.findAll())
+                .thenReturn(
+                        List.of(
+                                new Area(
+                                        "OIM",
+                                        "OIM",
+                                        null,
+                                        false,
+                                        "oim-orchestrator",
+                                        "Ping",
+                                        null,
+                                        null),
+                                area("PingID")));
+        when(areaRepository.findAllMembers())
+                .thenReturn(
+                        Map.of(
+                                "PingID",
+                                new AreaMembers(List.of(), List.of(), List.of(), List.of("Ping"))));
 
         JsonNode oim = json.readTree(tools.listAreas()).get(0);
 
@@ -132,7 +182,7 @@ class AreaToolsTest {
         when(areaRepository.findAll()).thenThrow(new IllegalStateException("db down: secret"));
 
         assertThat(tools.listAreas())
-            .isEqualTo("ERROR: the 'list_areas' tool failed to complete the request.");
+                .isEqualTo("ERROR: the 'list_areas' tool failed to complete the request.");
     }
 
     @AfterEach
@@ -143,8 +193,11 @@ class AreaToolsTest {
     @Test
     void listAreasFiltersByAllowedUserAreas() throws Exception {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "pass",
-                List.of(new SimpleGrantedAuthority("AREA_USER_OIM"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "pass",
+                                List.of(new SimpleGrantedAuthority("AREA_USER_OIM"))));
         when(areaRepository.findAll()).thenReturn(List.of(area("OIM"), area("PingID")));
         when(areaRepository.findAllMembers()).thenReturn(Map.of());
 

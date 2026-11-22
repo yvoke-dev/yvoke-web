@@ -31,12 +31,11 @@ import org.springframework.web.server.ResponseStatusException;
  * Orchestrates ingest job creation for the {@code /api/ingest/v1} endpoints (MNT-04): resolving
  * target documents/collections, staging uploaded files under a path-traversal-safe location, and
  * enqueuing the corresponding job. Extracted out of {@code IngestApiController} so the controller
- * is pure HTTP glue; each method returns the created job id and throws
- * {@link ResponseStatusException} with the same status codes and reason strings the API has always
+ * is pure HTTP glue; each method returns the created job id and throws {@link
+ * ResponseStatusException} with the same status codes and reason strings the API has always
  * returned.
  *
- * <p>
- * Collection creation and tag registration run before {@code jobService.enqueue}, because the
+ * <p>Collection creation and tag registration run before {@code jobService.enqueue}, because the
  * enqueue path validates that the collection and tag already exist; that ordering is load-bearing
  * and preserved. Each step keeps its own transaction — the orchestration is intentionally not
  * wrapped in a single transaction so partial-failure semantics are unchanged.
@@ -45,8 +44,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class IngestService {
 
     /** Job kinds {@code POST /api/ingest/v1/upload} serves: one uploaded file, one job. */
-    private static final Set<String> UPLOAD_KINDS = Set.of(IngestJobKind.STANDARD.getValue(),
-        IngestJobKind.HIERARCHICAL.getValue(), IngestJobKind.JSON_IMPORT.getValue());
+    private static final Set<String> UPLOAD_KINDS =
+            Set.of(
+                    IngestJobKind.STANDARD.getValue(),
+                    IngestJobKind.HIERARCHICAL.getValue(),
+                    IngestJobKind.JSON_IMPORT.getValue());
 
     private final JobService jobService;
     private final CollectionService collectionService;
@@ -54,9 +56,12 @@ public class IngestService {
     private final DocumentRepository documentRepository;
     private final String uploadDir;
 
-    public IngestService(JobService jobService, CollectionService collectionService,
-        TagService tagService, DocumentRepository documentRepository,
-        @Value("${app.upload-dir}") String uploadDir) {
+    public IngestService(
+            JobService jobService,
+            CollectionService collectionService,
+            TagService tagService,
+            DocumentRepository documentRepository,
+            @Value("${app.upload-dir}") String uploadDir) {
         this.jobService = jobService;
         this.collectionService = collectionService;
         this.tagService = tagService;
@@ -68,52 +73,64 @@ public class IngestService {
      * Resolves the target document (by id, or by source file/collection/tag lookup), ensures the
      * target collection and tag exist, and enqueues a KG-extract job.
      *
-     * <p>
-     * Returns the {@link EnqueueResult}, not a bare id: a duplicate request ADOPTS the job already
-     * in flight for the same document/target and that job runs with the settings it was enqueued
-     * with — so the caller has to be able to tell "created" from "adopted" (the API reports the
-     * latter as a 409, matching {@code POST /api/jobs/v1}) instead of being told 202 for work that
-     * was never created.
+     * <p>Returns the {@link EnqueueResult}, not a bare id: a duplicate request ADOPTS the job
+     * already in flight for the same document/target and that job runs with the settings it was
+     * enqueued with — so the caller has to be able to tell "created" from "adopted" (the API
+     * reports the latter as a 409, matching {@code POST /api/jobs/v1}) instead of being told 202
+     * for work that was never created.
      */
-    public EnqueueResult processKg(UUID documentId, String sourceFile, String sourceCollection,
-        String sourceTag, String targetCollectionName, String targetTag,
-        @Nullable String kgPromptName, @Nullable String area) {
+    public EnqueueResult processKg(
+            UUID documentId,
+            String sourceFile,
+            String sourceCollection,
+            String sourceTag,
+            String targetCollectionName,
+            String targetTag,
+            @Nullable String kgPromptName,
+            @Nullable String area) {
 
         UUID targetDocId = documentId;
         if (targetDocId == null) {
             if (sourceFile == null || sourceCollection == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Either 'documentId' or both 'sourceFile' and 'sourceCollection' must be provided.");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Either 'documentId' or both 'sourceFile' and 'sourceCollection' must be provided.");
             }
             String trimmedFile = sourceFile.trim();
             String trimmedCol = sourceCollection.trim();
             Optional<Collection> srcCol = collectionService.getCollection(trimmedCol);
             if (srcCol.isPresent()) {
                 Collection col = srcCol.get();
-                if (col.area() != null && !col.area().isBlank()
-                    && !AreaAccessContext.canIngestArea(col.area())
-                    && !AreaAccessContext.canAdministerArea(col.area())) {
-                    throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Collection '" + trimmedCol + "' does not exist.");
+                if (col.area() != null
+                        && !col.area().isBlank()
+                        && !AreaAccessContext.canIngestArea(col.area())
+                        && !AreaAccessContext.canAdministerArea(col.area())) {
+                    throw new ResponseStatusException(
+                            HttpStatus.NOT_FOUND,
+                            "Collection '" + trimmedCol + "' does not exist.");
                 }
             }
             String trimmedSourceTag =
-                (sourceTag != null && !sourceTag.isBlank()) ? sourceTag.trim() : targetTag.trim();
+                    (sourceTag != null && !sourceTag.isBlank())
+                            ? sourceTag.trim()
+                            : targetTag.trim();
 
             Optional<UUID> foundId =
-                documentRepository.findIdByFile(trimmedCol, trimmedSourceTag, trimmedFile);
+                    documentRepository.findIdByFile(trimmedCol, trimmedSourceTag, trimmedFile);
 
             if (foundId.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    String.format("Document not found for file '%s' in collection '%s' tag '%s'",
-                        trimmedFile, trimmedCol, trimmedSourceTag));
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        String.format(
+                                "Document not found for file '%s' in collection '%s' tag '%s'",
+                                trimmedFile, trimmedCol, trimmedSourceTag));
             }
             targetDocId = foundId.get();
         } else {
             Optional<DocumentRow> docOpt = documentRepository.findById(targetDocId);
             if (docOpt.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Document not found: " + targetDocId);
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Document not found: " + targetDocId);
             }
             DocumentRow doc = docOpt.get();
             Optional<Collection> srcCol = collectionService.findById(doc.collectionId());
@@ -122,9 +139,9 @@ public class IngestService {
             }
             String docArea = srcCol.map(Collection::area).orElse(null);
             if (!AreaAccessContext.canIngestArea(docArea)
-                && !AreaAccessContext.canAdministerArea(docArea)) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Document not found: " + targetDocId);
+                    && !AreaAccessContext.canAdministerArea(docArea)) {
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Document not found: " + targetDocId);
             }
         }
 
@@ -147,17 +164,27 @@ public class IngestService {
         if (kgPromptName != null && !kgPromptName.isBlank()) {
             settings.put(IngestPrompts.SETTING_KG_PROMPT, kgPromptName.trim());
         }
-        return jobService.enqueue(new EnqueueRequest(IngestJobKind.KG_EXTRACT.getValue(),
-            targetDocId.toString(), trimmedTargetTag, trimmedTargetCol, settings));
+        return jobService.enqueue(
+                new EnqueueRequest(
+                        IngestJobKind.KG_EXTRACT.getValue(),
+                        targetDocId.toString(),
+                        trimmedTargetTag,
+                        trimmedTargetCol,
+                        settings));
     }
 
     /**
      * Stages an uploaded custom-corpus zip in a fresh {@code custom_*} temp directory (confined
      * against path traversal) and enqueues a custom-ingest job. Returns the new job id.
      */
-    public UUID enqueueCustom(MultipartFile file, String collection, String tag,
-        String documentGlob, String entitiesFile, String relationshipsFile,
-        @Nullable String summarizePromptName) {
+    public UUID enqueueCustom(
+            MultipartFile file,
+            String collection,
+            String tag,
+            String documentGlob,
+            String entitiesFile,
+            String relationshipsFile,
+            @Nullable String summarizePromptName) {
         if (file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
         }
@@ -166,11 +193,13 @@ public class IngestService {
             Optional<Collection> existing = collectionService.getCollection(collection.trim());
             if (existing.isPresent()) {
                 Collection col = existing.get();
-                if (col.area() != null && !col.area().isBlank()
-                    && !AreaAccessContext.canIngestArea(col.area())
-                    && !AreaAccessContext.canAdministerArea(col.area())) {
-                    throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Collection '" + collection + "' does not exist.");
+                if (col.area() != null
+                        && !col.area().isBlank()
+                        && !AreaAccessContext.canIngestArea(col.area())
+                        && !AreaAccessContext.canAdministerArea(col.area())) {
+                    throw new ResponseStatusException(
+                            HttpStatus.NOT_FOUND,
+                            "Collection '" + collection + "' does not exist.");
                 }
             }
         }
@@ -187,8 +216,8 @@ public class IngestService {
             // cannot escape the staging directory (CWE-22 arbitrary file write).
             Path zipPath = tempDir.resolve(safeUploadName(file.getOriginalFilename())).normalize();
             if (!zipPath.startsWith(tempDir)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Invalid uploaded file name");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Invalid uploaded file name");
             }
             file.transferTo(zipPath.toFile());
 
@@ -204,8 +233,13 @@ public class IngestService {
                 settings.put(IngestPrompts.SETTING_SUMMARIZE_PROMPT, summarizePromptName.trim());
             }
 
-            EnqueueRequest request = new EnqueueRequest(IngestJobKind.CUSTOM.getValue(),
-                zipPath.toString(), tag, collection, settings);
+            EnqueueRequest request =
+                    new EnqueueRequest(
+                            IngestJobKind.CUSTOM.getValue(),
+                            zipPath.toString(),
+                            tag,
+                            collection,
+                            settings);
             var enqueueResult = jobService.enqueue(request);
             if (!enqueueResult.created()) {
                 deleteQuietly(zipPath);
@@ -214,8 +248,8 @@ public class IngestService {
             return enqueueResult.jobId();
         } catch (IOException e) {
             deleteDirectoryQuietly(tempDir);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Failed to save uploaded file", e);
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save uploaded file", e);
         } catch (IllegalArgumentException e) {
             deleteDirectoryQuietly(tempDir);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
@@ -230,20 +264,26 @@ public class IngestService {
      * directory with a unique, traversal-safe name, and enqueues a job of the given kind. Returns
      * the new job id.
      *
-     * <p>
-     * {@code kind} is an untrusted request param, so it is checked against {@link #UPLOAD_KINDS} —
-     * the single-file kinds this endpoint exists to serve. An allowlist rather than a denylist: the
-     * connector kinds run a whole-space crawl on the stored admin token, and a future privileged
-     * kind must be rejected by default instead of by remembering to name it.
+     * <p>{@code kind} is an untrusted request param, so it is checked against {@link #UPLOAD_KINDS}
+     * — the single-file kinds this endpoint exists to serve. An allowlist rather than a denylist:
+     * the connector kinds run a whole-space crawl on the stored admin token, and a future
+     * privileged kind must be rejected by default instead of by remembering to name it.
      */
-    public UUID uploadAndEnqueue(MultipartFile file, String collectionName, String tag, String kind,
-        String jsonUniqueField, @Nullable Boolean buildSectionSummaries,
-        @Nullable String summarizePromptName, @Nullable String area) {
+    public UUID uploadAndEnqueue(
+            MultipartFile file,
+            String collectionName,
+            String tag,
+            String kind,
+            String jsonUniqueField,
+            @Nullable Boolean buildSectionSummaries,
+            @Nullable String summarizePromptName,
+            @Nullable String area) {
 
         String normalizedKind = kind == null ? "" : kind.trim();
         if (!UPLOAD_KINDS.contains(normalizedKind)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Unsupported ingest kind. Supported kinds: " + String.join(", ", UPLOAD_KINDS));
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Unsupported ingest kind. Supported kinds: " + String.join(", ", UPLOAD_KINDS));
         }
 
         if (file.isEmpty()) {
@@ -273,13 +313,13 @@ public class IngestService {
             // climb
             // out of the upload dir). Confine the resolved target to the upload directory too.
             String uniqueFilename =
-                UUID.randomUUID().toString() + "-" + safeUploadName(file.getOriginalFilename());
+                    UUID.randomUUID().toString() + "-" + safeUploadName(file.getOriginalFilename());
             Path uploadRoot = uploadPath.toAbsolutePath().normalize();
             targetFile = uploadRoot.resolve(uniqueFilename).normalize();
             if (!targetFile.startsWith(uploadRoot)) {
                 targetFile = null;
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Invalid uploaded file name");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Invalid uploaded file name");
             }
             Files.copy(file.getInputStream(), targetFile, StandardCopyOption.REPLACE_EXISTING);
 
@@ -300,9 +340,14 @@ public class IngestService {
             }
 
             // 4. Enqueue job
-            var enqueueResult = jobService.enqueue(new EnqueueRequest(normalizedKind,
-                targetFile.toAbsolutePath().toString(),
-                (tag != null && !tag.isBlank()) ? tag.trim() : null, trimmedCollection, settings));
+            var enqueueResult =
+                    jobService.enqueue(
+                            new EnqueueRequest(
+                                    normalizedKind,
+                                    targetFile.toAbsolutePath().toString(),
+                                    (tag != null && !tag.isBlank()) ? tag.trim() : null,
+                                    trimmedCollection,
+                                    settings));
             if (!enqueueResult.created()) {
                 deleteQuietly(targetFile);
             }
@@ -311,8 +356,8 @@ public class IngestService {
         } catch (IOException e) {
             deleteQuietly(targetFile);
             // Generic client message; the cause is attached for server-side logging only.
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Failed to save uploaded file.", e);
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save uploaded file.", e);
         } catch (IllegalArgumentException e) {
             deleteQuietly(targetFile);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
@@ -359,26 +404,31 @@ public class IngestService {
      * request that would create one without naming an area is refused; a request for an existing
      * collection needs no area.
      */
-    private void ensureCollection(String collectionName, String description,
-        @Nullable String area) {
+    private void ensureCollection(
+            String collectionName, String description, @Nullable String area) {
         Optional<Collection> existing = collectionService.getCollection(collectionName);
         if (existing.isPresent()) {
             Collection col = existing.get();
-            if (col.area() != null && !col.area().isBlank()
-                && !AreaAccessContext.canIngestArea(col.area())
-                && !AreaAccessContext.canAdministerArea(col.area())) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Collection '" + collectionName + "' does not exist.");
+            if (col.area() != null
+                    && !col.area().isBlank()
+                    && !AreaAccessContext.canIngestArea(col.area())
+                    && !AreaAccessContext.canAdministerArea(col.area())) {
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Collection '" + collectionName + "' does not exist.");
             }
             return;
         }
         if (area == null || area.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Collection '"
-                + collectionName + "' does not exist; pass 'area' to create it in an area.");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Collection '"
+                            + collectionName
+                            + "' does not exist; pass 'area' to create it in an area.");
         }
         if (!AreaAccessContext.canIngestArea(area) && !AreaAccessContext.canAdministerArea(area)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Forbidden: cannot ingest into area '" + area + "'");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Forbidden: cannot ingest into area '" + area + "'");
         }
         try {
             collectionService.createCollection(collectionName, description, area);

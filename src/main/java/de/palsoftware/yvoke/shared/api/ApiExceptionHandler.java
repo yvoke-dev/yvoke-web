@@ -47,30 +47,36 @@ public class ApiExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidBody(
-        MethodArgumentNotValidException ex) {
-        String message = ex.getBindingResult().getFieldErrors().stream()
-            .map(error -> error.getField() + " " + error.getDefaultMessage())
-            .collect(Collectors.joining("; "));
+            MethodArgumentNotValidException ex) {
+        String message =
+                ex.getBindingResult().getFieldErrors().stream()
+                        .map(error -> error.getField() + " " + error.getDefaultMessage())
+                        .collect(Collectors.joining("; "));
         return ResponseEntity.badRequest()
-            .body(Map.of("error", message.isBlank() ? "Invalid request body" : message));
+                .body(Map.of("error", message.isBlank() ? "Invalid request body" : message));
     }
 
     @ExceptionHandler(HandlerMethodValidationException.class)
     public ResponseEntity<Map<String, Object>> handleMethodValidation(
-        HandlerMethodValidationException ex) {
-        String message = ex.getAllErrors().stream().map(err -> err.getDefaultMessage())
-            .filter(m -> m != null && !m.isBlank()).collect(Collectors.joining("; "));
+            HandlerMethodValidationException ex) {
+        String message =
+                ex.getAllErrors().stream()
+                        .map(err -> err.getDefaultMessage())
+                        .filter(m -> m != null && !m.isBlank())
+                        .collect(Collectors.joining("; "));
         return ResponseEntity.badRequest()
-            .body(Map.of("error", message.isBlank() ? "Invalid request parameters" : message));
+                .body(Map.of("error", message.isBlank() ? "Invalid request parameters" : message));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<Map<String, Object>> handleConstraintViolation(
-        ConstraintViolationException ex) {
-        String message = ex.getConstraintViolations().stream()
-            .map(v -> v.getPropertyPath() + " " + v.getMessage()).collect(Collectors.joining("; "));
+            ConstraintViolationException ex) {
+        String message =
+                ex.getConstraintViolations().stream()
+                        .map(v -> v.getPropertyPath() + " " + v.getMessage())
+                        .collect(Collectors.joining("; "));
         return ResponseEntity.badRequest()
-            .body(Map.of("error", message.isBlank() ? "Invalid request parameters" : message));
+                .body(Map.of("error", message.isBlank() ? "Invalid request parameters" : message));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
@@ -82,6 +88,6 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
         log.error("Unhandled API exception", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(Map.of("error", "Internal server error"));
+                .body(Map.of("error", "Internal server error"));
     }
 }

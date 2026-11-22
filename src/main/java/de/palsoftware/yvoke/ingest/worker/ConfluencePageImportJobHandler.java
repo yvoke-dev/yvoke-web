@@ -49,7 +49,7 @@ public class ConfluencePageImportJobHandler implements JobHandler {
             throw new IllegalArgumentException("Missing pageId in job settings");
         }
 
-        return confluenceIngestService.ingestPage(ctx, pageId,
-            title != null ? title : "Unknown Page");
+        return confluenceIngestService.ingestPage(
+                ctx, pageId, title != null ? title : "Unknown Page");
     }
 }

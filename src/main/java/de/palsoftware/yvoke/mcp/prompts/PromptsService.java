@@ -22,10 +22,11 @@ public class PromptsService {
     public record PromptMetadata(String name, String title, String description) {}
 
     public List<PromptMetadata> getPromptsMetadata() {
-        return AreaAccessContext
-            .filterByUserArea(playbookService.listAllPlaybooks(), Playbook::area).stream()
-            .map(s -> new PromptMetadata(s.name(), s.title(), s.description()))
-            .collect(Collectors.toList());
+        return AreaAccessContext.filterByUserArea(
+                        playbookService.listAllPlaybooks(), Playbook::area)
+                .stream()
+                .map(s -> new PromptMetadata(s.name(), s.title(), s.description()))
+                .collect(Collectors.toList());
     }
 
     public String getPromptText(String playbookName) {
@@ -37,8 +38,9 @@ public class PromptsService {
             return null;
         }
         Playbook playbook = pb.get();
-        if (playbook.area() != null && !playbook.area().isBlank()
-            && !AreaAccessContext.canAccessUserArea(playbook.area())) {
+        if (playbook.area() != null
+                && !playbook.area().isBlank()
+                && !AreaAccessContext.canAccessUserArea(playbook.area())) {
             return null;
         }
         return playbook.templateText();

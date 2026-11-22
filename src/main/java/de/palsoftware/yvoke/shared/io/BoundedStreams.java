@@ -18,7 +18,7 @@ public final class BoundedStreams {
             total += read;
             if (total > maxBytes) {
                 throw new IllegalArgumentException(
-                    "Content exceeds maximum allowed size of " + maxBytes + " bytes.");
+                        "Content exceeds maximum allowed size of " + maxBytes + " bytes.");
             }
             out.write(buf, 0, read);
         }

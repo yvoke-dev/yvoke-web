@@ -28,23 +28,17 @@ public class HybridSearchIT {
     private static final String COLLECTION = "OIM-TEST";
     private static final String COLLECTION_2 = "OIM-TEST-2";
 
-    @Autowired
-    private HybridSearch hybridSearch;
+    @Autowired private HybridSearch hybridSearch;
 
-    @Autowired
-    private RetrievalTelemetryService telemetryService;
+    @Autowired private RetrievalTelemetryService telemetryService;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private RetrievalLogRepository retrievalLogRepository;
+    @Autowired private RetrievalLogRepository retrievalLogRepository;
 
-    @MockitoBean
-    private EmbeddingService embeddingService;
+    @MockitoBean private EmbeddingService embeddingService;
 
-    @MockitoBean
-    private RerankClient rerankClient;
+    @MockitoBean private RerankClient rerankClient;
 
     private final UUID docId1 = UUID.randomUUID();
     private final UUID docId2 = UUID.randomUUID();
@@ -62,40 +56,74 @@ public class HybridSearchIT {
         cleanup();
 
         collectionId1 = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO collections (id, name) VALUES (?, ?)", collectionId1,
-            COLLECTION);
+        jdbcTemplate.update(
+                "INSERT INTO collections (id, name) VALUES (?, ?)", collectionId1, COLLECTION);
         collectionId2 = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO collections (id, name) VALUES (?, ?)", collectionId2,
-            COLLECTION_2);
+        jdbcTemplate.update(
+                "INSERT INTO collections (id, name) VALUES (?, ?)", collectionId2, COLLECTION_2);
 
         // 1. Insert documents
         jdbcTemplate.update(
-            "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
-                + "VALUES (?, ?, ?, ?, ?, ARRAY['9.3']::TEXT[], ?::jsonb)",
-            docId1, collectionId1, "manual", "manual93.md", "completed",
-            "{\"source_file\": \"manual93.md\", \"tag\": \"9.3\"}");
+                "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
+                        + "VALUES (?, ?, ?, ?, ?, ARRAY['9.3']::TEXT[], ?::jsonb)",
+                docId1,
+                collectionId1,
+                "manual",
+                "manual93.md",
+                "completed",
+                "{\"source_file\": \"manual93.md\", \"tag\": \"9.3\"}");
         jdbcTemplate.update(
-            "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
-                + "VALUES (?, ?, ?, ?, ?, ARRAY['10.0']::TEXT[], ?::jsonb)",
-            docId2, collectionId1, "manual", "manual100.md", "completed",
-            "{\"source_file\": \"manual100.md\", \"tag\": \"10.0\"}");
+                "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
+                        + "VALUES (?, ?, ?, ?, ?, ARRAY['10.0']::TEXT[], ?::jsonb)",
+                docId2,
+                collectionId1,
+                "manual",
+                "manual100.md",
+                "completed",
+                "{\"source_file\": \"manual100.md\", \"tag\": \"10.0\"}");
 
         // 2. Insert chunks with 1024-dimensional mock embeddings
-        insertChunk(chunkId1, docId1, "identity manager database connection pool",
-            createMockVector(0), new String[] {"Database", "Pool"}, "Database", 1, 0, "9.3",
-            "manual93.md");
-        insertChunk(chunkId2, docId1, "active directory connector sync group", createMockVector(1),
-            new String[] {"Directory", "Sync"}, "Directory", 1, 1, "9.3", "manual93.md");
-        insertChunk(chunkId3, docId2, "approval workflow policy rule for identity",
-            createMockVector(2), new String[] {"Approval", "Workflow"}, "Approval", 1, 0, "10.0",
-            "manual100.md");
+        insertChunk(
+                chunkId1,
+                docId1,
+                "identity manager database connection pool",
+                createMockVector(0),
+                new String[] {"Database", "Pool"},
+                "Database",
+                1,
+                0,
+                "9.3",
+                "manual93.md");
+        insertChunk(
+                chunkId2,
+                docId1,
+                "active directory connector sync group",
+                createMockVector(1),
+                new String[] {"Directory", "Sync"},
+                "Directory",
+                1,
+                1,
+                "9.3",
+                "manual93.md");
+        insertChunk(
+                chunkId3,
+                docId2,
+                "approval workflow policy rule for identity",
+                createMockVector(2),
+                new String[] {"Approval", "Workflow"},
+                "Approval",
+                1,
+                0,
+                "10.0",
+                "manual100.md");
 
         // Rebuild ParadeDB index to make newly inserted data searchable
         jdbcTemplate.execute("REINDEX INDEX chunks_bm25_idx");
 
         // Stub RerankClient to throw exception by default to trigger fallback behavior
-        Mockito.lenient().when(rerankClient.rerank(Mockito.anyString(), Mockito.anyList()))
-            .thenThrow(new RuntimeException("Default mock fallback behavior"));
+        Mockito.lenient()
+                .when(rerankClient.rerank(Mockito.anyString(), Mockito.anyList()))
+                .thenThrow(new RuntimeException("Default mock fallback behavior"));
     }
 
     @AfterEach
@@ -105,43 +133,63 @@ public class HybridSearchIT {
 
     private void cleanup() {
         jdbcTemplate.update(
-            "DELETE FROM retrieval_logs WHERE collection_id IN (SELECT id FROM collections WHERE name IN (?, ?))",
-            COLLECTION, COLLECTION_2);
+                "DELETE FROM retrieval_logs WHERE collection_id IN (SELECT id FROM collections WHERE name IN (?, ?))",
+                COLLECTION,
+                COLLECTION_2);
         jdbcTemplate.update(
-            "DELETE FROM chunks WHERE collection_id IN (SELECT id FROM collections WHERE name IN (?, ?))",
-            COLLECTION, COLLECTION_2);
+                "DELETE FROM chunks WHERE collection_id IN (SELECT id FROM collections WHERE name IN (?, ?))",
+                COLLECTION,
+                COLLECTION_2);
         jdbcTemplate.update(
-            "DELETE FROM documents WHERE collection_id IN (SELECT id FROM collections WHERE name IN (?, ?))",
-            COLLECTION, COLLECTION_2);
-        jdbcTemplate.update("DELETE FROM collections WHERE name IN (?, ?)", COLLECTION,
-            COLLECTION_2);
+                "DELETE FROM documents WHERE collection_id IN (SELECT id FROM collections WHERE name IN (?, ?))",
+                COLLECTION,
+                COLLECTION_2);
+        jdbcTemplate.update(
+                "DELETE FROM collections WHERE name IN (?, ?)", COLLECTION, COLLECTION_2);
     }
 
-    private void insertChunk(UUID id, UUID docId, String text, float[] vector, String[] headingPath,
-        String heading, int depth, int sortOrder, String version, String srcFile) {
+    private void insertChunk(
+            UUID id,
+            UUID docId,
+            String text,
+            float[] vector,
+            String[] headingPath,
+            String heading,
+            int depth,
+            int sortOrder,
+            String version,
+            String srcFile) {
         String vectorStr = VectorUtils.toVectorString(vector);
-        UUID collectionId = jdbcTemplate.queryForObject("SELECT id FROM collections WHERE name = ?",
-            UUID.class, COLLECTION);
-        jdbcTemplate.execute((ConnectionCallback<Void>) conn -> {
-            String sql =
-                "INSERT INTO chunks (id, document_id, text, embedding, heading_path, heading, depth, sort_order, collection_id, tags) "
-                    + "VALUES (?, ?, ?, ?::vector, ?, ?, ?, ?, ?, ?)";
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setObject(1, id);
-                ps.setObject(2, docId);
-                ps.setString(3, text);
-                ps.setString(4, vectorStr);
-                ps.setArray(5, conn.createArrayOf("text", headingPath));
-                ps.setString(6, heading);
-                ps.setInt(7, depth);
-                ps.setInt(8, sortOrder);
-                ps.setObject(9, collectionId);
-                ps.setArray(10, conn.createArrayOf("text",
-                    version != null ? new String[] {version} : new String[0]));
-                ps.executeUpdate();
-            }
-            return null;
-        });
+        UUID collectionId =
+                jdbcTemplate.queryForObject(
+                        "SELECT id FROM collections WHERE name = ?", UUID.class, COLLECTION);
+        jdbcTemplate.execute(
+                (ConnectionCallback<Void>)
+                        conn -> {
+                            String sql =
+                                    "INSERT INTO chunks (id, document_id, text, embedding, heading_path, heading, depth, sort_order, collection_id, tags) "
+                                            + "VALUES (?, ?, ?, ?::vector, ?, ?, ?, ?, ?, ?)";
+                            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                                ps.setObject(1, id);
+                                ps.setObject(2, docId);
+                                ps.setString(3, text);
+                                ps.setString(4, vectorStr);
+                                ps.setArray(5, conn.createArrayOf("text", headingPath));
+                                ps.setString(6, heading);
+                                ps.setInt(7, depth);
+                                ps.setInt(8, sortOrder);
+                                ps.setObject(9, collectionId);
+                                ps.setArray(
+                                        10,
+                                        conn.createArrayOf(
+                                                "text",
+                                                version != null
+                                                        ? new String[] {version}
+                                                        : new String[0]));
+                                ps.executeUpdate();
+                            }
+                            return null;
+                        });
     }
 
     private float[] createMockVector(int activeDimensionIndex) {
@@ -250,7 +298,7 @@ public class HybridSearchIT {
     @Test
     public void testEmptyQuerySearch() {
         SearchOptions opts =
-            new SearchOptions(List.of("COL-2"), 10, true, true, 0, true, List.of("2.0"));
+                new SearchOptions(List.of("COL-2"), 10, true, true, 0, true, List.of("2.0"));
         List<HybridSearchResult> resultsEmpty = hybridSearch.search("", opts);
         assertThat(resultsEmpty).isEmpty();
 
@@ -303,7 +351,7 @@ public class HybridSearchIT {
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).telemetry().semPool()).isEqualTo(2); // semantic pool size should
-                                                                       // be 2
+        // be 2
     }
 
     @Test
@@ -317,14 +365,16 @@ public class HybridSearchIT {
         // Rank 2 (index 1): Chunk 1 (RRF rank 2)
         // Rank 3 (index 2): Chunk 3 (RRF rank 3)
         // We will order them: Chunk 1 (0.99), Chunk 2 (0.01), Chunk 3 (0.005)
-        List<RerankClient.RerankResult> mockRerank = List.of(new RerankClient.RerankResult(0, 0.01), // Chunk
-                                                                                                     // 2
-                                                                                                     // (original
-                                                                                                     // index
-                                                                                                     // 0)
-            new RerankClient.RerankResult(1, 0.99), // Chunk 1 (original index 1)
-            new RerankClient.RerankResult(2, 0.005) // Chunk 3 (original index 2)
-        );
+        List<RerankClient.RerankResult> mockRerank =
+                List.of(
+                        new RerankClient.RerankResult(0, 0.01), // Chunk
+                        // 2
+                        // (original
+                        // index
+                        // 0)
+                        new RerankClient.RerankResult(1, 0.99), // Chunk 1 (original index 1)
+                        new RerankClient.RerankResult(2, 0.005) // Chunk 3 (original index 2)
+                        );
         when(rerankClient.rerank(Mockito.eq("database"), Mockito.anyList())).thenReturn(mockRerank);
 
         SearchOptions opts = new SearchOptions(COLLECTION, 5, true, true, null, 0);
@@ -351,9 +401,10 @@ public class HybridSearchIT {
         // Verify that a retrieval log row was written to the database (telemetry persists
         // asynchronously — flush before asserting)
         telemetryService.flush();
-        List<Map<String, Object>> logs = jdbcTemplate.queryForList(
-            "SELECT rl.*, c.name as collection_name FROM retrieval_logs rl JOIN collections c ON rl.collection_id = c.id WHERE c.name = ? ORDER BY rl.created_at DESC LIMIT 1",
-            COLLECTION);
+        List<Map<String, Object>> logs =
+                jdbcTemplate.queryForList(
+                        "SELECT rl.*, c.name as collection_name FROM retrieval_logs rl JOIN collections c ON rl.collection_id = c.id WHERE c.name = ? ORDER BY rl.created_at DESC LIMIT 1",
+                        COLLECTION);
         assertThat(logs).isNotEmpty();
         Map<String, Object> logRow = logs.get(0);
         assertThat(logRow.get("collection_name")).isEqualTo(COLLECTION);
@@ -372,26 +423,24 @@ public class HybridSearchIT {
     }
 
     /**
-     * The admin search console's lane trace is sliced out of ONE {@code retrieval_logs} row:
-     * {@code RagAdminViewService.toLaneTrace} guards on
-     * {@code initialChunkIds.size() == semPool + ftPool}, then reads {@code initial[0..semPool)} as
-     * the semantic lane and the rest as the BM25 lane. A wrong boundary from
-     * {@code findTelemetryById} fails in one of two silent ways: the guard trips and the whole lane
-     * trace vanishes from /admin/search with no error, or -- when the pools happen to sum correctly
-     * -- every chunk is attributed to the wrong lane while each rendered row still looks plausible.
-     * That trace is the only instrument for diagnosing fusion/recall problems, so mis-attribution
-     * actively misleads whoever is debugging retrieval.
+     * The admin search console's lane trace is sliced out of ONE {@code retrieval_logs} row: {@code
+     * RagAdminViewService.toLaneTrace} guards on {@code initialChunkIds.size() == semPool +
+     * ftPool}, then reads {@code initial[0..semPool)} as the semantic lane and the rest as the BM25
+     * lane. A wrong boundary from {@code findTelemetryById} fails in one of two silent ways: the
+     * guard trips and the whole lane trace vanishes from /admin/search with no error, or -- when
+     * the pools happen to sum correctly -- every chunk is attributed to the wrong lane while each
+     * rendered row still looks plausible. That trace is the only instrument for diagnosing
+     * fusion/recall problems, so mis-attribution actively misleads whoever is debugging retrieval.
      *
-     * <p>
-     * The last assertion pins why the method exists: it replaced a
-     * {@code findLatestTelemetry(collection)} that fell back to the newest row for the collection,
-     * so (telemetry being async) the console showed the PREVIOUS search's numbers beside the
-     * current results. An unknown searchId must yield an empty Optional, never a neighbour.
+     * <p>The last assertion pins why the method exists: it replaced a {@code
+     * findLatestTelemetry(collection)} that fell back to the newest row for the collection, so
+     * (telemetry being async) the console showed the PREVIOUS search's numbers beside the current
+     * results. An unknown searchId must yield an empty Optional, never a neighbour.
      *
-     * <p>
-     * The fixture is deliberately asymmetric -- with semantic-limit-multiplier 1.5 the vector lane
-     * asks for ceil(1.5*5)=8 and gets all 3 seeded chunks, while only chunk 1 contains "database"
-     * so the BM25 lane pool is 1. A symmetric fixture would let a sem/ft swap pass unnoticed.
+     * <p>The fixture is deliberately asymmetric -- with semantic-limit-multiplier 1.5 the vector
+     * lane asks for ceil(1.5*5)=8 and gets all 3 seeded chunks, while only chunk 1 contains
+     * "database" so the BM25 lane pool is 1. A symmetric fixture would let a sem/ft swap pass
+     * unnoticed.
      */
     @Test
     public void theTelemetryReadBackByIdSplitsTheTwoLanesAtTheBoundaryTheSearchActuallyUsed() {
@@ -407,7 +456,7 @@ public class HybridSearchIT {
         telemetryService.flush();
 
         RetrievalTelemetryRow row =
-            retrievalLogRepository.findTelemetryById(search.searchId()).orElseThrow();
+                retrievalLogRepository.findTelemetryById(search.searchId()).orElseThrow();
 
         assertThat(row.semPool()).isEqualTo(3);
         assertThat(row.ftPool()).isEqualTo(1);
@@ -419,51 +468,71 @@ public class HybridSearchIT {
         assertThat(row.initialChunkIds()).hasSize(row.semPool() + row.ftPool());
         List<UUID> semLane = row.initialChunkIds().subList(0, row.semPool());
         List<UUID> ftLane =
-            row.initialChunkIds().subList(row.semPool(), row.semPool() + row.ftPool());
+                row.initialChunkIds().subList(row.semPool(), row.semPool() + row.ftPool());
         assertThat(semLane).containsExactlyInAnyOrder(chunkId1, chunkId2, chunkId3);
         assertThat(ftLane).containsExactly(chunkId1);
 
         List<UUID> ftMembers =
-            results.stream().filter(r -> r.telemetry().inFt()).map(HybridSearchResult::id).toList();
+                results.stream()
+                        .filter(r -> r.telemetry().inFt())
+                        .map(HybridSearchResult::id)
+                        .toList();
         assertThat(ftLane).containsExactlyInAnyOrderElementsOf(ftMembers);
 
         assertThat(row.retrievedChunkIds())
-            .containsExactlyElementsOf(results.stream().map(HybridSearchResult::id).toList());
+                .containsExactlyElementsOf(results.stream().map(HybridSearchResult::id).toList());
 
         // The guard in toLaneTrace only passes when the recorded boundary is the real one.
         assertThat(RagAdminViewService.toLaneTrace(row, 10).fusionOrder()).isNotEmpty();
 
         Optional<RetrievalTelemetryRow> someOtherSearch =
-            retrievalLogRepository.findTelemetryById(UUID.randomUUID());
+                retrievalLogRepository.findTelemetryById(UUID.randomUUID());
         assertThat(someOtherSearch).isEmpty();
     }
 
-    private void insertChunkForColl(UUID id, UUID docId, String text, float[] vector,
-        String[] headingPath, String heading, int depth, int sortOrder, String version,
-        String srcFile, String collection) {
+    private void insertChunkForColl(
+            UUID id,
+            UUID docId,
+            String text,
+            float[] vector,
+            String[] headingPath,
+            String heading,
+            int depth,
+            int sortOrder,
+            String version,
+            String srcFile,
+            String collection) {
         String vectorStr = VectorUtils.toVectorString(vector);
-        UUID collectionId = jdbcTemplate.queryForObject("SELECT id FROM collections WHERE name = ?",
-            UUID.class, collection);
-        jdbcTemplate.execute((ConnectionCallback<Void>) conn -> {
-            String sql =
-                "INSERT INTO chunks (id, document_id, text, embedding, heading_path, heading, depth, sort_order, collection_id, tags) "
-                    + "VALUES (?, ?, ?, ?::vector, ?, ?, ?, ?, ?, ?)";
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setObject(1, id);
-                ps.setObject(2, docId);
-                ps.setString(3, text);
-                ps.setString(4, vectorStr);
-                ps.setArray(5, conn.createArrayOf("text", headingPath));
-                ps.setString(6, heading);
-                ps.setInt(7, depth);
-                ps.setInt(8, sortOrder);
-                ps.setObject(9, collectionId);
-                ps.setArray(10, conn.createArrayOf("text",
-                    version != null ? new String[] {version} : new String[0]));
-                ps.executeUpdate();
-            }
-            return null;
-        });
+        UUID collectionId =
+                jdbcTemplate.queryForObject(
+                        "SELECT id FROM collections WHERE name = ?", UUID.class, collection);
+        jdbcTemplate.execute(
+                (ConnectionCallback<Void>)
+                        conn -> {
+                            String sql =
+                                    "INSERT INTO chunks (id, document_id, text, embedding, heading_path, heading, depth, sort_order, collection_id, tags) "
+                                            + "VALUES (?, ?, ?, ?::vector, ?, ?, ?, ?, ?, ?)";
+                            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                                ps.setObject(1, id);
+                                ps.setObject(2, docId);
+                                ps.setString(3, text);
+                                ps.setString(4, vectorStr);
+                                ps.setArray(5, conn.createArrayOf("text", headingPath));
+                                ps.setString(6, heading);
+                                ps.setInt(7, depth);
+                                ps.setInt(8, sortOrder);
+                                ps.setObject(9, collectionId);
+                                ps.setArray(
+                                        10,
+                                        conn.createArrayOf(
+                                                "text",
+                                                version != null
+                                                        ? new String[] {version}
+                                                        : new String[0]));
+                                ps.executeUpdate();
+                            }
+                            return null;
+                        });
     }
 
     /**
@@ -476,14 +545,12 @@ public class HybridSearchIT {
      * forever, which an operator reads as "nobody gave feedback" rather than "the link is missing",
      * and the one signal for finding bad retrievals is gone.
      *
-     * <p>
-     * Asserting the BEFORE state (rating null while message_id is null) and the AFTER state is what
-     * makes this a contract rather than a smoke test, and it is the first execution of mapRow's
-     * column names, its {@code getObject("feedback_rating", Integer.class)} read and
+     * <p>Asserting the BEFORE state (rating null while message_id is null) and the AFTER state is
+     * what makes this a contract rather than a smoke test, and it is the first execution of
+     * mapRow's column names, its {@code getObject("feedback_rating", Integer.class)} read and
      * {@code JdbcMappers.arrayToUuidList} against real Postgres.
      *
-     * <p>
-     * Note {@code listLogs} selects {@code l.query AS message_content} -- the message content
+     * <p>Note {@code listLogs} selects {@code l.query AS message_content} -- the message content
      * column carries the RETRIEVAL's query, not the message body -- so that is what is asserted
      * here.
      */
@@ -496,21 +563,41 @@ public class HybridSearchIT {
         String query = "how do I size the identity manager database connection pool?";
         try {
             jdbcTemplate.update(
-                "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
-                userId, "oid-" + userId, "logs-it@example.com", "Logs IT");
-            jdbcTemplate.update("INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
-                conversationId, userId, "retrieval log linking");
+                    "INSERT INTO users (id, entra_oid, email, display_name) VALUES (?, ?, ?, ?)",
+                    userId,
+                    "oid-" + userId,
+                    "logs-it@example.com",
+                    "Logs IT");
             jdbcTemplate.update(
-                "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)",
-                messageId, conversationId, "assistant", "Configure it in the connection string.");
+                    "INSERT INTO conversations (id, user_id, title) VALUES (?, ?, ?)",
+                    conversationId,
+                    userId,
+                    "retrieval log linking");
             jdbcTemplate.update(
-                "INSERT INTO message_feedback (id, message_id, rating, comment) VALUES (?, ?, ?, ?)",
-                UUID.randomUUID(), messageId, -1, "answer cited the wrong kit version");
+                    "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)",
+                    messageId,
+                    conversationId,
+                    "assistant",
+                    "Configure it in the connection string.");
+            jdbcTemplate.update(
+                    "INSERT INTO message_feedback (id, message_id, rating, comment) VALUES (?, ?, ?, ?)",
+                    UUID.randomUUID(),
+                    messageId,
+                    -1,
+                    "answer cited the wrong kit version");
 
-            retrievalLogRepository.saveTelemetry(searchId, query, collectionId1, "9.3",
-                "{\"sem\": 2, \"ft\": 1}", "{\"n\": 2}", "{\"promotions\": 0}",
-                List.of(chunkId1, chunkId2), List.of(chunkId1, chunkId2, chunkId1),
-                List.of(chunkId1, chunkId2), List.of(chunkId1, chunkId2));
+            retrievalLogRepository.saveTelemetry(
+                    searchId,
+                    query,
+                    collectionId1,
+                    "9.3",
+                    "{\"sem\": 2, \"ft\": 1}",
+                    "{\"n\": 2}",
+                    "{\"promotions\": 0}",
+                    List.of(chunkId1, chunkId2),
+                    List.of(chunkId1, chunkId2, chunkId1),
+                    List.of(chunkId1, chunkId2),
+                    List.of(chunkId1, chunkId2));
 
             RetrievalLogDetails before = findLoggedSearch(searchId);
             assertThat(before.messageId()).isNull();
@@ -538,9 +625,14 @@ public class HybridSearchIT {
     }
 
     private RetrievalLogDetails findLoggedSearch(UUID searchId) {
-        return retrievalLogRepository.listLogs(50, 0).stream().filter(l -> searchId.equals(l.id()))
-            .findFirst().orElseThrow(() -> new AssertionError(
-                "retrieval log " + searchId + " not on the first page of listLogs"));
+        return retrievalLogRepository.listLogs(50, 0).stream()
+                .filter(l -> searchId.equals(l.id()))
+                .findFirst()
+                .orElseThrow(() ->
+                        new AssertionError(
+                                "retrieval log "
+                                        + searchId
+                                        + " not on the first page of listLogs"));
     }
 
     @Test
@@ -552,33 +644,64 @@ public class HybridSearchIT {
 
         // Insert documents
         jdbcTemplate.update(
-            "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
-                + "VALUES (?, ?, ?, ?, ?, ARRAY['11.0']::TEXT[], ?::jsonb)",
-            multiDoc1, collectionId2, "manual", "multi110.md", "completed",
-            "{\"source_file\": \"multi110.md\", \"tag\": \"11.0\"}");
+                "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
+                        + "VALUES (?, ?, ?, ?, ?, ARRAY['11.0']::TEXT[], ?::jsonb)",
+                multiDoc1,
+                collectionId2,
+                "manual",
+                "multi110.md",
+                "completed",
+                "{\"source_file\": \"multi110.md\", \"tag\": \"11.0\"}");
         jdbcTemplate.update(
-            "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
-                + "VALUES (?, ?, ?, ?, ?, '{}'::TEXT[], ?::jsonb)",
-            multiDoc2, collectionId2, "manual", "multinull.md", "completed",
-            "{\"source_file\": \"multinull.md\", \"tag\": null}");
+                "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
+                        + "VALUES (?, ?, ?, ?, ?, '{}'::TEXT[], ?::jsonb)",
+                multiDoc2,
+                collectionId2,
+                "manual",
+                "multinull.md",
+                "completed",
+                "{\"source_file\": \"multinull.md\", \"tag\": null}");
 
         // Insert chunks
-        insertChunkForColl(multiChunk1, multiDoc1, "multi collection vector database storage",
-            createMockVector(0), new String[] {"Multi"}, "Multi", 1, 0, "11.0", "multi110.md",
-            COLLECTION_2);
-        insertChunkForColl(multiChunk2, multiDoc2, "schema-less data repository",
-            createMockVector(1), new String[] {"Schema"}, "Schema", 1, 0, null, "multinull.md",
-            COLLECTION_2);
+        insertChunkForColl(
+                multiChunk1,
+                multiDoc1,
+                "multi collection vector database storage",
+                createMockVector(0),
+                new String[] {"Multi"},
+                "Multi",
+                1,
+                0,
+                "11.0",
+                "multi110.md",
+                COLLECTION_2);
+        insertChunkForColl(
+                multiChunk2,
+                multiDoc2,
+                "schema-less data repository",
+                createMockVector(1),
+                new String[] {"Schema"},
+                "Schema",
+                1,
+                0,
+                null,
+                "multinull.md",
+                COLLECTION_2);
 
         // Rebuild ParadeDB index to make newly inserted data searchable
         jdbcTemplate.execute("REINDEX INDEX chunks_bm25_idx");
 
         // 1. Search for "database" across BOTH collections, but with version filter "11.0"
-        SearchOptions opts = new SearchOptions(List.of(COLLECTION, COLLECTION_2), 10, false, // no
-                                                                                             // semantic
-            true, // fulltext
-            0, false, // no rerank
-            List.of("11.0"));
+        SearchOptions opts =
+                new SearchOptions(
+                        List.of(COLLECTION, COLLECTION_2),
+                        10,
+                        false, // no
+                        // semantic
+                        true, // fulltext
+                        0,
+                        false, // no rerank
+                        List.of("11.0"));
 
         List<HybridSearchResult> results = hybridSearch.search("database", opts);
 
@@ -610,37 +733,69 @@ public class HybridSearchIT {
         UUID chunkCol1 = UUID.randomUUID();
 
         jdbcTemplate.update(
-            "INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['9.3.1']::TEXT[]) ON CONFLICT DO NOTHING",
-            collectionId2, COLLECTION_2);
-        jdbcTemplate.update("UPDATE collections SET tags = ARRAY['9.3.1']::TEXT[] WHERE id = ?",
-            collectionId1);
+                "INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['9.3.1']::TEXT[]) ON CONFLICT DO NOTHING",
+                collectionId2,
+                COLLECTION_2);
+        jdbcTemplate.update(
+                "UPDATE collections SET tags = ARRAY['9.3.1']::TEXT[] WHERE id = ?", collectionId1);
 
         jdbcTemplate.update(
-            "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
-                + "VALUES (?, ?, ?, ?, ?, ARRAY['9.3.1']::TEXT[], ?::jsonb)",
-            multiDocCol2, collectionId2, "manual", "col2_doc.md", "completed",
-            "{\"source_file\": \"col2_doc.md\", \"tag\": \"9.3.1\"}");
+                "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
+                        + "VALUES (?, ?, ?, ?, ?, ARRAY['9.3.1']::TEXT[], ?::jsonb)",
+                multiDocCol2,
+                collectionId2,
+                "manual",
+                "col2_doc.md",
+                "completed",
+                "{\"source_file\": \"col2_doc.md\", \"tag\": \"9.3.1\"}");
 
         jdbcTemplate.update(
-            "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
-                + "VALUES (?, ?, ?, ?, ?, ARRAY['9.3.1']::TEXT[], ?::jsonb)",
-            docCol1, collectionId1, "manual", "col1_doc.md", "completed",
-            "{\"source_file\": \"col1_doc.md\", \"tag\": \"9.3.1\"}");
+                "INSERT INTO documents (id, collection_id, kind, title, ingestion_status, tags, metadata) "
+                        + "VALUES (?, ?, ?, ?, ?, ARRAY['9.3.1']::TEXT[], ?::jsonb)",
+                docCol1,
+                collectionId1,
+                "manual",
+                "col1_doc.md",
+                "completed",
+                "{\"source_file\": \"col1_doc.md\", \"tag\": \"9.3.1\"}");
 
-        insertChunkForColl(multiChunkCol2, multiDocCol2, "service now integration group in col2",
-            createMockVector(0), new String[] {"Test"}, "Test", 1, 0, "9.3.1", "col2_doc.md",
-            COLLECTION_2);
-        insertChunk(chunkCol1, docCol1, "service now integration info in col1", createMockVector(0),
-            new String[] {"Test"}, "Test", 1, 0, "9.3.1", "col1_doc.md");
+        insertChunkForColl(
+                multiChunkCol2,
+                multiDocCol2,
+                "service now integration group in col2",
+                createMockVector(0),
+                new String[] {"Test"},
+                "Test",
+                1,
+                0,
+                "9.3.1",
+                "col2_doc.md",
+                COLLECTION_2);
+        insertChunk(
+                chunkCol1,
+                docCol1,
+                "service now integration info in col1",
+                createMockVector(0),
+                new String[] {"Test"},
+                "Test",
+                1,
+                0,
+                "9.3.1",
+                "col1_doc.md");
 
         jdbcTemplate.execute("REINDEX INDEX chunks_bm25_idx");
 
         when(embeddingService.embed(anyString())).thenReturn(createMockVector(0));
 
-        SearchOptions opts = new SearchOptions(List.of(COLLECTION), 10, true, // semantic
-            true, // fulltext
-            0, false, // no rerank
-            List.of("9.3.1"));
+        SearchOptions opts =
+                new SearchOptions(
+                        List.of(COLLECTION),
+                        10,
+                        true, // semantic
+                        true, // fulltext
+                        0,
+                        false, // no rerank
+                        List.of("9.3.1"));
 
         List<HybridSearchResult> results = hybridSearch.search("service now integration", opts);
 

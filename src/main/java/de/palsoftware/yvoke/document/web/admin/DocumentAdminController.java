@@ -36,7 +36,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-
 @Controller
 @RequestMapping("/admin")
 public class DocumentAdminController {
@@ -51,10 +50,14 @@ public class DocumentAdminController {
     private final AuditLogRepository auditLogRepository;
     private final UserService userService;
 
-    public DocumentAdminController(DocumentRepository documentRepository,
-        DocumentAdminViewService documentAdminViewService, CollectionService collectionService,
-        TagService tagService, JobService jobService, AuditLogRepository auditLogRepository,
-        UserService userService) {
+    public DocumentAdminController(
+            DocumentRepository documentRepository,
+            DocumentAdminViewService documentAdminViewService,
+            CollectionService collectionService,
+            TagService tagService,
+            JobService jobService,
+            AuditLogRepository auditLogRepository,
+            UserService userService) {
         this.documentRepository = documentRepository;
         this.documentAdminViewService = documentAdminViewService;
         this.collectionService = collectionService;
@@ -69,12 +72,15 @@ public class DocumentAdminController {
     }
 
     @GetMapping("/documents")
-    public String listDocuments(@RequestParam(required = false) String collection,
-        @RequestParam(required = false) String kind, @RequestParam(required = false) String tag,
-        @RequestParam(required = false) String searchId,
-        @RequestParam(required = false) String searchTitle,
-        @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size,
-        Model model) {
+    public String listDocuments(
+            @RequestParam(required = false) String collection,
+            @RequestParam(required = false) String kind,
+            @RequestParam(required = false) String tag,
+            @RequestParam(required = false) String searchId,
+            @RequestParam(required = false) String searchTitle,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Model model) {
         log.info("DocumentAdminController: Accessing Documents view");
 
         String collFilter = (collection != null && !collection.isBlank()) ? collection : null;
@@ -82,7 +88,7 @@ public class DocumentAdminController {
         String tagFilter = (tag != null && !tag.isBlank()) ? tag : null;
         String searchIdFilter = (searchId != null && !searchId.isBlank()) ? searchId.trim() : null;
         String searchTitleFilter =
-            (searchTitle != null && !searchTitle.isBlank()) ? searchTitle.trim() : null;
+                (searchTitle != null && !searchTitle.isBlank()) ? searchTitle.trim() : null;
 
         List<Collection> allCols = collectionService.listForAdminUser();
         Set<String> allowedAreasLower = AreaAccessContext.allowedAdminAreasLower().orElse(null);
@@ -90,22 +96,38 @@ public class DocumentAdminController {
         if (collFilter != null) {
             Collection col = collectionService.getCollection(collFilter).orElse(null);
             if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Collection not found: " + collFilter);
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Collection not found: " + collFilter);
             }
         }
 
-        int clampedSize = PagingParams.clampSize(size, PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
-            PagingParams.MAX_ADMIN_PAGE_SIZE);
+        int clampedSize =
+                PagingParams.clampSize(
+                        size,
+                        PagingParams.DEFAULT_ADMIN_PAGE_SIZE,
+                        PagingParams.MAX_ADMIN_PAGE_SIZE);
         int clampedPage = PagingParams.clampPageForOffset(page, clampedSize);
-        long totalCount = documentAdminViewService.countDocuments(collFilter, kindFilter, tagFilter,
-            searchIdFilter, searchTitleFilter, collFilter == null ? allowedAreasLower : null);
+        long totalCount =
+                documentAdminViewService.countDocuments(
+                        collFilter,
+                        kindFilter,
+                        tagFilter,
+                        searchIdFilter,
+                        searchTitleFilter,
+                        collFilter == null ? allowedAreasLower : null);
         int totalPages = PagingParams.totalPages(totalCount, clampedSize);
 
-        model.addAttribute("documents",
-            documentAdminViewService.listDocuments(collFilter, clampedSize,
-                PagingParams.safeOffset(clampedPage, clampedSize), kindFilter, tagFilter,
-                searchIdFilter, searchTitleFilter, collFilter == null ? allowedAreasLower : null));
+        model.addAttribute(
+                "documents",
+                documentAdminViewService.listDocuments(
+                        collFilter,
+                        clampedSize,
+                        PagingParams.safeOffset(clampedPage, clampedSize),
+                        kindFilter,
+                        tagFilter,
+                        searchIdFilter,
+                        searchTitleFilter,
+                        collFilter == null ? allowedAreasLower : null));
         model.addAttribute("collections", allCols.stream().map(Collection::name).toList());
         model.addAttribute("allCollections", allCols);
         model.addAttribute("kinds", documentAdminViewService.distinctKinds());
@@ -127,25 +149,29 @@ public class DocumentAdminController {
      * Options for the corpus browser's tag filter: the tags the browsed collection declares, or the
      * whole declared vocabulary when browsing all collections.
      *
-     * <p>
-     * Derived from {@code collections.tags}. Until V6 this list came from a {@code tags} registry
-     * table written only by {@code TagRepository.getOrCreateTag}, i.e. only for tags typed into an
-     * admin form or passed to the ingest enqueue — so tags that arrived with an imported collection
-     * (the import writes {@code collections.tags} directly) were absent and their documents could
-     * not be filtered at all.
+     * <p>Derived from {@code collections.tags}. Until V6 this list came from a {@code tags}
+     * registry table written only by {@code TagRepository.getOrCreateTag}, i.e. only for tags typed
+     * into an admin form or passed to the ingest enqueue — so tags that arrived with an imported
+     * collection (the import writes {@code collections.tags} directly) were absent and their
+     * documents could not be filtered at all.
      *
-     * <p>
-     * {@code selectedTag} is appended when the scope does not already contain it, because the
+     * <p>{@code selectedTag} is appended when the scope does not already contain it, because the
      * template marks the active option with {@code th:selected="${t == selectedTag}"}: without it,
      * switching collection while a tag filter is applied would render "All Tags" over a query that
      * is still filtered — rows vanish with no visible cause.
      */
-    private List<String> tagOptions(String collFilter, String selectedTag,
-        List<Collection> allCols) {
-        List<String> declared = collFilter == null
-            ? (AreaAccessContext.isSuperAdmin() ? collectionService.listAllTags()
-                : allCols.stream().flatMap(c -> c.tags().stream()).distinct().sorted().toList())
-            : collectionService.listTagsOf(collFilter);
+    private List<String> tagOptions(
+            String collFilter, String selectedTag, List<Collection> allCols) {
+        List<String> declared =
+                collFilter == null
+                        ? (AreaAccessContext.isSuperAdmin()
+                                ? collectionService.listAllTags()
+                                : allCols.stream()
+                                        .flatMap(c -> c.tags().stream())
+                                        .distinct()
+                                        .sorted()
+                                        .toList())
+                        : collectionService.listTagsOf(collFilter);
         if (selectedTag == null || declared.contains(selectedTag)) {
             return declared;
         }
@@ -156,8 +182,12 @@ public class DocumentAdminController {
 
     @GetMapping("/documents/{id}")
     public String getDocumentDetails(@PathVariable UUID id, Model model) {
-        DocumentDetailPage page = documentAdminViewService.documentDetailPage(id).orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id));
+        DocumentDetailPage page =
+                documentAdminViewService
+                        .documentDetailPage(id)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Document not found: " + id));
         Collection col = collectionService.getCollection(page.document().collection()).orElse(null);
         if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id);
@@ -176,14 +206,19 @@ public class DocumentAdminController {
     }
 
     @PostMapping("/documents/{id}/process-kg")
-    public String processDocumentKg(@PathVariable UUID id,
-        @RequestParam(value = "collection", required = false) String collection,
-        @RequestParam(value = "tag", required = false) String tag,
-        @RequestParam(value = "kgPrompt", required = false) String kgPrompt,
-        RedirectAttributes redirectAttributes) {
+    public String processDocumentKg(
+            @PathVariable UUID id,
+            @RequestParam(value = "collection", required = false) String collection,
+            @RequestParam(value = "tag", required = false) String tag,
+            @RequestParam(value = "kgPrompt", required = false) String kgPrompt,
+            RedirectAttributes redirectAttributes) {
 
-        DocumentRow document = documentRepository.findById(id).orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id));
+        DocumentRow document =
+                documentRepository
+                        .findById(id)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Document not found: " + id));
         Collection docCol = collectionService.getCollection(document.collection()).orElse(null);
         if (docCol == null || !AreaAccessContext.canAdministerArea(docCol.area())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id);
@@ -191,13 +226,15 @@ public class DocumentAdminController {
         if (collection != null && !collection.isBlank()) {
             Collection targetCol = collectionService.getCollection(collection.trim()).orElse(null);
             if (targetCol == null || !AreaAccessContext.canAdministerArea(targetCol.area())) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Collection not found: " + collection);
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Collection not found: " + collection);
             }
         }
 
-        String targetCollection = (collection != null && !collection.isBlank()) ? collection.trim()
-            : document.collection();
+        String targetCollection =
+                (collection != null && !collection.isBlank())
+                        ? collection.trim()
+                        : document.collection();
         String targetTag = (tag != null && !tag.isBlank()) ? tag.trim() : null;
 
         Map<String, Object> settings = new HashMap<>();
@@ -205,35 +242,54 @@ public class DocumentAdminController {
             settings.put(IngestPrompts.SETTING_KG_PROMPT, kgPrompt.trim());
         }
 
-        EnqueueResult result = jobService.enqueue(new EnqueueRequest("kg-extract",
-            document.id().toString(), targetTag, targetCollection, settings));
+        EnqueueResult result =
+                jobService.enqueue(
+                        new EnqueueRequest(
+                                "kg-extract",
+                                document.id().toString(),
+                                targetTag,
+                                targetCollection,
+                                settings));
         UUID jobId = result.jobId();
 
-        auditLogRepository.log(getCurrentAdminOid(), "PROCESS_KG", document.id().toString(),
-            Map.of("collection", document.collection(), "tag", targetTag != null ? targetTag : "",
-                "jobId", jobId.toString()));
+        auditLogRepository.log(
+                getCurrentAdminOid(),
+                "PROCESS_KG",
+                document.id().toString(),
+                Map.of(
+                        "collection",
+                        document.collection(),
+                        "tag",
+                        targetTag != null ? targetTag : "",
+                        "jobId",
+                        jobId.toString()));
 
         if (result.created()) {
-            redirectAttributes.addFlashAttribute("success",
-                "Knowledge Graph processing job enqueued! Job ID: " + jobId);
+            redirectAttributes.addFlashAttribute(
+                    "success", "Knowledge Graph processing job enqueued! Job ID: " + jobId);
         } else {
             // A WARNING, not a success: the admission key is (kind, source_ref, collection, tags)
             // and excludes settings, so this submission adopted the job already in flight and the
             // prompt just chosen was NOT applied — the adopted job may even have been enqueued via
             // the REST API with no settings at all.
-            redirectAttributes.addFlashAttribute("warning",
-                "Knowledge Graph processing for this document is already queued or running — "
-                    + "showing that job. It runs with the settings it was enqueued with, so the "
-                    + "prompt selected here was not applied; cancel that job and submit again to "
-                    + "change them.");
+            redirectAttributes.addFlashAttribute(
+                    "warning",
+                    "Knowledge Graph processing for this document is already queued or running — "
+                            + "showing that job. It runs with the settings it was enqueued with, so the "
+                            + "prompt selected here was not applied; cancel that job and submit again to "
+                            + "change them.");
         }
         return "redirect:/admin/jobs/" + jobId;
     }
 
     @GetMapping("/chunks/{id}")
     public String getChunkDetails(@PathVariable UUID id, Model model) {
-        ChunkDetailPage page = documentAdminViewService.chunkDetailPage(id.toString()).orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chunk not found: " + id));
+        ChunkDetailPage page =
+                documentAdminViewService
+                        .chunkDetailPage(id.toString())
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Chunk not found: " + id));
         Collection col = collectionService.getCollection(page.chunk().collection()).orElse(null);
         if (col == null || !AreaAccessContext.canAdministerArea(col.area())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Chunk not found: " + id);
@@ -248,10 +304,16 @@ public class DocumentAdminController {
     }
 
     @PostMapping("/documents/{id}/add-tag")
-    public String addDocumentTag(@PathVariable UUID id, @RequestParam String tag,
-        RedirectAttributes redirectAttributes) {
-        DocumentRow document = documentRepository.findById(id).orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id));
+    public String addDocumentTag(
+            @PathVariable UUID id,
+            @RequestParam String tag,
+            RedirectAttributes redirectAttributes) {
+        DocumentRow document =
+                documentRepository
+                        .findById(id)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Document not found: " + id));
         Collection docCol = collectionService.getCollection(document.collection()).orElse(null);
         if (docCol == null || !AreaAccessContext.canAdministerArea(docCol.area())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id);
@@ -262,10 +324,16 @@ public class DocumentAdminController {
     }
 
     @PostMapping("/documents/{id}/remove-tag")
-    public String removeDocumentTag(@PathVariable UUID id, @RequestParam String tag,
-        RedirectAttributes redirectAttributes) {
-        DocumentRow document = documentRepository.findById(id).orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id));
+    public String removeDocumentTag(
+            @PathVariable UUID id,
+            @RequestParam String tag,
+            RedirectAttributes redirectAttributes) {
+        DocumentRow document =
+                documentRepository
+                        .findById(id)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Document not found: " + id));
         Collection docCol = collectionService.getCollection(document.collection()).orElse(null);
         if (docCol == null || !AreaAccessContext.canAdministerArea(docCol.area())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id);

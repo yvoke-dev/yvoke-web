@@ -18,7 +18,7 @@ public class LlmCallLogRepository {
 
     public void insert(LlmCallLog log) {
         String sql =
-            """
+                """
                 INSERT INTO llm_call_logs (
                     id, conversation_id, message_id, agent_run_id, user_id, source, role, model,
                     prompt_tokens, completion_tokens, cached_tokens, thought_tokens, total_tokens,
@@ -33,38 +33,50 @@ public class LlmCallLogRepository {
                     :gatewayCacheStatus, :gatewayLogId, :costAvoided
                 )
                 """;
-        jdbcClient.sql(sql).param("id", log.id()).param("conversationId", log.conversationId())
-            .param("messageId", log.messageId()).param("agentRunId", log.agentRunId())
-            .param("userId", log.userId()).param("source", log.source()).param("role", log.role())
-            .param("model", log.model()).param("promptTokens", log.promptTokens())
-            .param("completionTokens", log.completionTokens())
-            .param("cachedTokens", log.cachedTokens()).param("thoughtTokens", log.thoughtTokens())
-            .param("totalTokens", log.totalTokens())
-            .param("promptPrice", log.promptPricePerMillion())
-            .param("completionPrice", log.completionPricePerMillion())
-            .param("cachedPrice", log.cachedPricePerMillion())
-            .param("thoughtPrice", log.thoughtPricePerMillion()).param("totalCost", log.totalCost())
-            .param("durationMs", log.callDurationMs())
-            .param("gatewayCacheStatus", log.gatewayCacheStatus())
-            .param("gatewayLogId", log.gatewayLogId())
-            .param("costAvoided", log.costAvoided() != null ? log.costAvoided() : BigDecimal.ZERO)
-            .update();
+        jdbcClient
+                .sql(sql)
+                .param("id", log.id())
+                .param("conversationId", log.conversationId())
+                .param("messageId", log.messageId())
+                .param("agentRunId", log.agentRunId())
+                .param("userId", log.userId())
+                .param("source", log.source())
+                .param("role", log.role())
+                .param("model", log.model())
+                .param("promptTokens", log.promptTokens())
+                .param("completionTokens", log.completionTokens())
+                .param("cachedTokens", log.cachedTokens())
+                .param("thoughtTokens", log.thoughtTokens())
+                .param("totalTokens", log.totalTokens())
+                .param("promptPrice", log.promptPricePerMillion())
+                .param("completionPrice", log.completionPricePerMillion())
+                .param("cachedPrice", log.cachedPricePerMillion())
+                .param("thoughtPrice", log.thoughtPricePerMillion())
+                .param("totalCost", log.totalCost())
+                .param("durationMs", log.callDurationMs())
+                .param("gatewayCacheStatus", log.gatewayCacheStatus())
+                .param("gatewayLogId", log.gatewayLogId())
+                .param(
+                        "costAvoided",
+                        log.costAvoided() != null ? log.costAvoided() : BigDecimal.ZERO)
+                .update();
     }
 
     public List<Map<String, Object>> getModelUsageSummaries() {
-        String sql = """
-            SELECT
-                m.model,
-                COUNT(*) AS call_count,
-                COALESCE(SUM(m.prompt_tokens), 0) AS total_prompt_tokens,
-                COALESCE(SUM(m.completion_tokens), 0) AS total_completion_tokens,
-                COALESCE(SUM(m.cached_tokens), 0) AS total_cached_tokens,
-                COALESCE(SUM(m.thought_tokens), 0) AS total_thought_tokens,
-                COALESCE(SUM(m.total_tokens), 0) AS total_tokens,
-                COALESCE(SUM(m.total_cost), 0) AS total_cost
-            FROM llm_call_logs m
-            GROUP BY m.model
-            """;
+        String sql =
+                """
+                SELECT
+                    m.model,
+                    COUNT(*) AS call_count,
+                    COALESCE(SUM(m.prompt_tokens), 0) AS total_prompt_tokens,
+                    COALESCE(SUM(m.completion_tokens), 0) AS total_completion_tokens,
+                    COALESCE(SUM(m.cached_tokens), 0) AS total_cached_tokens,
+                    COALESCE(SUM(m.thought_tokens), 0) AS total_thought_tokens,
+                    COALESCE(SUM(m.total_tokens), 0) AS total_tokens,
+                    COALESCE(SUM(m.total_cost), 0) AS total_cost
+                FROM llm_call_logs m
+                GROUP BY m.model
+                """;
         return jdbcClient.sql(sql).query().listOfRows();
     }
 

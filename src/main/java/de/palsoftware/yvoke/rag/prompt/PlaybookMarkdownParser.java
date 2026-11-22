@@ -15,8 +15,8 @@ public class PlaybookMarkdownParser {
     }
 
     @SuppressWarnings("unchecked")
-    public static Playbook parseMarkdown(String mdContent, String fallbackName,
-        ToIntFunction<String> defaultVersionForName) {
+    public static Playbook parseMarkdown(
+            String mdContent, String fallbackName, ToIntFunction<String> defaultVersionForName) {
         if (mdContent == null) {
             mdContent = "";
         }
@@ -53,7 +53,7 @@ public class PlaybookMarkdownParser {
                     }
                     if (retiredPrompt != null && !String.valueOf(retiredPrompt).isBlank()) {
                         throw new IllegalArgumentException(
-                            "The 'system_prompt' frontmatter field is retired; inline the instructions into the playbook body.");
+                                "The 'system_prompt' frontmatter field is retired; inline the instructions into the playbook body.");
                     }
                     if (map.get("name") != null) {
                         name = String.valueOf(map.get("name")).trim();
@@ -70,12 +70,9 @@ public class PlaybookMarkdownParser {
                     }
 
                     Object agentObj = map.get("target_agent");
-                    if (agentObj == null)
-                        agentObj = map.get("targetAgent");
-                    if (agentObj == null)
-                        agentObj = map.get("role");
-                    if (agentObj == null)
-                        agentObj = map.get("type");
+                    if (agentObj == null) agentObj = map.get("targetAgent");
+                    if (agentObj == null) agentObj = map.get("role");
+                    if (agentObj == null) agentObj = map.get("type");
                     if (agentObj != null) {
                         targetAgent = String.valueOf(agentObj).trim();
                     }
@@ -94,19 +91,16 @@ public class PlaybookMarkdownParser {
                     Object toolsObj = map.get("tools");
                     if (toolsObj instanceof List<?> list) {
                         for (Object o : list) {
-                            if (o != null)
-                                tools.add(String.valueOf(o).trim());
+                            if (o != null) tools.add(String.valueOf(o).trim());
                         }
                     } else if (toolsObj instanceof String str && !str.isBlank()) {
                         for (String t : str.split(",")) {
-                            if (!t.isBlank())
-                                tools.add(t.trim());
+                            if (!t.isBlank()) tools.add(t.trim());
                         }
                     }
 
                     Object codeExecObj = map.get("code_execution");
-                    if (codeExecObj == null)
-                        codeExecObj = map.get("codeExecution");
+                    if (codeExecObj == null) codeExecObj = map.get("codeExecution");
                     if (codeExecObj instanceof Boolean b) {
                         codeExecution = b;
                     } else if (codeExecObj != null) {
@@ -128,18 +122,33 @@ public class PlaybookMarkdownParser {
             throw new IllegalArgumentException("Playbook body template text cannot be empty.");
         }
 
-        int version = !hasVersion
-            ? (defaultVersionForName != null ? defaultVersionForName.applyAsInt(name) : 1)
-            : parseVersionValue(rawVersion);
+        int version =
+                !hasVersion
+                        ? (defaultVersionForName != null
+                                ? defaultVersionForName.applyAsInt(name)
+                                : 1)
+                        : parseVersionValue(rawVersion);
 
-        return new Playbook(name, title, description, body, tools, codeExecution, targetAgent,
-            prototype, null, null, false, area, version);
+        return new Playbook(
+                name,
+                title,
+                description,
+                body,
+                tools,
+                codeExecution,
+                targetAgent,
+                prototype,
+                null,
+                null,
+                false,
+                area,
+                version);
     }
 
     private static int parseVersionValue(Object rawVersion) {
         if (rawVersion == null || rawVersion instanceof Boolean) {
             throw new IllegalArgumentException(
-                "Playbook version must be a positive integer (>= 1).");
+                    "Playbook version must be a positive integer (>= 1).");
         }
         if (rawVersion instanceof Integer i) {
             if (i < 1) {
@@ -155,10 +164,11 @@ public class PlaybookMarkdownParser {
         }
         if (rawVersion instanceof String s) {
             String trimmed = s.trim();
-            if ("null".equalsIgnoreCase(trimmed) || "true".equalsIgnoreCase(trimmed)
-                || "false".equalsIgnoreCase(trimmed)) {
+            if ("null".equalsIgnoreCase(trimmed)
+                    || "true".equalsIgnoreCase(trimmed)
+                    || "false".equalsIgnoreCase(trimmed)) {
                 throw new IllegalArgumentException(
-                    "Playbook version must be a positive integer (>= 1).");
+                        "Playbook version must be a positive integer (>= 1).");
             }
             try {
                 int parsed = Integer.parseInt(trimmed);
@@ -168,7 +178,7 @@ public class PlaybookMarkdownParser {
                 return parsed;
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException(
-                    "Playbook version must be a positive integer (>= 1).", e);
+                        "Playbook version must be a positive integer (>= 1).", e);
             }
         }
         throw new IllegalArgumentException("Playbook version must be a positive integer (>= 1).");

@@ -61,23 +61,43 @@ class DesktopSyncControllerTest {
     private DesktopSyncController controller;
 
     private final User testUser =
-        new User(UUID.randomUUID(), "entra-oid", "user@test.local", "Test User", Instant.now());
+            new User(UUID.randomUUID(), "entra-oid", "user@test.local", "Test User", Instant.now());
 
     @BeforeEach
     void setUp() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_*"));
         syncService = mock(DesktopSyncService.class);
         playbookService = mock(PlaybookService.class);
         profileService = mock(OrchestratorProfileService.class);
         when(profileService.listAllProfiles()).thenReturn(List.of());
         areaService = mock(AreaService.class);
-        orchestratorProperties = new OrchestratorProperties(2, 8, 10, 50, null,
-            List.of(new Profile("OIM", "oim-orchestrator", "oim-orchestrator-reviewer",
-                List.of("oim-access-governance", "oim-developer-api"), null, null, null)));
+        orchestratorProperties =
+                new OrchestratorProperties(
+                        2,
+                        8,
+                        10,
+                        50,
+                        null,
+                        List.of(
+                                new Profile(
+                                        "OIM",
+                                        "oim-orchestrator",
+                                        "oim-orchestrator-reviewer",
+                                        List.of("oim-access-governance", "oim-developer-api"),
+                                        null,
+                                        null,
+                                        null)));
         orchestratorRunService = mock(DesktopOrchestratorRunService.class);
-        controller = new DesktopSyncController(syncService, playbookService, orchestratorProperties,
-            profileService, orchestratorRunService, areaService);
+        controller =
+                new DesktopSyncController(
+                        syncService,
+                        playbookService,
+                        orchestratorProperties,
+                        profileService,
+                        orchestratorRunService,
+                        areaService);
     }
 
     @AfterEach
@@ -88,8 +108,22 @@ class DesktopSyncControllerTest {
     @Test
     void recordOrchestratorRunDelegatesToServiceAndReturnsId() {
         UUID runId = UUID.randomUUID();
-        OrchestratorRunRequest request = new OrchestratorRunRequest(UUID.randomUUID(),
-            UUID.randomUUID(), "OIM", "done", null, 1, null, 100, 50, 150, 0, 0, null, List.of());
+        OrchestratorRunRequest request =
+                new OrchestratorRunRequest(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "OIM",
+                        "done",
+                        null,
+                        1,
+                        null,
+                        100,
+                        50,
+                        150,
+                        0,
+                        0,
+                        null,
+                        List.of());
         when(orchestratorRunService.record(eq(testUser), any())).thenReturn(runId);
 
         Map<String, UUID> response = controller.recordOrchestratorRun(testUser, request);
@@ -107,106 +141,201 @@ class DesktopSyncControllerTest {
         assertThat(oim.name()).isEqualTo("OIM");
         assertThat(oim.orchestratorPlaybook()).isEqualTo("oim-orchestrator");
         assertThat(oim.reviewerPlaybook()).isEqualTo("oim-orchestrator-reviewer");
-        assertThat(oim.specialistPlaybooks()).containsExactly("oim-access-governance",
-            "oim-developer-api");
+        assertThat(oim.specialistPlaybooks())
+                .containsExactly("oim-access-governance", "oim-developer-api");
     }
 
     @Test
     void listOrchestratorProfilesReturnsEmptyWhenNoneConfigured() {
-        controller = new DesktopSyncController(syncService, playbookService,
-            new OrchestratorProperties(null, null, 10, 50, null, null), profileService,
-            orchestratorRunService, areaService);
+        controller =
+                new DesktopSyncController(
+                        syncService,
+                        playbookService,
+                        new OrchestratorProperties(null, null, 10, 50, null, null),
+                        profileService,
+                        orchestratorRunService,
+                        areaService);
         assertThat(controller.listOrchestratorProfiles()).isEmpty();
     }
 
     /**
      * A prototype profile is SENT to the desktop, flagged — never withheld.
      *
-     * <p>
-     * Filtering here would be the reflexive reading of "hidden from the user" and it breaks two
+     * <p>Filtering here would be the reflexive reading of "hidden from the user" and it breaks two
      * things at once. The desktop owns the setting ({@code showPrototypePlaybooks}), so a server
      * that filters makes the setting inert for profiles while it still works for playbooks — the
      * user ticks the box and half the feature responds. And {@code AppCore} resolves the profile a
      * thread is bound to from this same list, so a withheld profile makes an already-configured
      * thread fall back to single-agent with nothing to say why.
      *
-     * <p>
-     * The yml fallback reports {@code false}: those profiles predate the flag and have nowhere to
-     * carry one, and defaulting them to hidden would empty the desktop's dropdown in exactly the
+     * <p>The yml fallback reports {@code false}: those profiles predate the flag and have nowhere
+     * to carry one, and defaulting them to hidden would empty the desktop's dropdown in exactly the
      * deployment that has no database rows.
      */
     @Test
     void aPrototypeProfileReachesTheDesktopFlaggedRatherThanWithheld() {
-        DesktopSyncController dbBacked = new DesktopSyncController(syncService, playbookService,
-            orchestratorProperties, profileService, orchestratorRunService, areaService);
+        DesktopSyncController dbBacked =
+                new DesktopSyncController(
+                        syncService,
+                        playbookService,
+                        orchestratorProperties,
+                        profileService,
+                        orchestratorRunService,
+                        areaService);
 
-        when(profileService.listAllProfiles()).thenReturn(List.of(
-            new OrchestratorProfile("OIM", 2, 8, "oim-orch", "oim-rev", List.of("spec"), null, null,
-                null, null, null, null, false, null, null),
-            new OrchestratorProfile("OIM - Browsing", 2, 8, "oim-orch", "oim-rev", List.of("spec"),
-                null, null, null, null, null, null, true, null, null)));
+        when(profileService.listAllProfiles())
+                .thenReturn(
+                        List.of(
+                                new OrchestratorProfile(
+                                        "OIM",
+                                        2,
+                                        8,
+                                        "oim-orch",
+                                        "oim-rev",
+                                        List.of("spec"),
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        false,
+                                        null,
+                                        null),
+                                new OrchestratorProfile(
+                                        "OIM - Browsing",
+                                        2,
+                                        8,
+                                        "oim-orch",
+                                        "oim-rev",
+                                        List.of("spec"),
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        true,
+                                        null,
+                                        null)));
 
         assertThat(dbBacked.listOrchestratorProfiles())
-            .extracting(OrchestratorProfileDto::name, OrchestratorProfileDto::prototype)
-            .containsExactly(tuple("OIM", false), tuple("OIM - Browsing", true));
+                .extracting(OrchestratorProfileDto::name, OrchestratorProfileDto::prototype)
+                .containsExactly(tuple("OIM", false), tuple("OIM - Browsing", true));
 
         when(profileService.listAllProfiles()).thenReturn(List.of());
 
         assertThat(dbBacked.listOrchestratorProfiles())
-            .as("a yml-configured profile has no flag to carry, so it is not a prototype")
-            .extracting(OrchestratorProfileDto::prototype).containsOnly(false);
+                .as("a yml-configured profile has no flag to carry, so it is not a prototype")
+                .extracting(OrchestratorProfileDto::prototype)
+                .containsOnly(false);
     }
 
     /** P1-12: the desktop's lists carry each item's area; an added field does not break it. */
     @Test
     void theDesktopListsCarryTheArea() {
-        DesktopSyncController dbBacked = new DesktopSyncController(syncService, playbookService,
-            orchestratorProperties, profileService, orchestratorRunService, areaService);
+        DesktopSyncController dbBacked =
+                new DesktopSyncController(
+                        syncService,
+                        playbookService,
+                        orchestratorProperties,
+                        profileService,
+                        orchestratorRunService,
+                        areaService);
         when(profileService.listAllProfiles())
-            .thenReturn(List.of(new OrchestratorProfile("Ping", 2, 8, "o", "r", List.of(), null,
-                null, null, null, null, null, false, null, null, "PingID")));
-        when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(new Playbook("pb", "PB",
-            "", "t", List.of(), false, "specialist", false, null, null, false, "PingID")));
+                .thenReturn(
+                        List.of(
+                                new OrchestratorProfile(
+                                        "Ping", 2, 8, "o", "r", List.of(), null, null, null, null,
+                                        null, null, false, null, null, "PingID")));
+        when(playbookService.listSpecializedPlaybooks())
+                .thenReturn(
+                        List.of(
+                                new Playbook(
+                                        "pb",
+                                        "PB",
+                                        "",
+                                        "t",
+                                        List.of(),
+                                        false,
+                                        "specialist",
+                                        false,
+                                        null,
+                                        null,
+                                        false,
+                                        "PingID")));
 
-        assertThat(dbBacked.listOrchestratorProfiles()).extracting(OrchestratorProfileDto::area)
-            .containsExactly("PingID");
-        assertThat(dbBacked.listPlaybooks()).extracting(PlaybookDto::area)
-            .containsExactly("PingID");
+        assertThat(dbBacked.listOrchestratorProfiles())
+                .extracting(OrchestratorProfileDto::area)
+                .containsExactly("PingID");
+        assertThat(dbBacked.listPlaybooks())
+                .extracting(PlaybookDto::area)
+                .containsExactly("PingID");
     }
 
     @Test
     void orchestratorProfilesComeFromTheDatabase() {
-        DesktopSyncController dbBacked = new DesktopSyncController(syncService, playbookService,
-            orchestratorProperties, profileService, orchestratorRunService, areaService);
+        DesktopSyncController dbBacked =
+                new DesktopSyncController(
+                        syncService,
+                        playbookService,
+                        orchestratorProperties,
+                        profileService,
+                        orchestratorRunService,
+                        areaService);
 
         when(profileService.listAllProfiles())
-            .thenReturn(List.of(new OrchestratorProfile("OIM", 2, 8, "oim-orchestrator-edited",
-                "oim-orchestrator-reviewer-edited", List.of("oim-access-governance-edited"), null,
-                null, null, null, null, null, false, null, null)));
+                .thenReturn(
+                        List.of(
+                                new OrchestratorProfile(
+                                        "OIM",
+                                        2,
+                                        8,
+                                        "oim-orchestrator-edited",
+                                        "oim-orchestrator-reviewer-edited",
+                                        List.of("oim-access-governance-edited"),
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        false,
+                                        null,
+                                        null)));
 
         assertThat(dbBacked.listOrchestratorProfiles())
-            .as("the admin-edited profile wins over the yml one of the same name")
-            .extracting(OrchestratorProfileDto::orchestratorPlaybook)
-            .containsExactly("oim-orchestrator-edited");
+                .as("the admin-edited profile wins over the yml one of the same name")
+                .extracting(OrchestratorProfileDto::orchestratorPlaybook)
+                .containsExactly("oim-orchestrator-edited");
 
         when(profileService.listAllProfiles()).thenReturn(List.of());
 
         assertThat(dbBacked.listOrchestratorProfiles())
-            .as("an EMPTY db list, and only that, falls back to the configured profiles")
-            .extracting(OrchestratorProfileDto::orchestratorPlaybook)
-            .containsExactly("oim-orchestrator");
+                .as("an EMPTY db list, and only that, falls back to the configured profiles")
+                .extracting(OrchestratorProfileDto::orchestratorPlaybook)
+                .containsExactly("oim-orchestrator");
     }
 
     @Test
     void createConversationReturns201WithDto() {
         UUID id = UUID.randomUUID();
-        Conversation conversation = new Conversation(id, UUID.randomUUID(), "Title",
-            Map.of("model", "sonnet"), Instant.now(), Instant.now(), List.of());
+        Conversation conversation =
+                new Conversation(
+                        id,
+                        UUID.randomUUID(),
+                        "Title",
+                        Map.of("model", "sonnet"),
+                        Instant.now(),
+                        Instant.now(),
+                        List.of());
         when(syncService.createConversation(testUser, "Title", Map.of("model", "sonnet")))
-            .thenReturn(conversation);
+                .thenReturn(conversation);
 
-        ResponseEntity<ConversationDto> response = controller.createConversation(testUser,
-            new CreateConversationRequest("Title", Map.of("model", "sonnet")));
+        ResponseEntity<ConversationDto> response =
+                controller.createConversation(
+                        testUser,
+                        new CreateConversationRequest("Title", Map.of("model", "sonnet")));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody().id()).isEqualTo(id);
@@ -218,13 +347,42 @@ class DesktopSyncControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID m1 = UUID.randomUUID();
         UUID m2 = UUID.randomUUID();
-        when(syncService.getMessages(conversationId, testUser, 500, 0)).thenReturn(List.of(
-            new Message(m1, conversationId, "user", "q", null, null, Instant.now(), null, null,
-                null),
-            new Message(m2, conversationId, "assistant", "a", null, null, Instant.now(), 100, 50,
-                150)));
-        when(syncService.getFeedbackByMessageId(conversationId, testUser)).thenReturn(Map.of(m2,
-            new Feedback(UUID.randomUUID(), m2, -1, "bad answer", Instant.now(), Instant.now())));
+        when(syncService.getMessages(conversationId, testUser, 500, 0))
+                .thenReturn(
+                        List.of(
+                                new Message(
+                                        m1,
+                                        conversationId,
+                                        "user",
+                                        "q",
+                                        null,
+                                        null,
+                                        Instant.now(),
+                                        null,
+                                        null,
+                                        null),
+                                new Message(
+                                        m2,
+                                        conversationId,
+                                        "assistant",
+                                        "a",
+                                        null,
+                                        null,
+                                        Instant.now(),
+                                        100,
+                                        50,
+                                        150)));
+        when(syncService.getFeedbackByMessageId(conversationId, testUser))
+                .thenReturn(
+                        Map.of(
+                                m2,
+                                new Feedback(
+                                        UUID.randomUUID(),
+                                        m2,
+                                        -1,
+                                        "bad answer",
+                                        Instant.now(),
+                                        Instant.now())));
 
         List<MessageDto> dtos = controller.getMessages(testUser, conversationId, 500, 0);
 
@@ -241,10 +399,16 @@ class DesktopSyncControllerTest {
         List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID());
         when(syncService.appendMessages(eq(conversationId), eq(testUser), any())).thenReturn(ids);
 
-        Map<String, List<UUID>> response = controller.appendMessages(testUser, conversationId,
-            new AppendMessagesRequest(
-                List.of(new NewMessageDto("user", "q", null, null, null, null, null),
-                    new NewMessageDto("assistant", "a", 10, 20, 30, null, null))));
+        Map<String, List<UUID>> response =
+                controller.appendMessages(
+                        testUser,
+                        conversationId,
+                        new AppendMessagesRequest(
+                                List.of(
+                                        new NewMessageDto(
+                                                "user", "q", null, null, null, null, null),
+                                        new NewMessageDto(
+                                                "assistant", "a", 10, 20, 30, null, null))));
 
         assertThat(response).containsEntry("ids", ids);
 
@@ -257,40 +421,44 @@ class DesktopSyncControllerTest {
 
     @Test
     void appendMessagesWithoutBodyYields400() {
-        assertThatThrownBy(() -> controller.appendMessages(testUser, UUID.randomUUID(),
-            new AppendMessagesRequest(null))).isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() ->
+                        controller.appendMessages(
+                                testUser, UUID.randomUUID(), new AppendMessagesRequest(null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     /**
      * SEC-18 lives in two halves and only one of them is visible from a unit test that calls the
-     * controller method directly: the bounds are DECLARED on {@code AppendMessagesRequest} /
-     * {@code NewMessageDto}, but they are only ENFORCED because the handler parameter carries
+     * controller method directly: the bounds are DECLARED on {@code AppendMessagesRequest} / {@code
+     * NewMessageDto}, but they are only ENFORCED because the handler parameter carries
      * {@code @Valid}. Drop that annotation and the constraints stay in the source, keep reading as
-     * a guard in review, and do nothing — the batch flows straight into
-     * {@code DesktopSyncService.appendMessages}, which is {@code @Transactional} and inserts the
-     * whole list in one transaction, so an unbounded desktop-sync post becomes an unbounded server
-     * -side allocation plus a long write transaction on the messages table. This is a bearer-token
+     * a guard in review, and do nothing — the batch flows straight into {@code
+     * DesktopSyncService.appendMessages}, which is {@code @Transactional} and inserts the whole
+     * list in one transaction, so an unbounded desktop-sync post becomes an unbounded server -side
+     * allocation plus a long write transaction on the messages table. This is a bearer-token
      * endpoint reachable by any synced desktop client, so "our own client would never send that" is
      * not a control.
      *
-     * <p>
-     * Exercised through MockMvc because the enforcement point is Spring's argument resolution, not
-     * the method body: every other test in this class invokes {@code controller.appendMessages(..)}
-     * as a plain Java call, which bypasses validation entirely and therefore passes with or without
-     * {@code @Valid}. The cascade is asserted too ({@code List<@Valid NewMessageDto>}) because a
-     * single 1 MB-plus message is the other shape of the same attack, and the element-level bound
-     * only fires if the list annotation is honoured.
+     * <p>Exercised through MockMvc because the enforcement point is Spring's argument resolution,
+     * not the method body: every other test in this class invokes {@code
+     * controller.appendMessages(..)} as a plain Java call, which bypasses validation entirely and
+     * therefore passes with or without {@code @Valid}. The cascade is asserted too ({@code
+     * List<@Valid NewMessageDto>}) because a single 1 MB-plus message is the other shape of the
+     * same attack, and the element-level bound only fires if the list annotation is honoured.
      */
     @Test
     void anOversizedBatchIsRejectedBeforeReachingTheService() throws Exception {
         UserService userService = mock(UserService.class);
         when(userService.getCurrentUser()).thenReturn(Optional.of(testUser));
         // The real resolver + the real JSON error advice, so the boundary behaves as in production.
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
-            .setCustomArgumentResolvers(new UserArgumentResolver(userService))
-            .setControllerAdvice(new ApiExceptionHandler()).build();
+        MockMvc mockMvc =
+                MockMvcBuilders.standaloneSetup(controller)
+                        .setCustomArgumentResolvers(new UserArgumentResolver(userService))
+                        .setControllerAdvice(new ApiExceptionHandler())
+                        .build();
 
         StringBuilder oversizedBatch = new StringBuilder("{\"messages\":[");
         for (int i = 0; i <= 500; i++) {
@@ -301,22 +469,25 @@ class DesktopSyncControllerTest {
         }
         oversizedBatch.append("]}");
 
-        mockMvc
-            .perform(post("/api/chat/v1/conversations/{id}/messages", UUID.randomUUID())
-                .contentType(MediaType.APPLICATION_JSON).content(oversizedBatch.toString()))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error", containsString("messages")))
-            .andExpect(jsonPath("$.error", containsString("100")));
+        mockMvc.perform(
+                        post("/api/chat/v1/conversations/{id}/messages", UUID.randomUUID())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(oversizedBatch.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("messages")))
+                .andExpect(jsonPath("$.error", containsString("100")));
 
         // The per-message bound: one element over @Size(max = 1_000_000) fails the same way.
         String oversizedContent = "x".repeat(1_000_001);
-        mockMvc
-            .perform(post("/api/chat/v1/conversations/{id}/messages", UUID.randomUUID())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"messages\":[{\"role\":\"user\",\"content\":\"" + oversizedContent
-                    + "\"}]}"))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error", containsString("content")));
+        mockMvc.perform(
+                        post("/api/chat/v1/conversations/{id}/messages", UUID.randomUUID())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"messages\":[{\"role\":\"user\",\"content\":\""
+                                                + oversizedContent
+                                                + "\"}]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("content")));
 
         verify(syncService, never()).appendMessages(any(), any(), any());
     }
@@ -324,11 +495,18 @@ class DesktopSyncControllerTest {
     @Test
     void submitFeedbackMapsToDto() {
         UUID messageId = UUID.randomUUID();
-        when(syncService.submitFeedback(messageId, testUser, 1, null)).thenReturn(
-            new Feedback(UUID.randomUUID(), messageId, 1, null, Instant.now(), Instant.now()));
+        when(syncService.submitFeedback(messageId, testUser, 1, null))
+                .thenReturn(
+                        new Feedback(
+                                UUID.randomUUID(),
+                                messageId,
+                                1,
+                                null,
+                                Instant.now(),
+                                Instant.now()));
 
         FeedbackDto dto =
-            controller.submitFeedback(testUser, messageId, new FeedbackRequest(1, null));
+                controller.submitFeedback(testUser, messageId, new FeedbackRequest(1, null));
 
         assertThat(dto.messageId()).isEqualTo(messageId);
         assertThat(dto.rating()).isEqualTo(1);
@@ -348,7 +526,7 @@ class DesktopSyncControllerTest {
     void updateConversationPassesTitleAndSettings() {
         UUID id = UUID.randomUUID();
         UpdateConversationRequest request =
-            new UpdateConversationRequest("New Title", Map.of("model", "haiku"));
+                new UpdateConversationRequest("New Title", Map.of("model", "haiku"));
 
         ResponseEntity<Void> response = controller.updateConversation(testUser, id, request);
 
@@ -358,8 +536,16 @@ class DesktopSyncControllerTest {
 
     @Test
     void listPlaybooksReturnsListFromService() {
-        Playbook playbook = new Playbook("test", "Test Playbook", "Description", "template",
-            List.of("tool1"), true, Instant.now(), Instant.now());
+        Playbook playbook =
+                new Playbook(
+                        "test",
+                        "Test Playbook",
+                        "Description",
+                        "template",
+                        List.of("tool1"),
+                        true,
+                        Instant.now(),
+                        Instant.now());
         when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(playbook));
 
         List<PlaybookDto> playbooks = controller.listPlaybooks();
@@ -375,9 +561,11 @@ class DesktopSyncControllerTest {
     void anOversizedOrchestratorRunBatchIsRejectedBeforeReachingTheService() throws Exception {
         UserService userService = mock(UserService.class);
         when(userService.getCurrentUser()).thenReturn(Optional.of(testUser));
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
-            .setCustomArgumentResolvers(new UserArgumentResolver(userService))
-            .setControllerAdvice(new ApiExceptionHandler()).build();
+        MockMvc mockMvc =
+                MockMvcBuilders.standaloneSetup(controller)
+                        .setCustomArgumentResolvers(new UserArgumentResolver(userService))
+                        .setControllerAdvice(new ApiExceptionHandler())
+                        .build();
 
         StringBuilder stepsJson = new StringBuilder("[");
         for (int i = 0; i <= 200; i++) {
@@ -388,19 +576,22 @@ class DesktopSyncControllerTest {
         }
         stepsJson.append("]");
 
-        String json = """
-            {
-                "conversationId": "%s",
-                "profileName": "OIM",
-                "steps": %s
-            }
-            """.formatted(UUID.randomUUID(), stepsJson);
+        String json =
+                """
+                {
+                    "conversationId": "%s",
+                    "profileName": "OIM",
+                    "steps": %s
+                }
+                """
+                        .formatted(UUID.randomUUID(), stepsJson);
 
-        mockMvc
-            .perform(post("/api/chat/v1/orchestrator/runs").contentType(MediaType.APPLICATION_JSON)
-                .content(json))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error", containsString("steps")));
+        mockMvc.perform(
+                        post("/api/chat/v1/orchestrator/runs")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("steps")));
 
         verify(orchestratorRunService, never()).record(any(), any());
     }
@@ -409,19 +600,24 @@ class DesktopSyncControllerTest {
     void recordOrchestratorRunWithMissingConversationIdIsRejected() throws Exception {
         UserService userService = mock(UserService.class);
         when(userService.getCurrentUser()).thenReturn(Optional.of(testUser));
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
-            .setCustomArgumentResolvers(new UserArgumentResolver(userService))
-            .setControllerAdvice(new ApiExceptionHandler()).build();
+        MockMvc mockMvc =
+                MockMvcBuilders.standaloneSetup(controller)
+                        .setCustomArgumentResolvers(new UserArgumentResolver(userService))
+                        .setControllerAdvice(new ApiExceptionHandler())
+                        .build();
 
-        String json = """
-            {
-                "profileName": "OIM"
-            }
-            """;
+        String json =
+                """
+                {
+                    "profileName": "OIM"
+                }
+                """;
 
-        mockMvc.perform(post("/api/chat/v1/orchestrator/runs")
-            .contentType(MediaType.APPLICATION_JSON).content(json))
-            .andExpect(status().isBadRequest());
+        mockMvc.perform(
+                        post("/api/chat/v1/orchestrator/runs")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(json))
+                .andExpect(status().isBadRequest());
 
         verify(orchestratorRunService, never()).record(any(), any());
     }
@@ -432,10 +628,31 @@ class DesktopSyncControllerTest {
         List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID());
         when(syncService.appendMessages(eq(conversationId), eq(testUser), any())).thenReturn(ids);
 
-        controller.appendMessages(testUser, conversationId,
-            new AppendMessagesRequest(List.of(
-                new NewMessageDto("user", "q", null, null, null, null, null, "oim-specialist", 2),
-                new NewMessageDto("assistant", "a", 10, 20, 30, null, null, "oim-specialist", 2))));
+        controller.appendMessages(
+                testUser,
+                conversationId,
+                new AppendMessagesRequest(
+                        List.of(
+                                new NewMessageDto(
+                                        "user",
+                                        "q",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        "oim-specialist",
+                                        2),
+                                new NewMessageDto(
+                                        "assistant",
+                                        "a",
+                                        10,
+                                        20,
+                                        30,
+                                        null,
+                                        null,
+                                        "oim-specialist",
+                                        2))));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<NewMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -447,8 +664,25 @@ class DesktopSyncControllerTest {
 
         UUID m1 = UUID.randomUUID();
         when(syncService.getMessages(conversationId, testUser, 500, 0))
-            .thenReturn(List.of(new Message(m1, conversationId, "assistant", "a", "oim-specialist",
-                2, List.of(), List.of(), Instant.now(), 10, 20, 30, null, null, "done", "sonnet")));
+                .thenReturn(
+                        List.of(
+                                new Message(
+                                        m1,
+                                        conversationId,
+                                        "assistant",
+                                        "a",
+                                        "oim-specialist",
+                                        2,
+                                        List.of(),
+                                        List.of(),
+                                        Instant.now(),
+                                        10,
+                                        20,
+                                        30,
+                                        null,
+                                        null,
+                                        "done",
+                                        "sonnet")));
         when(syncService.getFeedbackByMessageId(conversationId, testUser)).thenReturn(Map.of());
 
         List<MessageDto> dtos = controller.getMessages(testUser, conversationId, 500, 0);
@@ -459,8 +693,18 @@ class DesktopSyncControllerTest {
 
     @Test
     void listAreasReturnsAccessibleAreas() {
-        when(areaService.listAccessibleForCurrentUser()).thenReturn(List
-            .of(new Area("security", "Security", "Security area", false, null, null, null, null)));
+        when(areaService.listAccessibleForCurrentUser())
+                .thenReturn(
+                        List.of(
+                                new Area(
+                                        "security",
+                                        "Security",
+                                        "Security area",
+                                        false,
+                                        null,
+                                        null,
+                                        null,
+                                        null)));
 
         List<AreaDto> result = controller.listAreas();
 
@@ -471,12 +715,14 @@ class DesktopSyncControllerTest {
     @Test
     void getAreaPackageReturnsMembersForAccessibleArea() {
         Area area =
-            new Area("security", "Security", "Security area", false, "pb1", "prof1", null, null);
+                new Area(
+                        "security", "Security", "Security area", false, "pb1", "prof1", null, null);
         AreaMembers members =
-            new AreaMembers(List.of("prompt1"), List.of("col1"), List.of("pb1"), List.of("prof1"));
+                new AreaMembers(
+                        List.of("prompt1"), List.of("col1"), List.of("pb1"), List.of("prof1"));
         when(areaService.findByNameForUser("security")).thenReturn(Optional.of(area));
         when(areaService.findAreaWithMembers("security"))
-            .thenReturn(Optional.of(new AreaWithMembers(area, members)));
+                .thenReturn(Optional.of(new AreaWithMembers(area, members)));
 
         AreaPackageDto pkg = controller.getAreaPackage("security");
 
@@ -490,19 +736,46 @@ class DesktopSyncControllerTest {
         when(areaService.findByNameForUser("finance")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> controller.getAreaPackage("finance"))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     @Test
     void listPlaybooksFiltersByAreaWhenRestricted() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
-        Playbook pbSec = new Playbook("sec-pb", "Sec", "desc", "tmpl", List.of(), false,
-            "specialist", false, Instant.now(), Instant.now(), false, "security");
-        Playbook pbFin = new Playbook("fin-pb", "Fin", "desc", "tmpl", List.of(), false,
-            "specialist", false, Instant.now(), Instant.now(), false, "finance");
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
+        Playbook pbSec =
+                new Playbook(
+                        "sec-pb",
+                        "Sec",
+                        "desc",
+                        "tmpl",
+                        List.of(),
+                        false,
+                        "specialist",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "security");
+        Playbook pbFin =
+                new Playbook(
+                        "fin-pb",
+                        "Fin",
+                        "desc",
+                        "tmpl",
+                        List.of(),
+                        false,
+                        "specialist",
+                        false,
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "finance");
         when(playbookService.listSpecializedPlaybooks()).thenReturn(List.of(pbSec, pbFin));
 
         List<PlaybookDto> playbooks = controller.listPlaybooks();
@@ -512,15 +785,55 @@ class DesktopSyncControllerTest {
 
     @Test
     void listOrchestratorProfilesFiltersByAreaWhenRestricted() {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_SECURITY"));
         OrchestratorProfileService profileService = mock(OrchestratorProfileService.class);
-        DesktopSyncController dbBacked = new DesktopSyncController(syncService, playbookService,
-            orchestratorProperties, profileService, orchestratorRunService, areaService);
-        OrchestratorProfile profSec = new OrchestratorProfile("sec-prof", 2, 8, "o", "r", List.of(),
-            null, null, null, null, null, null, false, null, null, "security");
-        OrchestratorProfile profFin = new OrchestratorProfile("fin-prof", 2, 8, "o", "r", List.of(),
-            null, null, null, null, null, null, false, null, null, "finance");
+        DesktopSyncController dbBacked =
+                new DesktopSyncController(
+                        syncService,
+                        playbookService,
+                        orchestratorProperties,
+                        profileService,
+                        orchestratorRunService,
+                        areaService);
+        OrchestratorProfile profSec =
+                new OrchestratorProfile(
+                        "sec-prof",
+                        2,
+                        8,
+                        "o",
+                        "r",
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        null,
+                        null,
+                        "security");
+        OrchestratorProfile profFin =
+                new OrchestratorProfile(
+                        "fin-prof",
+                        2,
+                        8,
+                        "o",
+                        "r",
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        null,
+                        null,
+                        "finance");
         when(profileService.listAllProfiles()).thenReturn(List.of(profSec, profFin));
 
         List<OrchestratorProfileDto> profiles = dbBacked.listOrchestratorProfiles();
@@ -530,24 +843,24 @@ class DesktopSyncControllerTest {
 
     @Test
     void getSystemPromptEndpointIsRemoved() {
-        assertThatThrownBy(
-            () -> DesktopSyncController.class.getMethod("getSystemPrompt", String.class))
-            .isInstanceOf(NoSuchMethodException.class);
+        assertThatThrownBy(() ->
+                        DesktopSyncController.class.getMethod("getSystemPrompt", String.class))
+                .isInstanceOf(NoSuchMethodException.class);
     }
 
     @Test
     void dtosDoNotExposeSystemPromptFields() {
         assertThatThrownBy(() -> AreaDto.class.getMethod("defaultSystemPrompt"))
-            .isInstanceOf(NoSuchMethodException.class);
+                .isInstanceOf(NoSuchMethodException.class);
         assertThatThrownBy(() -> AreaDto.class.getMethod("systemPrompts"))
-            .isInstanceOf(NoSuchMethodException.class);
+                .isInstanceOf(NoSuchMethodException.class);
 
         assertThatThrownBy(() -> AreaPackageDto.class.getMethod("defaultSystemPrompt"))
-            .isInstanceOf(NoSuchMethodException.class);
+                .isInstanceOf(NoSuchMethodException.class);
         assertThatThrownBy(() -> AreaPackageDto.class.getMethod("systemPrompts"))
-            .isInstanceOf(NoSuchMethodException.class);
+                .isInstanceOf(NoSuchMethodException.class);
 
         assertThatThrownBy(() -> PlaybookDto.class.getMethod("systemPrompt"))
-            .isInstanceOf(NoSuchMethodException.class);
+                .isInstanceOf(NoSuchMethodException.class);
     }
 }

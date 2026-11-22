@@ -50,22 +50,29 @@ public class MessageRepository {
         // then fell through its ORDER BY tie-break to the random v4 id and returned the turn
         // scrambled.
         String sql =
-            """
+                """
                 INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at, updated_at)
                 VALUES (:id, :conversationId, :role, :content, :playbook, :playbookVersion, :retrievedChunkIds::uuid[], :citations::jsonb, :promptTokens, :completionTokens, :totalTokens, :cachedTokens, :thoughtTokens, :status, :model, clock_timestamp(), clock_timestamp())
                 """;
 
-        jdbcClient.sql(sql).param("id", message.id())
-            .param("conversationId", message.conversationId()).param("role", message.role())
-            .param("content", message.content()).param("playbook", message.playbook())
-            .param("playbookVersion", message.playbookVersion())
-            .param("retrievedChunkIds", chunkIdsArray).param("citations", citationsJson)
-            .param("promptTokens", message.promptTokens())
-            .param("completionTokens", message.completionTokens())
-            .param("totalTokens", message.totalTokens())
-            .param("cachedTokens", message.cachedTokens())
-            .param("thoughtTokens", message.thoughtTokens()).param("status", message.status())
-            .param("model", message.model()).update();
+        jdbcClient
+                .sql(sql)
+                .param("id", message.id())
+                .param("conversationId", message.conversationId())
+                .param("role", message.role())
+                .param("content", message.content())
+                .param("playbook", message.playbook())
+                .param("playbookVersion", message.playbookVersion())
+                .param("retrievedChunkIds", chunkIdsArray)
+                .param("citations", citationsJson)
+                .param("promptTokens", message.promptTokens())
+                .param("completionTokens", message.completionTokens())
+                .param("totalTokens", message.totalTokens())
+                .param("cachedTokens", message.cachedTokens())
+                .param("thoughtTokens", message.thoughtTokens())
+                .param("status", message.status())
+                .param("model", message.model())
+                .update();
     }
 
     public void saveIfAbsent(Message message) {
@@ -85,30 +92,38 @@ public class MessageRepository {
         }
 
         Timestamp createdAt =
-            message.createdAt() != null ? Timestamp.from(message.createdAt()) : null;
+                message.createdAt() != null ? Timestamp.from(message.createdAt()) : null;
         String sql =
-            """
+                """
                 INSERT INTO messages (id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at, updated_at)
                 VALUES (:id, :conversationId, :role, :content, :playbook, :playbookVersion, :retrievedChunkIds::uuid[], :citations::jsonb, :promptTokens, :completionTokens, :totalTokens, :cachedTokens, :thoughtTokens, :status, :model, COALESCE(:createdAt::timestamptz, clock_timestamp()), COALESCE(:createdAt::timestamptz, clock_timestamp()))
                 ON CONFLICT (id) DO NOTHING
                 """;
 
-        jdbcClient.sql(sql).param("id", message.id())
-            .param("conversationId", message.conversationId()).param("role", message.role())
-            .param("content", message.content()).param("playbook", message.playbook())
-            .param("playbookVersion", message.playbookVersion())
-            .param("retrievedChunkIds", chunkIdsArray).param("citations", citationsJson)
-            .param("promptTokens", message.promptTokens())
-            .param("completionTokens", message.completionTokens())
-            .param("totalTokens", message.totalTokens())
-            .param("cachedTokens", message.cachedTokens())
-            .param("thoughtTokens", message.thoughtTokens()).param("status", message.status())
-            .param("model", message.model()).param("createdAt", createdAt).update();
+        jdbcClient
+                .sql(sql)
+                .param("id", message.id())
+                .param("conversationId", message.conversationId())
+                .param("role", message.role())
+                .param("content", message.content())
+                .param("playbook", message.playbook())
+                .param("playbookVersion", message.playbookVersion())
+                .param("retrievedChunkIds", chunkIdsArray)
+                .param("citations", citationsJson)
+                .param("promptTokens", message.promptTokens())
+                .param("completionTokens", message.completionTokens())
+                .param("totalTokens", message.totalTokens())
+                .param("cachedTokens", message.cachedTokens())
+                .param("thoughtTokens", message.thoughtTokens())
+                .param("status", message.status())
+                .param("model", message.model())
+                .param("createdAt", createdAt)
+                .update();
     }
 
     public List<Message> findByConversationId(UUID conversationId, int limit, int offset) {
         String sql =
-            """
+                """
                 SELECT id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations::text AS citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
                 FROM messages
                 WHERE conversation_id = :conversationId
@@ -116,8 +131,13 @@ public class MessageRepository {
                 LIMIT :limit OFFSET :offset
                 """;
 
-        return jdbcClient.sql(sql).param("conversationId", conversationId).param("limit", limit)
-            .param("offset", offset).query(new MessageRowMapper(objectMapper)).list();
+        return jdbcClient
+                .sql(sql)
+                .param("conversationId", conversationId)
+                .param("limit", limit)
+                .param("offset", offset)
+                .query(new MessageRowMapper(objectMapper))
+                .list();
     }
 
     /**
@@ -127,7 +147,7 @@ public class MessageRepository {
      */
     public List<Message> findLatestByConversationId(UUID conversationId, int limit) {
         String sql =
-            """
+                """
                 SELECT id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
                 FROM (
                     SELECT id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations::text AS citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
@@ -138,26 +158,41 @@ public class MessageRepository {
                 ) recent
                 ORDER BY created_at ASC, id ASC
                 """;
-        return jdbcClient.sql(sql).param("conversationId", conversationId).param("limit", limit)
-            .query(new MessageRowMapper(objectMapper)).list();
+        return jdbcClient
+                .sql(sql)
+                .param("conversationId", conversationId)
+                .param("limit", limit)
+                .query(new MessageRowMapper(objectMapper))
+                .list();
     }
 
     public Optional<Message> findById(UUID id) {
         String sql =
-            """
+                """
                 SELECT id, conversation_id, role, content, playbook, playbook_version, retrieved_chunk_ids, citations::text AS citations_text, prompt_tokens, completion_tokens, total_tokens, cached_tokens, thought_tokens, status, model, created_at
                 FROM messages
                 WHERE id = :id
                 """;
 
-        return jdbcClient.sql(sql).param("id", id).query(new MessageRowMapper(objectMapper))
-            .optional();
+        return jdbcClient
+                .sql(sql)
+                .param("id", id)
+                .query(new MessageRowMapper(objectMapper))
+                .optional();
     }
 
-    public void updateContentAndStatus(UUID id, String content, List<UUID> retrievedChunkIds,
-        List<CitationCheckResult> citations, Integer promptTokens, Integer completionTokens,
-        Integer totalTokens, Integer cachedTokens, Integer thoughtTokens, String status,
-        String model) {
+    public void updateContentAndStatus(
+            UUID id,
+            String content,
+            List<UUID> retrievedChunkIds,
+            List<CitationCheckResult> citations,
+            Integer promptTokens,
+            Integer completionTokens,
+            Integer totalTokens,
+            Integer cachedTokens,
+            Integer thoughtTokens,
+            String status,
+            String model) {
         UUID[] chunkIdsArray = null;
         if (retrievedChunkIds != null && !retrievedChunkIds.isEmpty()) {
             chunkIdsArray = retrievedChunkIds.toArray(new UUID[0]);
@@ -172,46 +207,57 @@ public class MessageRepository {
             }
         }
 
-        String sql = """
-            UPDATE messages
-            SET content = :content,
-                retrieved_chunk_ids = :retrievedChunkIds::uuid[],
-                citations = :citations::jsonb,
-                prompt_tokens = :promptTokens,
-                completion_tokens = :completionTokens,
-                total_tokens = :totalTokens,
-                cached_tokens = :cachedTokens,
-                thought_tokens = :thoughtTokens,
-                status = :status,
-                model = COALESCE(:model, model),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = :id
-            """;
+        String sql =
+                """
+                UPDATE messages
+                SET content = :content,
+                    retrieved_chunk_ids = :retrievedChunkIds::uuid[],
+                    citations = :citations::jsonb,
+                    prompt_tokens = :promptTokens,
+                    completion_tokens = :completionTokens,
+                    total_tokens = :totalTokens,
+                    cached_tokens = :cachedTokens,
+                    thought_tokens = :thoughtTokens,
+                    status = :status,
+                    model = COALESCE(:model, model),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :id
+                """;
 
-        int rows = jdbcClient.sql(sql).param("id", id).param("content", content)
-            .param("retrievedChunkIds", chunkIdsArray).param("citations", citationsJson)
-            .param("promptTokens", promptTokens).param("completionTokens", completionTokens)
-            .param("totalTokens", totalTokens).param("cachedTokens", cachedTokens)
-            .param("thoughtTokens", thoughtTokens).param("status", status).param("model", model)
-            .update();
+        int rows =
+                jdbcClient
+                        .sql(sql)
+                        .param("id", id)
+                        .param("content", content)
+                        .param("retrievedChunkIds", chunkIdsArray)
+                        .param("citations", citationsJson)
+                        .param("promptTokens", promptTokens)
+                        .param("completionTokens", completionTokens)
+                        .param("totalTokens", totalTokens)
+                        .param("cachedTokens", cachedTokens)
+                        .param("thoughtTokens", thoughtTokens)
+                        .param("status", status)
+                        .param("model", model)
+                        .update();
         if (rows == 0) {
             log.warn("updateContentAndStatus modified 0 rows for message id: {}", id);
         }
     }
 
     public void refreshGeneratingHeartbeat(UUID id) {
-        String sql = """
-            UPDATE messages
-            SET updated_at = CURRENT_TIMESTAMP
-            WHERE id = :id AND status = 'generating'
-            """;
+        String sql =
+                """
+                UPDATE messages
+                SET updated_at = CURRENT_TIMESTAMP
+                WHERE id = :id AND status = 'generating'
+                """;
         jdbcClient.sql(sql).param("id", id).update();
     }
 
     public int resetStaleGeneratingMessages(Duration staleAfter) {
         long staleSeconds = staleAfter == null ? 0L : Math.max(0L, staleAfter.toSeconds());
         String sql =
-            """
+                """
                 UPDATE messages
                 SET status = 'error', content = '⚠️ *[Generation interrupted (system restart)]*', updated_at = CURRENT_TIMESTAMP
                 WHERE status = 'generating'
@@ -225,54 +271,74 @@ public class MessageRepository {
     }
 
     public long countByConversationId(UUID conversationId) {
-        String sql = """
-            SELECT count(*) FROM messages
-            WHERE conversation_id = :conversationId
-            """;
-        return jdbcClient.sql(sql).param("conversationId", conversationId).query(Long.class)
-            .single();
+        String sql =
+                """
+                SELECT count(*) FROM messages
+                WHERE conversation_id = :conversationId
+                """;
+        return jdbcClient
+                .sql(sql)
+                .param("conversationId", conversationId)
+                .query(Long.class)
+                .single();
     }
 
     public Optional<String> findInitialPlaybook(UUID conversationId) {
-        String sql = """
-            SELECT playbook
-            FROM messages
-            WHERE conversation_id = :conversationId
-              AND LOWER(role) = 'user'
-              AND playbook IS NOT NULL
-              AND btrim(playbook) <> ''
-            ORDER BY created_at ASC, id ASC
-            LIMIT 1
-            """;
-        return jdbcClient.sql(sql).param("conversationId", conversationId).query(String.class)
-            .optional().map(String::trim);
+        String sql =
+                """
+                SELECT playbook
+                FROM messages
+                WHERE conversation_id = :conversationId
+                  AND LOWER(role) = 'user'
+                  AND playbook IS NOT NULL
+                  AND btrim(playbook) <> ''
+                ORDER BY created_at ASC, id ASC
+                LIMIT 1
+                """;
+        return jdbcClient
+                .sql(sql)
+                .param("conversationId", conversationId)
+                .query(String.class)
+                .optional()
+                .map(String::trim);
     }
 
     public Optional<Integer> findInitialPlaybookVersion(UUID conversationId) {
-        String sql = """
-            SELECT playbook_version
-            FROM messages
-            WHERE conversation_id = :conversationId
-              AND LOWER(role) = 'user'
-              AND playbook IS NOT NULL
-              AND btrim(playbook) <> ''
-            ORDER BY created_at ASC, id ASC
-            LIMIT 1
-            """;
-        return jdbcClient.sql(sql).param("conversationId", conversationId)
-            .query((rs, rowNum) -> (Integer) rs.getObject("playbook_version")).list().stream()
-            .filter(Objects::nonNull).findFirst();
+        String sql =
+                """
+                SELECT playbook_version
+                FROM messages
+                WHERE conversation_id = :conversationId
+                  AND LOWER(role) = 'user'
+                  AND playbook IS NOT NULL
+                  AND btrim(playbook) <> ''
+                ORDER BY created_at ASC, id ASC
+                LIMIT 1
+                """;
+        return jdbcClient
+                .sql(sql)
+                .param("conversationId", conversationId)
+                .query((rs, rowNum) -> (Integer) rs.getObject("playbook_version"))
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .findFirst();
     }
 
     public boolean hasInDepthTurns(UUID conversationId) {
-        String sql = """
-            SELECT count(*) FROM messages
-            WHERE conversation_id = :conversationId
-              AND LOWER(role) = 'user'
-              AND (playbook IS NULL OR btrim(playbook) = '')
-            """;
+        String sql =
+                """
+                SELECT count(*) FROM messages
+                WHERE conversation_id = :conversationId
+                  AND LOWER(role) = 'user'
+                  AND (playbook IS NULL OR btrim(playbook) = '')
+                """;
         Long count =
-            jdbcClient.sql(sql).param("conversationId", conversationId).query(Long.class).single();
+                jdbcClient
+                        .sql(sql)
+                        .param("conversationId", conversationId)
+                        .query(Long.class)
+                        .single();
         return count > 0;
     }
 }

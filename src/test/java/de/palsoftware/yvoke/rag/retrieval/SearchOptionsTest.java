@@ -39,11 +39,11 @@ public class SearchOptionsTest {
     }
 
     /**
-     * The ceiling is policy, not normalization, and it lives in exactly one place:
-     * {@code app.retrieval.max-limit}, applied by {@link HybridSearch#searchWithId} — the single
-     * choke point all three lane paths pass through. This record used to carry its own hardcoded
-     * {@code MAX_LIMIT = 200}; two ceilings that only a human keeps in sync is the drift trap, so
-     * the record now normalizes (null, non-positive) and nothing more.
+     * The ceiling is policy, not normalization, and it lives in exactly one place: {@code
+     * app.retrieval.max-limit}, applied by {@link HybridSearch#searchWithId} — the single choke
+     * point all three lane paths pass through. This record used to carry its own hardcoded {@code
+     * MAX_LIMIT = 200}; two ceilings that only a human keeps in sync is the drift trap, so the
+     * record now normalizes (null, non-positive) and nothing more.
      */
     @Test
     public void aLargeLimitPassesThroughUncapped() {
@@ -109,18 +109,19 @@ public class SearchOptionsTest {
     @Test
     public void testCollectionNullOrEmptyAndTagsEmptyThrows() {
         assertThatThrownBy(() -> new SearchOptions((String) null, 10, true, true, null, 0))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Either collections or tags must be specified");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Either collections or tags must be specified");
 
         assertThatThrownBy(() -> new SearchOptions("  ", 10, true, true, null, 0))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Either collections or tags must be specified");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Either collections or tags must be specified");
     }
 
     @Test
     public void testTagsOnlyAllowed() {
-        SearchOptions opts = new SearchOptions(Collections.emptyList(), 10, true, true, 0, true,
-            List.of("tag1", "tag2"));
+        SearchOptions opts =
+                new SearchOptions(
+                        Collections.emptyList(), 10, true, true, 0, true, List.of("tag1", "tag2"));
         assertThat(opts.tags()).containsExactly("tag1", "tag2");
         assertThat(opts.collections()).isEmpty();
     }

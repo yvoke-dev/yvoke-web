@@ -17,7 +17,7 @@ public class ConfluenceImportJobHandlerTest {
     @Test
     public void registersForConfluenceImportKindWithCrawlDispatchSteps() {
         ConfluenceImportJobHandler handler =
-            new ConfluenceImportJobHandler(mock(ConfluenceIngestService.class));
+                new ConfluenceImportJobHandler(mock(ConfluenceIngestService.class));
 
         assertThat(handler.kind()).isEqualTo("confluence-import");
         assertThat(handler.expectsEntities()).isFalse();

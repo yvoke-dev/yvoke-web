@@ -20,7 +20,7 @@ class RequestBodySizeLimitFilterTest {
 
         // 1. Content-Length over limit -> rejected before downstream runs
         MockHttpServletRequest req1 =
-            new MockHttpServletRequest("POST", "/api/chat/v1/conversations");
+                new MockHttpServletRequest("POST", "/api/chat/v1/conversations");
         req1.setContent("x".repeat(128).getBytes(StandardCharsets.UTF_8));
         MockHttpServletResponse res1 = new MockHttpServletResponse();
         filter.doFilter(req1, res1, new MockFilterChain());
@@ -28,17 +28,19 @@ class RequestBodySizeLimitFilterTest {
         assertThat(res1.getContentAsString()).contains("maximum allowed size");
 
         // 2. Unknown Content-Length (chunked) -> rejected mid-stream while reading
-        MockHttpServletRequest req2 = new MockHttpServletRequest("POST", "/mcp") {
-            @Override
-            public long getContentLengthLong() {
-                return -1L;
-            }
-        };
+        MockHttpServletRequest req2 =
+                new MockHttpServletRequest("POST", "/mcp") {
+                    @Override
+                    public long getContentLengthLong() {
+                        return -1L;
+                    }
+                };
         req2.setContent("y".repeat(128).getBytes(StandardCharsets.UTF_8));
         MockHttpServletResponse res2 = new MockHttpServletResponse();
-        FilterChain readingChain = (ServletRequest request, ServletResponse response) -> {
-            request.getInputStream().readAllBytes();
-        };
+        FilterChain readingChain =
+                (ServletRequest request, ServletResponse response) -> {
+                    request.getInputStream().readAllBytes();
+                };
         filter.doFilter(req2, res2, readingChain);
         assertThat(res2.getStatus()).isEqualTo(413);
 
@@ -54,7 +56,7 @@ class RequestBodySizeLimitFilterTest {
     void doesNotFilterCorpusMultipartIngestEndpoint() throws Exception {
         RequestBodySizeLimitFilter filter = new RequestBodySizeLimitFilter(64);
         MockHttpServletRequest ingestReq =
-            new MockHttpServletRequest("POST", "/api/ingest/v1/upload");
+                new MockHttpServletRequest("POST", "/api/ingest/v1/upload");
         ingestReq.setContent("z".repeat(256).getBytes(StandardCharsets.UTF_8));
         MockHttpServletResponse res = new MockHttpServletResponse();
         filter.doFilter(ingestReq, res, new MockFilterChain());
@@ -64,8 +66,8 @@ class RequestBodySizeLimitFilterTest {
     @Test
     void rejectsNonPositiveMaxBodyBytesInsteadOfFallingBackToInlineDefault() {
         assertThatThrownBy(() -> new RequestBodySizeLimitFilter(0))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new RequestBodySizeLimitFilter(-1))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

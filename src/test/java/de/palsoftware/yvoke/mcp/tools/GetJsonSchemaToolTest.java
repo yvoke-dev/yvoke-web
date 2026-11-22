@@ -31,20 +31,31 @@ public class GetJsonSchemaToolTest {
     @BeforeEach
     public void setUp() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("global-user", "n/a",
-                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
-                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_ALL))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "global-user",
+                                "n/a",
+                                List.of(
+                                        new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                                        new SimpleGrantedAuthority(
+                                                AreaAccessContext.AREA_USER_ALL))));
         jsonObjectService = mock(JsonObjectService.class);
         collectionService = mock(CollectionService.class);
         getJsonSchemaTool =
-            new GetJsonSchemaTool(jsonObjectService, collectionService, new ObjectMapper());
+                new GetJsonSchemaTool(jsonObjectService, collectionService, new ObjectMapper());
 
-        Collection historyCol = new Collection(UUID.randomUUID(), "OIM - DB - History",
-            "Historic DB rows", List.of("schema", "content"), null);
+        Collection historyCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OIM - DB - History",
+                        "Historic DB rows",
+                        List.of("schema", "content"),
+                        null);
         // A collection with NO tags exempts itself from the requirement — the guard is conditional
         // on the collection, which is exactly why it cannot live in the tool's JSON input schema.
         Collection untaggedCol =
-            new Collection(UUID.randomUUID(), "OIM - Untagged", "No tags at all", List.of(), null);
+                new Collection(
+                        UUID.randomUUID(), "OIM - Untagged", "No tags at all", List.of(), null);
         when(collectionService.listCollections()).thenReturn(List.of(historyCol, untaggedCol));
     }
 
@@ -58,16 +69,15 @@ public class GetJsonSchemaToolTest {
      * returns a perfectly well-formed schema, the query returns zero rows, and the agent reports
      * that the data does not exist.
      *
-     * <p>
-     * The requirement is conditional on the collection (an untagged collection must still work), so
-     * it is deliberately absent from the tool's JSON input schema, which cannot express "required
-     * depending on another argument's value". That makes this test the only thing enforcing it —
-     * deleting the {@code McpToolUtils.requireTag} block compiles, starts, and answers.
+     * <p>The requirement is conditional on the collection (an untagged collection must still work),
+     * so it is deliberately absent from the tool's JSON input schema, which cannot express
+     * "required depending on another argument's value". That makes this test the only thing
+     * enforcing it — deleting the {@code McpToolUtils.requireTag} block compiles, starts, and
+     * answers.
      *
-     * <p>
-     * The {@code never()} half matters as much as the message: returning the error string while
+     * <p>The {@code never()} half matters as much as the message: returning the error string while
      * still hitting the service would leave the ambiguous read on the hot path for any caller that
-     * ignores the string. A blank tag is checked too, because the tool normalises {@code "   "} to
+     * ignores the string. A blank tag is checked too, because the tool normalises {@code " "} to
      * null and a whitespace argument is exactly what an LLM emits for "I have no value here". The
      * untagged-collection call at the end is the control, and it has to come <em>after</em> the
      * {@code never()} verification because it legitimately reaches the service: without it the rule
@@ -80,8 +90,9 @@ public class GetJsonSchemaToolTest {
 
         assertThat(output).as("expected a hard error, got:%n%s", output).startsWith("Error:");
         assertThat(output).contains("tag-scoped");
-        assertThat(output).as("the error must list the tags the caller has to choose between")
-            .contains("Valid tags: schema, content");
+        assertThat(output)
+                .as("the error must list the tags the caller has to choose between")
+                .contains("Valid tags: schema, content");
 
         String blankTag = getJsonSchemaTool.getJsonSchema("OIM - DB - History", "   ");
         assertThat(blankTag).as("a whitespace tag is not a tag").startsWith("Error:");
@@ -91,8 +102,8 @@ public class GetJsonSchemaToolTest {
 
         String untagged = getJsonSchemaTool.getJsonSchema("OIM - Untagged", null);
         assertThat(untagged)
-            .as("a collection with no tags must still be readable, got:%n%s", untagged)
-            .doesNotStartWith("Error:");
+                .as("a collection with no tags must still be readable, got:%n%s", untagged)
+                .doesNotStartWith("Error:");
     }
 
     @AfterEach
@@ -102,13 +113,24 @@ public class GetJsonSchemaToolTest {
 
     @Test
     public void testUnauthorizedCollectionAreaReturnsOpaqueNotFound() {
-        Collection pingCol = new Collection(UUID.randomUUID(), "Ping - JSON", "Ping JSON",
-            List.of(), OffsetDateTime.now(), "PingID");
+        Collection pingCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Ping - JSON",
+                        "Ping JSON",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "PingID");
         when(collectionService.listCollections()).thenReturn(List.of(pingCol));
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("user", "n/a",
-                List.of(new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
-                    new SimpleGrantedAuthority(AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "user",
+                                "n/a",
+                                List.of(
+                                        new SimpleGrantedAuthority(AreaAccessContext.ROLE_USER),
+                                        new SimpleGrantedAuthority(
+                                                AreaAccessContext.AREA_USER_PREFIX + "OIM"))));
 
         String output = getJsonSchemaTool.getJsonSchema("Ping - JSON", null);
 

@@ -21,8 +21,9 @@ public class LlmCallLoggingService {
     private final LlmCallLogRepository llmCallLogRepository;
     private final ModelPricingRepository modelPricingRepository;
 
-    public LlmCallLoggingService(LlmCallLogRepository llmCallLogRepository,
-        ModelPricingRepository modelPricingRepository) {
+    public LlmCallLoggingService(
+            LlmCallLogRepository llmCallLogRepository,
+            ModelPricingRepository modelPricingRepository) {
         this.llmCallLogRepository = llmCallLogRepository;
         this.modelPricingRepository = modelPricingRepository;
     }
@@ -31,20 +32,27 @@ public class LlmCallLoggingService {
     public void onLlmCall(LlmCallLoggedEvent event) {
         try {
             Optional<ModelPricing> pricingOpt =
-                modelPricingRepository.findByModelName(event.model());
+                    modelPricingRepository.findByModelName(event.model());
 
             BigDecimal pPrice =
-                pricingOpt.map(ModelPricing::promptPricePerMillion).orElse(BigDecimal.ZERO);
+                    pricingOpt.map(ModelPricing::promptPricePerMillion).orElse(BigDecimal.ZERO);
             BigDecimal cPrice =
-                pricingOpt.map(ModelPricing::completionPricePerMillion).orElse(BigDecimal.ZERO);
+                    pricingOpt.map(ModelPricing::completionPricePerMillion).orElse(BigDecimal.ZERO);
             BigDecimal caPrice =
-                pricingOpt.map(ModelPricing::cachedPricePerMillion).orElse(BigDecimal.ZERO);
+                    pricingOpt.map(ModelPricing::cachedPricePerMillion).orElse(BigDecimal.ZERO);
             BigDecimal tPrice =
-                pricingOpt.map(ModelPricing::thoughtPricePerMillion).orElse(BigDecimal.ZERO);
+                    pricingOpt.map(ModelPricing::thoughtPricePerMillion).orElse(BigDecimal.ZERO);
 
             BigDecimal listCost =
-                calculateCost(event.promptTokens(), pPrice, event.completionTokens(), cPrice,
-                    event.cachedTokens(), caPrice, event.thoughtTokens(), tPrice);
+                    calculateCost(
+                            event.promptTokens(),
+                            pPrice,
+                            event.completionTokens(),
+                            cPrice,
+                            event.cachedTokens(),
+                            caPrice,
+                            event.thoughtTokens(),
+                            tPrice);
 
             // A gateway cache HIT never reached the provider, so nothing was charged: the list
             // price becomes avoided spend instead of billed spend. Everything else — including a
@@ -56,24 +64,47 @@ public class LlmCallLoggingService {
             BigDecimal totalCost = replayed ? BigDecimal.ZERO : listCost;
             BigDecimal costAvoided = replayed ? listCost : BigDecimal.ZERO;
 
-            LlmCallLog callLog = new LlmCallLog(UUID.randomUUID(), event.conversationId(),
-                event.messageId(), event.agentRunId(), event.userId(), event.source(), event.role(),
-                event.model(), event.promptTokens(), event.completionTokens(), event.cachedTokens(),
-                event.thoughtTokens(), event.totalTokens(), pPrice, cPrice, caPrice, tPrice,
-                totalCost, event.durationMs(), null,
-                event.gatewayCacheStatus() == null ? null : event.gatewayCacheStatus().name(),
-                event.gatewayLogId(), costAvoided);
+            LlmCallLog callLog =
+                    new LlmCallLog(
+                            UUID.randomUUID(),
+                            event.conversationId(),
+                            event.messageId(),
+                            event.agentRunId(),
+                            event.userId(),
+                            event.source(),
+                            event.role(),
+                            event.model(),
+                            event.promptTokens(),
+                            event.completionTokens(),
+                            event.cachedTokens(),
+                            event.thoughtTokens(),
+                            event.totalTokens(),
+                            pPrice,
+                            cPrice,
+                            caPrice,
+                            tPrice,
+                            totalCost,
+                            event.durationMs(),
+                            null,
+                            event.gatewayCacheStatus() == null
+                                    ? null
+                                    : event.gatewayCacheStatus().name(),
+                            event.gatewayLogId(),
+                            costAvoided);
 
             llmCallLogRepository.insert(callLog);
             log.info(
-                "Logged LLM call for model `{}` (source={}, gateway={}): tokens={}, cost=${}"
-                    + ", avoided=${}",
-                event.model(), event.source(),
-                event.gatewayCacheStatus() == null ? "none" : event.gatewayCacheStatus(),
-                event.totalTokens(), totalCost, costAvoided);
+                    "Logged LLM call for model `{}` (source={}, gateway={}): tokens={}, cost=${}"
+                            + ", avoided=${}",
+                    event.model(),
+                    event.source(),
+                    event.gatewayCacheStatus() == null ? "none" : event.gatewayCacheStatus(),
+                    event.totalTokens(),
+                    totalCost,
+                    costAvoided);
         } catch (Exception e) {
-            log.warn("Failed to log LLM call event for model {}: {}", event.model(),
-                e.getMessage());
+            log.warn(
+                    "Failed to log LLM call event for model {}: {}", event.model(), e.getMessage());
         }
     }
 
@@ -82,9 +113,16 @@ public class LlmCallLoggingService {
      * single source of truth for the token→USD formula (MNT-03) — so the logged/persisted cost and
      * the cost-dashboard reports are computed identically (scale-8 per bucket, scale-6 total).
      */
-    public static BigDecimal calculateCost(int prompt, BigDecimal pPrice, int completion,
-        BigDecimal cPrice, int cached, BigDecimal caPrice, int thought, BigDecimal tPrice) {
-        return PricingCalculator.cost(prompt, completion, cached, thought, pPrice, cPrice, caPrice,
-            tPrice);
+    public static BigDecimal calculateCost(
+            int prompt,
+            BigDecimal pPrice,
+            int completion,
+            BigDecimal cPrice,
+            int cached,
+            BigDecimal caPrice,
+            int thought,
+            BigDecimal tPrice) {
+        return PricingCalculator.cost(
+                prompt, completion, cached, thought, pPrice, cPrice, caPrice, tPrice);
     }
 }

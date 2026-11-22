@@ -37,17 +37,27 @@ public class CollectionServiceTest {
 
     private static void setAuth(String... authorities) {
         SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(new UsernamePasswordAuthenticationToken("test-user", "n/a",
-            Arrays.stream(authorities).map(SimpleGrantedAuthority::new).toList()));
+        context.setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "test-user",
+                        "n/a",
+                        Arrays.stream(authorities).map(SimpleGrantedAuthority::new).toList()));
         SecurityContextHolder.setContext(context);
     }
 
     @Test
     void listByAreas_filtersByLowercaseAreaSet() {
-        Collection c1 = new Collection(UUID.randomUUID(), "Col1", "desc", List.of(),
-            OffsetDateTime.now(), "OIM");
-        Collection c2 = new Collection(UUID.randomUUID(), "Col2", "desc", List.of(),
-            OffsetDateTime.now(), "PingID");
+        Collection c1 =
+                new Collection(
+                        UUID.randomUUID(), "Col1", "desc", List.of(), OffsetDateTime.now(), "OIM");
+        Collection c2 =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Col2",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "PingID");
         when(collectionRepository.findAll()).thenReturn(List.of(c1, c2));
 
         assertThat(collectionService.listByAreas(null)).containsExactly(c1, c2);
@@ -58,10 +68,17 @@ public class CollectionServiceTest {
 
     @Test
     void listForAdminUser_returnsScopedOrAllBasedOnRole() {
-        Collection c1 = new Collection(UUID.randomUUID(), "Col1", "desc", List.of(),
-            OffsetDateTime.now(), "OIM");
-        Collection c2 = new Collection(UUID.randomUUID(), "Col2", "desc", List.of(),
-            OffsetDateTime.now(), "PingID");
+        Collection c1 =
+                new Collection(
+                        UUID.randomUUID(), "Col1", "desc", List.of(), OffsetDateTime.now(), "OIM");
+        Collection c2 =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Col2",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "PingID");
         when(collectionRepository.findAll()).thenReturn(List.of(c1, c2));
 
         setAuth(AreaAccessContext.ROLE_ADMIN);
@@ -78,7 +95,7 @@ public class CollectionServiceTest {
     void findByIdForAdmin_and_findByNameForAdmin_enforceAdminScoping() {
         UUID id = UUID.randomUUID();
         Collection c1 =
-            new Collection(id, "OIM-Docs", "desc", List.of(), OffsetDateTime.now(), "OIM");
+                new Collection(id, "OIM-Docs", "desc", List.of(), OffsetDateTime.now(), "OIM");
         when(collectionRepository.findById(id)).thenReturn(Optional.of(c1));
         when(collectionRepository.findByName("OIM-Docs")).thenReturn(Optional.of(c1));
 
@@ -95,7 +112,7 @@ public class CollectionServiceTest {
     void findById_and_findByName_basicAccessors() {
         UUID id = UUID.randomUUID();
         Collection c1 =
-            new Collection(id, "OIM-Docs", "desc", List.of(), OffsetDateTime.now(), "OIM");
+                new Collection(id, "OIM-Docs", "desc", List.of(), OffsetDateTime.now(), "OIM");
         when(collectionRepository.findById(id)).thenReturn(Optional.of(c1));
         when(collectionRepository.findByName("OIM-Docs")).thenReturn(Optional.of(c1));
 
@@ -107,8 +124,13 @@ public class CollectionServiceTest {
 
     @Test
     public void testListCollections() {
-        Collection col = new Collection(UUID.randomUUID(), "Test", "Desc", Collections.emptyList(),
-            OffsetDateTime.now());
+        Collection col =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Test",
+                        "Desc",
+                        Collections.emptyList(),
+                        OffsetDateTime.now());
         when(collectionRepository.findAll()).thenReturn(List.of(col));
 
         List<Collection> result = collectionService.listCollections();
@@ -118,8 +140,13 @@ public class CollectionServiceTest {
 
     @Test
     public void testGetCollection() {
-        Collection col = new Collection(UUID.randomUUID(), "Test", "Desc", Collections.emptyList(),
-            OffsetDateTime.now());
+        Collection col =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Test",
+                        "Desc",
+                        Collections.emptyList(),
+                        OffsetDateTime.now());
         when(collectionRepository.findByName("Test")).thenReturn(Optional.of(col));
 
         Optional<Collection> result = collectionService.getCollection("Test");
@@ -132,8 +159,13 @@ public class CollectionServiceTest {
 
     @Test
     public void testCreateCollectionSuccess() {
-        Collection col = new Collection(UUID.randomUUID(), "Test", "Desc", Collections.emptyList(),
-            OffsetDateTime.now());
+        Collection col =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Test",
+                        "Desc",
+                        Collections.emptyList(),
+                        OffsetDateTime.now());
         when(collectionRepository.findByName("Test")).thenReturn(Optional.empty());
         when(collectionRepository.create("Test", "Desc", "OIM")).thenReturn(col);
 
@@ -146,13 +178,13 @@ public class CollectionServiceTest {
     @Test
     public void testCreateCollectionInvalidNames() {
         assertThatThrownBy(() -> collectionService.createCollection(null, "desc", "OIM"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> collectionService.createCollection("   ", "desc", "OIM"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> collectionService.createCollection("Both", "desc", "OIM"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> collectionService.createCollection("All", "desc", "OIM"))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     /**
@@ -165,20 +197,20 @@ public class CollectionServiceTest {
      * {@code " all "} are the shapes that actually arrive, not the two title-cased spellings a
      * developer writes in a test.
      *
-     * <p>
-     * {@code testCreateCollectionInvalidNames} above passes only the canonical casing, so turning
-     * {@code equalsIgnoreCase} into {@code equals} — an edit that reads like tightening a
+     * <p>{@code testCreateCollectionInvalidNames} above passes only the canonical casing, so
+     * turning {@code equalsIgnoreCase} into {@code equals} — an edit that reads like tightening a
      * comparison — leaves it green while every other spelling is accepted and persisted. The
-     * repository assertion is the other half of the rule: a rejected name must never reach
-     * {@code create}, because the row it would mint has to be deleted by hand afterwards, and the
-     * name it holds is the one the collection dropdown cannot represent.
+     * repository assertion is the other half of the rule: a rejected name must never reach {@code
+     * create}, because the row it would mint has to be deleted by hand afterwards, and the name it
+     * holds is the one the collection dropdown cannot represent.
      */
     @Test
     public void theReservedCollectionNamesAreRejectedInAnyCasing() {
         for (String reserved : List.of("both", "ALL", " all ", "BoTh")) {
             assertThatThrownBy(() -> collectionService.createCollection(reserved, "desc", "OIM"))
-                .as("'%s' is a reserved collection name whatever the casing", reserved)
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("reserved");
+                    .as("'%s' is a reserved collection name whatever the casing", reserved)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("reserved");
         }
 
         verify(collectionRepository, never()).create(any(), any(), any());
@@ -186,29 +218,42 @@ public class CollectionServiceTest {
 
     @Test
     public void testCreateCollectionDuplicate() {
-        Collection existing = new Collection(UUID.randomUUID(), "Test", "Desc",
-            Collections.emptyList(), OffsetDateTime.now());
+        Collection existing =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Test",
+                        "Desc",
+                        Collections.emptyList(),
+                        OffsetDateTime.now());
         when(collectionRepository.findByName("Test")).thenReturn(Optional.of(existing));
 
         assertThatThrownBy(() -> collectionService.createCollection("Test", "New Desc", "OIM"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("already exists");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already exists");
     }
 
     @Test
     public void testCreateCollectionConcurrentDuplicateMapsDataIntegrityViolation() {
         when(collectionRepository.findByName("Test")).thenReturn(Optional.empty());
         when(collectionRepository.create("Test", "Desc", "OIM"))
-            .thenThrow(new DataIntegrityViolationException("ux_collections_name_lower"));
+                .thenThrow(new DataIntegrityViolationException("ux_collections_name_lower"));
 
         assertThatThrownBy(() -> collectionService.createCollection("Test", "Desc", "OIM"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("already exists");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already exists");
     }
 
     @Test
     public void testMoveCollectionUpdatesById() {
         UUID colId = UUID.randomUUID();
-        Collection existing = new Collection(colId, "Test", "Desc", Collections.emptyList(),
-            OffsetDateTime.now(), "OIM");
+        Collection existing =
+                new Collection(
+                        colId,
+                        "Test",
+                        "Desc",
+                        Collections.emptyList(),
+                        OffsetDateTime.now(),
+                        "OIM");
         when(collectionRepository.findByName("Test")).thenReturn(Optional.of(existing));
 
         collectionService.moveCollection("Test", "OIM");
@@ -226,8 +271,13 @@ public class CollectionServiceTest {
 
     @Test
     public void listTagsOfReturnsOneCollectionsDeclaredTags() {
-        Collection col = new Collection(UUID.randomUUID(), "OIM", "Desc", List.of("9.3.1", "10.0"),
-            OffsetDateTime.now());
+        Collection col =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OIM",
+                        "Desc",
+                        List.of("9.3.1", "10.0"),
+                        OffsetDateTime.now());
         when(collectionRepository.findByName("OIM")).thenReturn(Optional.of(col));
 
         assertThat(collectionService.listTagsOf("OIM")).containsExactly("9.3.1", "10.0");

@@ -9,8 +9,7 @@ import java.util.Set;
 /**
  * Typed accessors and boundary validators for the untyped {@code conversations.settings} JSONB map.
  *
- * <p>
- * Eliminates raw {@code (String)} casts (which permanently 500 a conversation if a client ever
+ * <p>Eliminates raw {@code (String)} casts (which permanently 500 a conversation if a client ever
  * stored a non-string value) and ensures create/PATCH settings share the same key normalization and
  * type checking.
  */
@@ -20,20 +19,25 @@ public final class ConversationSettings {
     public static final int MAX_STRING_SETTING_LENGTH = 256;
 
     private static final Set<String> DESKTOP_THINKING_LEVELS =
-        Set.of("off", "low", "medium", "high");
+            Set.of("off", "low", "medium", "high");
 
     private static final Set<String> ALLOWED_KEYS =
-        Set.of(ConversationSetting.MODEL.getValue(), ConversationSetting.THINKING_LEVEL.getValue(),
-            ConversationSetting.STREAMING.getValue(), ConversationSetting.SHOW_THINKING.getValue(),
-            ConversationSetting.SHOW_PROTOTYPES.getValue(),
-            ConversationSetting.ORCHESTRATOR_PROFILE.getValue(),
-            ConversationSetting.DESKTOP_VERSION.getValue(), "client", "playbook");
+            Set.of(
+                    ConversationSetting.MODEL.getValue(),
+                    ConversationSetting.THINKING_LEVEL.getValue(),
+                    ConversationSetting.STREAMING.getValue(),
+                    ConversationSetting.SHOW_THINKING.getValue(),
+                    ConversationSetting.SHOW_PROTOTYPES.getValue(),
+                    ConversationSetting.ORCHESTRATOR_PROFILE.getValue(),
+                    ConversationSetting.DESKTOP_VERSION.getValue(),
+                    "client",
+                    "playbook");
 
     private ConversationSettings() {}
 
     @Nullable
-    public static String getString(@Nullable Map<String, Object> settings,
-        ConversationSetting key) {
+    public static String getString(
+            @Nullable Map<String, Object> settings, ConversationSetting key) {
         if (settings == null || key == null) {
             return null;
         }
@@ -44,8 +48,8 @@ public final class ConversationSettings {
         return null;
     }
 
-    public static boolean getBoolean(@Nullable Map<String, Object> settings,
-        ConversationSetting key, boolean defaultValue) {
+    public static boolean getBoolean(
+            @Nullable Map<String, Object> settings, ConversationSetting key, boolean defaultValue) {
         if (settings == null || key == null) {
             return defaultValue;
         }
@@ -61,18 +65,19 @@ public final class ConversationSettings {
 
     /**
      * Normalizes and validates a desktop sync settings map (create or PATCH):
+     *
      * <ul>
-     * <li>Maps {@code thinkingLevel} to {@code thinking-level} consistently on both create and
-     * update.</li>
-     * <li>Validates every key against the allowed set and checks exact value types and length
-     * caps.</li>
-     * <li>Drops blank/null {@code desktopVersion}; rejects non-string or oversized versions.</li>
+     *   <li>Maps {@code thinkingLevel} to {@code thinking-level} consistently on both create and
+     *       update.
+     *   <li>Validates every key against the allowed set and checks exact value types and length
+     *       caps.
+     *   <li>Drops blank/null {@code desktopVersion}; rejects non-string or oversized versions.
      * </ul>
      *
      * @throws IllegalArgumentException if any setting key is unknown or has an invalid type/value
      */
     public static Map<String, Object> normalizeAndValidateDesktop(
-        @Nullable Map<String, Object> raw) {
+            @Nullable Map<String, Object> raw) {
         if (raw == null || raw.isEmpty()) {
             return new HashMap<>();
         }
@@ -80,7 +85,7 @@ public final class ConversationSettings {
         // Normalize camelCase thinkingLevel -> thinking-level first (canonical key wins if both are
         // supplied with the same value).
         if (raw.containsKey("thinkingLevel")
-            && !raw.containsKey(ConversationSetting.THINKING_LEVEL.getValue())) {
+                && !raw.containsKey(ConversationSetting.THINKING_LEVEL.getValue())) {
             Object val = raw.get("thinkingLevel");
             validateThinkingLevel(val, out);
         }
@@ -102,8 +107,8 @@ public final class ConversationSettings {
             } else if (ConversationSetting.THINKING_LEVEL.getValue().equals(key)) {
                 validateThinkingLevel(val, out);
             } else if (ConversationSetting.STREAMING.getValue().equals(key)
-                || ConversationSetting.SHOW_THINKING.getValue().equals(key)
-                || ConversationSetting.SHOW_PROTOTYPES.getValue().equals(key)) {
+                    || ConversationSetting.SHOW_THINKING.getValue().equals(key)
+                    || ConversationSetting.SHOW_PROTOTYPES.getValue().equals(key)) {
                 if (!(val instanceof Boolean)) {
                     throw new IllegalArgumentException("Invalid " + key + ": must be a boolean");
                 }
@@ -118,7 +123,7 @@ public final class ConversationSettings {
                     String trimmed = str.trim();
                     if (trimmed.length() > MAX_STRING_SETTING_LENGTH) {
                         throw new IllegalArgumentException(
-                            "Invalid " + key + ": exceeds maximum length");
+                                "Invalid " + key + ": exceeds maximum length");
                     }
                     out.put(key, trimmed);
                 }
@@ -158,7 +163,9 @@ public final class ConversationSettings {
         }
         if (!DESKTOP_THINKING_LEVELS.contains(normalized)) {
             throw new IllegalArgumentException(
-                "Invalid thinking-level '" + str + "'. Allowed values: off, low, medium, high.");
+                    "Invalid thinking-level '"
+                            + str
+                            + "'. Allowed values: off, low, medium, high.");
         }
         out.put(ConversationSetting.THINKING_LEVEL.getValue(), normalized);
     }

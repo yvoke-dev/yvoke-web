@@ -34,7 +34,8 @@ class ConversationLockStateTest {
     }
 
     @Test
-    void from_whenMixedConversationWithActiveProfile_routesToInDepthModeAndSuppressesPlaybookLock() {
+    void
+            from_whenMixedConversationWithActiveProfile_routesToInDepthModeAndSuppressesPlaybookLock() {
         ConversationLockState state = ConversationLockState.from(Optional.of("pb1"), true, true);
 
         assertThat(state.initialPlaybook()).contains("pb1");
@@ -89,23 +90,23 @@ class ConversationLockStateTest {
     @Test
     void from_withInitialPlaybookVersion_exposesLockedPlaybookVersionOnlyWhenLockedAndValid() {
         ConversationLockState locked =
-            ConversationLockState.from(Optional.of("pb1"), Optional.of(3), false, false);
+                ConversationLockState.from(Optional.of("pb1"), Optional.of(3), false, false);
         assertThat(locked.initialPlaybookVersion()).contains(3);
         assertThat(locked.lockedPlaybookVersion()).isEqualTo(3);
 
         ConversationLockState suppressedByInDepth =
-            ConversationLockState.from(Optional.of("pb1"), Optional.of(3), true, true);
+                ConversationLockState.from(Optional.of("pb1"), Optional.of(3), true, true);
         assertThat(suppressedByInDepth.initialPlaybookVersion()).contains(3);
         assertThat(suppressedByInDepth.lockedPlaybookVersion()).isNull();
 
         ConversationLockState blankPlaybookClearsVersion =
-            ConversationLockState.from(Optional.of("   "), Optional.of(3), false, false);
+                ConversationLockState.from(Optional.of("   "), Optional.of(3), false, false);
         assertThat(blankPlaybookClearsVersion.initialPlaybook()).isEmpty();
         assertThat(blankPlaybookClearsVersion.initialPlaybookVersion()).isEmpty();
         assertThat(blankPlaybookClearsVersion.lockedPlaybookVersion()).isNull();
 
         ConversationLockState nonPositiveVersionCleared =
-            ConversationLockState.from(Optional.of("pb1"), Optional.of(0), false, false);
+                ConversationLockState.from(Optional.of("pb1"), Optional.of(0), false, false);
         assertThat(nonPositiveVersionCleared.initialPlaybookVersion()).isEmpty();
         assertThat(nonPositiveVersionCleared.lockedPlaybookVersion()).isNull();
     }

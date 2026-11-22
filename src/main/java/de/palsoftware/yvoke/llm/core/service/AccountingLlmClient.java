@@ -19,23 +19,20 @@ import org.springframework.context.ApplicationEventPublisher;
  * Decorator that turns "an LLM call happened" into an {@code llm_call_logs} row, for every caller,
  * without any caller taking part.
  *
- * <p>
- * Accounting used to be the caller's job: each of five call sites extracted usage and published
+ * <p>Accounting used to be the caller's job: each of five call sites extracted usage and published
  * {@link LlmCallLoggedEvent} itself. {@code GeneralSummarizer} never did — its spend has never
  * appeared in any cost view — and nothing detected that, because there was no place where the
  * omission was visible. Attribution now comes from {@link LlmCallContextHolder}, which the entry
  * points already set, so a new caller gets accounting by construction and a caller that forgets the
  * context still produces a row, marked {@link LlmCallContextHolder#UNKNOWN_SOURCE}.
  *
- * <p>
- * One row per HTTP call, which is what the table's name always claimed. The chat path previously
+ * <p>One row per HTTP call, which is what the table's name always claimed. The chat path previously
  * wrote one row per <i>message</i>, summed over up to {@code app.ai.rag.max-iterations} calls;
  * per-message totals are now a {@code GROUP BY message_id}, and {@code messages} keeps its own
  * rollup columns either way.
  *
- * <p>
- * This is also the natural home for anything else that must see every call — per-user rate limiting
- * or budget enforcement — precisely because nothing can route around it.
+ * <p>This is also the natural home for anything else that must see every call — per-user rate
+ * limiting or budget enforcement — precisely because nothing can route around it.
  */
 public class AccountingLlmClient implements LlmClient {
 
@@ -51,9 +48,9 @@ public class AccountingLlmClient implements LlmClient {
 
     /**
      * A call that reached the provider and then produced no usable answer — a safety or recitation
-     * block — still consumed tokens the provider billed for. Those arrive on
-     * {@link LlmCallFailedException}, so they are recorded before the failure propagates, matching
-     * what {@link #generateStream} does by observing chunks.
+     * block — still consumed tokens the provider billed for. Those arrive on {@link
+     * LlmCallFailedException}, so they are recorded before the failure propagates, matching what
+     * {@link #generateStream} does by observing chunks.
      */
     @Override
     public LlmResponse generate(LlmRequest request) {
@@ -65,8 +62,11 @@ public class AccountingLlmClient implements LlmClient {
             publish(request, e.usage(), null, startNanos);
             throw e;
         }
-        publish(request, response == null ? null : response.usage(),
-            response == null ? null : response.gateway(), startNanos);
+        publish(
+                request,
+                response == null ? null : response.usage(),
+                response == null ? null : response.gateway(),
+                startNanos);
         return response;
     }
 
@@ -76,17 +76,15 @@ public class AccountingLlmClient implements LlmClient {
      * still consumed tokens the provider billed for, so whatever usage was observed is recorded
      * before the failure propagates unchanged.
      *
-     * <p>
-     * ONE stream may contain several HTTP calls: the empty-turn retry re-requests within a single
-     * {@code generateStream}. Each is closed by a
-     * {@link LlmResponseChunk#endOfCall(LlmUsage, LlmGatewayInfo)} marker, which publishes that
-     * call's row and resets, so the abandoned attempt appears in {@code llm_call_logs} on its own
-     * terms instead of being summed onto the winner by every retrying client. The marker is
-     * consumed here rather than forwarded — it is bookkeeping, not output, and its own constructor
-     * forbids it carrying anything a caller would miss.
+     * <p>ONE stream may contain several HTTP calls: the empty-turn retry re-requests within a
+     * single {@code generateStream}. Each is closed by a {@link
+     * LlmResponseChunk#endOfCall(LlmUsage, LlmGatewayInfo)} marker, which publishes that call's row
+     * and resets, so the abandoned attempt appears in {@code llm_call_logs} on its own terms
+     * instead of being summed onto the winner by every retrying client. The marker is consumed here
+     * rather than forwarded — it is bookkeeping, not output, and its own constructor forbids it
+     * carrying anything a caller would miss.
      *
-     * <p>
-     * The boundary has to be explicit. It cannot be inferred from "this chunk carried usage",
+     * <p>The boundary has to be explicit. It cannot be inferred from "this chunk carried usage",
      * because {@code GeminiLlmClient} emits an absolute whole-request snapshot on every event that
      * carries usage — inferring there would mint a row per chunk.
      */
@@ -96,22 +94,29 @@ public class AccountingLlmClient implements LlmClient {
         AtomicReference<LlmUsage> observedUsage = new AtomicReference<>();
         AtomicReference<LlmGatewayInfo> observedGateway = new AtomicReference<>();
         try {
-            delegate.generateStream(request, chunk -> {
-                if (chunk != null && chunk.usage() != null) {
-                    observedUsage.set(chunk.usage());
-                }
-                // Headers are stamped on every chunk, including ones carrying no usage, so this
-                // is tracked separately rather than read off whichever chunk happened to have both.
-                if (chunk != null && chunk.gateway() != null) {
-                    observedGateway.set(chunk.gateway());
-                }
-                if (chunk != null && chunk.endOfCall()) {
-                    publish(request, observedUsage.getAndSet(null), observedGateway.getAndSet(null),
-                        callStartNanos.getAndSet(System.nanoTime()));
-                    return;
-                }
-                onChunk.accept(chunk);
-            });
+            delegate.generateStream(
+                    request,
+                    chunk -> {
+                        if (chunk != null && chunk.usage() != null) {
+                            observedUsage.set(chunk.usage());
+                        }
+                        // Headers are stamped on every chunk, including ones carrying no usage, so
+                        // this
+                        // is tracked separately rather than read off whichever chunk happened to
+                        // have both.
+                        if (chunk != null && chunk.gateway() != null) {
+                            observedGateway.set(chunk.gateway());
+                        }
+                        if (chunk != null && chunk.endOfCall()) {
+                            publish(
+                                    request,
+                                    observedUsage.getAndSet(null),
+                                    observedGateway.getAndSet(null),
+                                    callStartNanos.getAndSet(System.nanoTime()));
+                            return;
+                        }
+                        onChunk.accept(chunk);
+                    });
         } catch (RuntimeException e) {
             publish(request, observedUsage.get(), observedGateway.get(), callStartNanos.get());
             throw e;
@@ -123,41 +128,50 @@ public class AccountingLlmClient implements LlmClient {
      * A null usage means the provider reported nothing to bill, so no row is invented. Failures
      * here are swallowed: accounting must never break the call it is accounting for.
      *
-     * <p>
-     * The interrupt flag is cleared for the duration and restored afterwards. The listener behind
-     * this publish is a synchronous {@code @EventListener} that runs JDBC — there is no
+     * <p>The interrupt flag is cleared for the duration and restored afterwards. The listener
+     * behind this publish is a synchronous {@code @EventListener} that runs JDBC — there is no
      * {@code @EnableAsync} in this application — and the streaming catch above reaches here with
-     * the flag still set, because the provider clients detect cancellation with
-     * {@code isInterrupted()}, a read that never clears. Hikari's connection acquisition parks,
-     * sees the pre-set flag, and fails; the resulting {@code SQLException} is swallowed to a
-     * {@code log.warn} both by the listener and by this method, so the in-flight — largest — call
-     * of a cancelled turn silently leaves no {@code llm_call_logs} row. Sibling write sites
-     * ({@code OrchestrationService}, {@code ChatMessageService}) already do this; doing it INSIDE
-     * publish rather than at either call site is what makes forgetting it unrepresentable.
+     * the flag still set, because the provider clients detect cancellation with {@code
+     * isInterrupted()}, a read that never clears. Hikari's connection acquisition parks, sees the
+     * pre-set flag, and fails; the resulting {@code SQLException} is swallowed to a {@code
+     * log.warn} both by the listener and by this method, so the in-flight — largest — call of a
+     * cancelled turn silently leaves no {@code llm_call_logs} row. Sibling write sites ({@code
+     * OrchestrationService}, {@code ChatMessageService}) already do this; doing it INSIDE publish
+     * rather than at either call site is what makes forgetting it unrepresentable.
      *
-     * <p>
-     * Restoring is not optional: swallowing the interrupt would turn the user's Stop into an
+     * <p>Restoring is not optional: swallowing the interrupt would turn the user's Stop into an
      * apparently normal return, trading a lost ledger row for a lost cancellation.
      */
-    private void publish(LlmRequest request, LlmUsage usage, LlmGatewayInfo gateway,
-        long startNanos) {
+    private void publish(
+            LlmRequest request, LlmUsage usage, LlmGatewayInfo gateway, long startNanos) {
         if (usage == null) {
             return;
         }
         boolean wasInterrupted = Thread.interrupted();
         try {
             LlmCallContextHolder.Context ctx = LlmCallContextHolder.get();
-            eventPublisher
-                .publishEvent(new LlmCallLoggedEvent(ctx == null ? null : ctx.conversationId(),
-                    ctx == null ? null : ctx.messageId(), ctx == null ? null : ctx.agentRunId(),
-                    ctx == null ? null : ctx.userId(), source(ctx), ctx == null ? null : ctx.role(),
-                    request.model(), usage.promptTokens(), usage.completionTokens(),
-                    usage.cachedTokens(), usage.thoughtTokens(), usage.totalTokens(),
-                    elapsedMillis(startNanos), gateway == null ? null : gateway.cacheStatus(),
-                    gateway == null ? null : gateway.logId()));
+            eventPublisher.publishEvent(
+                    new LlmCallLoggedEvent(
+                            ctx == null ? null : ctx.conversationId(),
+                            ctx == null ? null : ctx.messageId(),
+                            ctx == null ? null : ctx.agentRunId(),
+                            ctx == null ? null : ctx.userId(),
+                            source(ctx),
+                            ctx == null ? null : ctx.role(),
+                            request.model(),
+                            usage.promptTokens(),
+                            usage.completionTokens(),
+                            usage.cachedTokens(),
+                            usage.thoughtTokens(),
+                            usage.totalTokens(),
+                            elapsedMillis(startNanos),
+                            gateway == null ? null : gateway.cacheStatus(),
+                            gateway == null ? null : gateway.logId()));
         } catch (Exception e) {
-            log.warn("Failed to publish LLM accounting event for model {}: {}", request.model(),
-                e.getMessage());
+            log.warn(
+                    "Failed to publish LLM accounting event for model {}: {}",
+                    request.model(),
+                    e.getMessage());
         } finally {
             if (wasInterrupted) {
                 Thread.currentThread().interrupt();

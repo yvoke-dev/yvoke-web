@@ -22,11 +22,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Routing sits BELOW the accounting seam — it is the {@code llmProviderClient} bean — so every
- * routed call still passes through {@code AccountingLlmClient} and appears in
- * {@code llm_call_logs}.
+ * routed call still passes through {@code AccountingLlmClient} and appears in {@code
+ * llm_call_logs}.
  *
- * <p>
- * The map value is a bare {@link LlmClient} on purpose. {@code AccountingLlmClient} is this
+ * <p>The map value is a bare {@link LlmClient} on purpose. {@code AccountingLlmClient} is this
  * codebase's own proof that a decorator over that interface composes, so a later failover or
  * load-balancing client drops into the same slot without this class learning anything.
  */
@@ -41,15 +40,18 @@ class ModelRoutingLlmClientTest {
             if (i > 0) {
                 json.append(',');
             }
-            json.append('"').append(modelToRoute[i]).append("\":\"").append(modelToRoute[i + 1])
-                .append('"');
+            json.append('"')
+                    .append(modelToRoute[i])
+                    .append("\":\"")
+                    .append(modelToRoute[i + 1])
+                    .append('"');
         }
         return LlmModelRoutes.parse(MAPPER, json.append('}').toString());
     }
 
     private static LlmRequest requestFor(String model) {
-        return new LlmRequest(model, List.of(new LlmMessage("user", "hi")), 0.0, 100, List.of(),
-            null);
+        return new LlmRequest(
+                model, List.of(new LlmMessage("user", "hi")), 0.0, 100, List.of(), null);
     }
 
     private static LlmClient closeableClient() {
@@ -61,13 +63,14 @@ class ModelRoutingLlmClientTest {
         LlmClient fallback = mock(LlmClient.class);
         LlmClient azure = mock(LlmClient.class);
         ModelRoutingLlmClient router =
-            new ModelRoutingLlmClient(fallback, routes("gpt-5.6-luna", "azure-openai-responses"),
-                Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, azure));
+                new ModelRoutingLlmClient(
+                        fallback,
+                        routes("gpt-5.6-luna", "azure-openai-responses"),
+                        Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, azure));
 
         LlmRequest request = requestFor("gpt-5.6-luna");
         router.generate(request);
-        router.generateStream(request, c -> {
-        });
+        router.generateStream(request, c -> {});
 
         verify(azure).generate(same(request));
         verify(azure).generateStream(same(request), any());
@@ -79,13 +82,14 @@ class ModelRoutingLlmClientTest {
         LlmClient fallback = mock(LlmClient.class);
         LlmClient azure = mock(LlmClient.class);
         ModelRoutingLlmClient router =
-            new ModelRoutingLlmClient(fallback, routes("gpt-5.6-luna", "azure-openai-responses"),
-                Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, azure));
+                new ModelRoutingLlmClient(
+                        fallback,
+                        routes("gpt-5.6-luna", "azure-openai-responses"),
+                        Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, azure));
 
         LlmRequest request = requestFor("gemini-3.6-flash");
         router.generate(request);
-        router.generateStream(request, c -> {
-        });
+        router.generateStream(request, c -> {});
 
         verify(fallback).generate(same(request));
         verify(fallback).generateStream(same(request), any());
@@ -101,9 +105,11 @@ class ModelRoutingLlmClientTest {
     @Test
     void theRequestIsForwardedWithoutBeingRewritten() {
         LlmClient azure = mock(LlmClient.class);
-        ModelRoutingLlmClient router = new ModelRoutingLlmClient(mock(LlmClient.class),
-            routes("gpt-5.6-luna", "azure-openai-responses"),
-            Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, azure));
+        ModelRoutingLlmClient router =
+                new ModelRoutingLlmClient(
+                        mock(LlmClient.class),
+                        routes("gpt-5.6-luna", "azure-openai-responses"),
+                        Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, azure));
 
         LlmRequest mixedCase = requestFor("GPT-5.6-Luna");
         router.generate(mixedCase);
@@ -116,8 +122,10 @@ class ModelRoutingLlmClientTest {
     void aNullOrBlankModelGoesToTheDefaultRatherThanFailing() {
         LlmClient fallback = mock(LlmClient.class);
         ModelRoutingLlmClient router =
-            new ModelRoutingLlmClient(fallback, routes("gpt-5.6-luna", "azure-openai-responses"),
-                Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, mock(LlmClient.class)));
+                new ModelRoutingLlmClient(
+                        fallback,
+                        routes("gpt-5.6-luna", "azure-openai-responses"),
+                        Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, mock(LlmClient.class)));
 
         assertThat(router.clientFor(null)).isSameAs(fallback);
         assertThat(router.clientFor("  ")).isSameAs(fallback);
@@ -129,8 +137,10 @@ class ModelRoutingLlmClientTest {
         LlmClient fallback = mock(LlmClient.class);
         LlmClient azure = mock(LlmClient.class);
 
-        new ModelRoutingLlmClient(fallback, routes("m", "azure-openai-responses"),
-            Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, azure));
+        new ModelRoutingLlmClient(
+                fallback,
+                routes("m", "azure-openai-responses"),
+                Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, azure));
 
         verifyNoInteractions(fallback, azure);
     }
@@ -141,25 +151,34 @@ class ModelRoutingLlmClientTest {
      */
     @Test
     void aDeclaredRouteWithNoClientFailsAtConstruction() {
-        assertThatThrownBy(() -> new ModelRoutingLlmClient(mock(LlmClient.class),
-            routes("gpt-5.6-luna", "azure-openai-responses"), Map.of()))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("azure-openai-responses");
+        assertThatThrownBy(() ->
+                        new ModelRoutingLlmClient(
+                                mock(LlmClient.class),
+                                routes("gpt-5.6-luna", "azure-openai-responses"),
+                                Map.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("azure-openai-responses");
     }
 
     /**
      * The router is the bean, so the clients it wraps are not managed by Spring and would never be
-     * closed otherwise. The default client is routinely ALSO a route target — default
-     * {@code gemini} plus a model pinned to {@code gemini} is the ordinary case — so closing by
-     * identity rather than by map entry is what stops one client being closed twice.
+     * closed otherwise. The default client is routinely ALSO a route target — default {@code
+     * gemini} plus a model pinned to {@code gemini} is the ordinary case — so closing by identity
+     * rather than by map entry is what stops one client being closed twice.
      */
     @Test
     void closeReachesEachDistinctDelegateExactlyOnce() throws Exception {
         LlmClient gemini = closeableClient();
         LlmClient azure = closeableClient();
         ModelRoutingLlmClient router =
-            new ModelRoutingLlmClient(gemini, routes("a", "gemini", "b", "azure-openai-responses"),
-                Map.of(LlmRouteId.GEMINI, gemini, LlmRouteId.AZURE_OPENAI_RESPONSES, azure));
+                new ModelRoutingLlmClient(
+                        gemini,
+                        routes("a", "gemini", "b", "azure-openai-responses"),
+                        Map.of(
+                                LlmRouteId.GEMINI,
+                                gemini,
+                                LlmRouteId.AZURE_OPENAI_RESPONSES,
+                                azure));
 
         router.close();
 
@@ -172,8 +191,10 @@ class ModelRoutingLlmClientTest {
         LlmClient notCloseable = mock(LlmClient.class);
         LlmClient azure = closeableClient();
         ModelRoutingLlmClient router =
-            new ModelRoutingLlmClient(notCloseable, routes("b", "azure-openai-responses"),
-                Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, azure));
+                new ModelRoutingLlmClient(
+                        notCloseable,
+                        routes("b", "azure-openai-responses"),
+                        Map.of(LlmRouteId.AZURE_OPENAI_RESPONSES, azure));
 
         router.close();
 

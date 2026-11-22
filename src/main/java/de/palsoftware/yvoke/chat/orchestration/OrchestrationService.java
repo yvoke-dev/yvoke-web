@@ -60,10 +60,15 @@ public class OrchestrationService {
     private final ConversationRepository conversationRepository;
 
     @Autowired
-    public OrchestrationService(RagService ragService, PlaybookService playbookService,
-        OrchestratorProperties properties, @Nullable OrchestratorProfileService profileService,
-        AgentRunRepository runRepository, AgentStepRepository stepRepository,
-        ObjectMapper objectMapper, @Nullable ConversationRepository conversationRepository) {
+    public OrchestrationService(
+            RagService ragService,
+            PlaybookService playbookService,
+            OrchestratorProperties properties,
+            @Nullable OrchestratorProfileService profileService,
+            AgentRunRepository runRepository,
+            AgentStepRepository stepRepository,
+            ObjectMapper objectMapper,
+            @Nullable ConversationRepository conversationRepository) {
         this.ragService = ragService;
         this.playbookService = playbookService;
         this.properties = properties;
@@ -80,7 +85,7 @@ public class OrchestrationService {
         }
         String trimmed = name.trim();
         return (profileService != null && profileService.getProfile(trimmed).isPresent())
-            || properties.profile(trimmed).isPresent();
+                || properties.profile(trimmed).isPresent();
     }
 
     public Optional<String> getProfileArea(String name) {
@@ -104,14 +109,26 @@ public class OrchestrationService {
         return Optional.empty();
     }
 
-    public record OrchestrationResult(String content, List<UUID> retrievedChunkIds,
-        List<UUID> searchIds, int promptTokens, int completionTokens, int totalTokens,
-        int cachedTokens, int thoughtTokens, String status) {}
+    public record OrchestrationResult(
+            String content,
+            List<UUID> retrievedChunkIds,
+            List<UUID> searchIds,
+            int promptTokens,
+            int completionTokens,
+            int totalTokens,
+            int cachedTokens,
+            int thoughtTokens,
+            String status) {}
 
     /** Blocking; intended to run on a background (virtual) thread with area isolation. */
-    public OrchestrationResult runOrchestration(UUID conversationId, UUID messageId,
-        String question, List<LlmMessage> history, UUID agentRunId, String profileName,
-        Set<String> allowedAreasLower) {
+    public OrchestrationResult runOrchestration(
+            UUID conversationId,
+            UUID messageId,
+            String question,
+            List<LlmMessage> history,
+            UUID agentRunId,
+            String profileName,
+            Set<String> allowedAreasLower) {
         Objects.requireNonNull(allowedAreasLower, "allowedAreasLower must not be null");
 
         ResolvedProfile profile;
@@ -119,18 +136,25 @@ public class OrchestrationService {
         Playbook reviewerPlaybook;
         List<Playbook> specialists;
         try {
-            profile = profileService != null ? profileService.resolve(profileName)
-                : properties.resolve(profileName);
+            profile =
+                    profileService != null
+                            ? profileService.resolve(profileName)
+                            : properties.resolve(profileName);
             orchestratorPlaybook = requirePlaybook(profile.orchestratorPlaybook(), "orchestrator");
             reviewerPlaybook = requirePlaybook(profile.reviewerPlaybook(), "reviewer");
-            specialists = profile.specialistPlaybooks().stream()
-                .map(n -> requirePlaybook(n, "specialist")).toList();
+            specialists =
+                    profile.specialistPlaybooks().stream()
+                            .map(n -> requirePlaybook(n, "specialist"))
+                            .toList();
         } catch (Exception e) {
             // Resolution runs before the run row exists, so a missing profile or playbook used to
             // leave no agent_runs row at all — the run simply vanished and the only account of it
             // was in the container log. Record it, then rethrow unchanged.
-            log.error("Orchestration setup failed for conversation {} (run {})", conversationId,
-                agentRunId, e);
+            log.error(
+                    "Orchestration setup failed for conversation {} (run {})",
+                    conversationId,
+                    agentRunId,
+                    e);
             recordSetupFailure(agentRunId, conversationId, profileName, e);
             throw e;
         }
@@ -139,18 +163,25 @@ public class OrchestrationService {
         runRepository.create(agentRunId, conversationId, profileName, configSnapshot(profile));
 
         Set<String> effectiveAreas = allowedAreasLower;
-        if (effectiveAreas.contains("*") && orchestratorPlaybook.area() != null
-            && !orchestratorPlaybook.area().isBlank()) {
+        if (effectiveAreas.contains("*")
+                && orchestratorPlaybook.area() != null
+                && !orchestratorPlaybook.area().isBlank()) {
             effectiveAreas = Set.of(orchestratorPlaybook.area().trim().toLowerCase(Locale.ROOT));
         }
 
         RunState st =
-            new RunState(agentRunId, conversationId, messageId, profile,
-                conversationRepository != null
-                    ? conversationRepository.findById(conversationId).map(Conversation::userId)
-                        .orElse(null)
-                    : null,
-                effectiveAreas);
+                new RunState(
+                        agentRunId,
+                        conversationId,
+                        messageId,
+                        profile,
+                        conversationRepository != null
+                                ? conversationRepository
+                                        .findById(conversationId)
+                                        .map(Conversation::userId)
+                                        .orElse(null)
+                                : null,
+                        effectiveAreas);
         st.specialistCfg = profile.specialist();
         int round = 0;
         String answer = "";
@@ -159,9 +190,12 @@ public class OrchestrationService {
         String content;
 
         try {
-            String orchestratorSystemPrompt = orchestratorPlaybook.templateText()
-                + "\n\n## Available specialists\n" + renderRoster(specialists)
-                + "\n\n## Output contract\n" + ANSWER_MARKER_CONTRACT;
+            String orchestratorSystemPrompt =
+                    orchestratorPlaybook.templateText()
+                            + "\n\n## Available specialists\n"
+                            + renderRoster(specialists)
+                            + "\n\n## Output contract\n"
+                            + ANSWER_MARKER_CONTRACT;
 
             Verdict lastRejection = null;
             while (true) {
@@ -174,27 +208,45 @@ public class OrchestrationService {
                 // reviewer; that travels as text, and only the entries not already sent, since
                 // anything sent in an earlier round is still in the transcript.
                 boolean revising = lastRejection != null;
-                String orchestratorQuery = revising
-                    ? renderRevisionTask(st.evidence.subList(st.evidenceSent, st.evidence.size()),
-                        st.evidence, answer, lastRejection)
-                    : question;
+                String orchestratorQuery =
+                        revising
+                                ? renderRevisionTask(
+                                        st.evidence.subList(st.evidenceSent, st.evidence.size()),
+                                        st.evidence,
+                                        answer,
+                                        lastRejection)
+                                : question;
                 st.evidenceSent = st.evidence.size();
 
                 // Orchestrator turn — may call specialists via call_specialist.
-                ToolCallback callSpecialist = new CallSpecialistTool(objectMapper, specialistNames,
-                    (pbName, subQuestion) -> runSpecialist(st, specialists, pbName, subQuestion));
+                ToolCallback callSpecialist =
+                        new CallSpecialistTool(
+                                objectMapper,
+                                specialistNames,
+                                (pbName, subQuestion) ->
+                                        runSpecialist(st, specialists, pbName, subQuestion));
                 // verify_citations is the orchestrator's own pre-flight check. A fabricated id is
                 // the one citation defect a machine can settle — CitationVerifier resolves it
                 // against the corpus — so leaving it to the reviewer spends a whole round (~50k
                 // tokens) learning what one tool call answers. It does NOT check that a real id
                 // supports the claim it sits on: that loads no chunk text, and stays the reviewer's
                 // job.
-                AgentOutcome orch = runAgent(st, ROLE_ORCHESTRATOR, orchestratorPlaybook.name(),
-                    orchestratorPlaybook.version(), orchestratorSystemPrompt, orchestratorQuery,
-                    orchestratorQuery, profile.orchestrator(),
-                    List.of("ask_clarifying_question", "verify_citations"), false,
-                    List.<ToolCallback>of(callSpecialist), revising ? null : history,
-                    st.orchestratorMessages, null);
+                AgentOutcome orch =
+                        runAgent(
+                                st,
+                                ROLE_ORCHESTRATOR,
+                                orchestratorPlaybook.name(),
+                                orchestratorPlaybook.version(),
+                                orchestratorSystemPrompt,
+                                orchestratorQuery,
+                                orchestratorQuery,
+                                profile.orchestrator(),
+                                List.of("ask_clarifying_question", "verify_citations"),
+                                false,
+                                List.<ToolCallback>of(callSpecialist),
+                                revising ? null : history,
+                                st.orchestratorMessages,
+                                null);
                 // Everything this turn said and was told, carried into the next round. The prior
                 // conversation is already inside it, so the chat history is passed only on the
                 // first turn — after that it is in the transcript and re-sending would duplicate.
@@ -214,10 +266,11 @@ public class OrchestrationService {
                 Verdict[] holder = new Verdict[1];
                 ToolCallback submitReview = new SubmitReviewTool(objectMapper, v -> holder[0] = v);
                 boolean resumingReview =
-                    st.reviewerMessages != null && !st.reviewerMessages.isEmpty();
+                        st.reviewerMessages != null && !st.reviewerMessages.isEmpty();
                 String reviewTask =
-                    resumingReview ? renderReviewFollowUp(answer, st.evidence, st.reviewerSent)
-                        : renderReviewTask(question, answer, st.evidence, st.reviewerSent);
+                        resumingReview
+                                ? renderReviewFollowUp(answer, st.evidence, st.reviewerSent)
+                                : renderReviewTask(question, answer, st.evidence, st.reviewerSent);
                 // Never any history, and never the ORCHESTRATOR's transcript: the reviewer judges
                 // an answer against sources, and holding the deliberation that produced the draft
                 // would make it a participant in the negotiation rather than a check on it.
@@ -241,10 +294,22 @@ public class OrchestrationService {
                     // ignores it whenever priorMessages is non-empty, precisely so a resumed turn
                     // cannot have index 0 rewritten under the answers already given to it.
                     String reviewerSystemPrompt = reviewerPlaybook.templateText();
-                    AgentOutcome rev = runAgent(st, ROLE_REVIEWER, reviewerPlaybook.name(),
-                        reviewerPlaybook.version(), reviewerSystemPrompt, reviewTask, reviewTask,
-                        profile.reviewer(), List.of("verify_citations"), false,
-                        List.<ToolCallback>of(submitReview), null, st.reviewerMessages, holder);
+                    AgentOutcome rev =
+                            runAgent(
+                                    st,
+                                    ROLE_REVIEWER,
+                                    reviewerPlaybook.name(),
+                                    reviewerPlaybook.version(),
+                                    reviewerSystemPrompt,
+                                    reviewTask,
+                                    reviewTask,
+                                    profile.reviewer(),
+                                    List.of("verify_citations"),
+                                    false,
+                                    List.<ToolCallback>of(submitReview),
+                                    null,
+                                    st.reviewerMessages,
+                                    holder);
                     if (rev.result().messages() != null && !rev.result().messages().isEmpty()) {
                         st.reviewerMessages = rev.result().messages();
                     }
@@ -267,16 +332,28 @@ public class OrchestrationService {
                         // empty answer, which is worse than the failure it hides.
                         throw reviewerDied;
                     }
-                    log.error("Reviewer failed on round {} of run {}; delivering the unreviewed "
-                        + "draft rather than discarding it", round, agentRunId, reviewerDied);
+                    log.error(
+                            "Reviewer failed on round {} of run {}; delivering the unreviewed "
+                                    + "draft rather than discarding it",
+                            round,
+                            agentRunId,
+                            reviewerDied);
                     status = "delivered_flagged";
                     content = answer + unreviewedNote();
-                    finishOffInterrupt(agentRunId, messageId, status, round, verdict, st,
-                        composeRunError(st, reviewerDied));
+                    finishOffInterrupt(
+                            agentRunId,
+                            messageId,
+                            status,
+                            round,
+                            verdict,
+                            st,
+                            composeRunError(st, reviewerDied));
                     return result(st, content, status);
                 }
-                verdict = holder[0] != null ? holder[0]
-                    : Verdict.reject("Reviewer did not submit a verdict.");
+                verdict =
+                        holder[0] != null
+                                ? holder[0]
+                                : Verdict.reject("Reviewer did not submit a verdict.");
 
                 if (verdict.approved() || round >= profile.maxReviewRounds()) {
                     break;
@@ -294,15 +371,20 @@ public class OrchestrationService {
             // A user pressing Stop is not a failure. CancellationException is a RuntimeException,
             // so it shared the catch below and every cancelled run was filed as 'error' with a
             // meaningless message — indistinguishable, afterwards, from a genuine fault.
-            log.info("Orchestration cancelled for conversation {} (run {})", conversationId,
-                agentRunId);
+            log.info(
+                    "Orchestration cancelled for conversation {} (run {})",
+                    conversationId,
+                    agentRunId);
             finishOffInterrupt(agentRunId, messageId, "cancelled", round, verdict, st, null);
             throw e;
         } catch (Exception e) {
-            log.error("Orchestration failed for conversation {} (run {})", conversationId,
-                agentRunId, e);
-            finishOffInterrupt(agentRunId, messageId, "error", round, verdict, st,
-                composeRunError(st, e));
+            log.error(
+                    "Orchestration failed for conversation {} (run {})",
+                    conversationId,
+                    agentRunId,
+                    e);
+            finishOffInterrupt(
+                    agentRunId, messageId, "error", round, verdict, st, composeRunError(st, e));
             throw e;
         }
     }
@@ -311,16 +393,28 @@ public class OrchestrationService {
      * Records a failure that happened before the run row existed, so it is still visible in the
      * admin trace. Best-effort: a failure to write must not replace the real exception.
      */
-    private void recordSetupFailure(UUID agentRunId, UUID conversationId, String profileName,
-        Exception cause) {
+    private void recordSetupFailure(
+            UUID agentRunId, UUID conversationId, String profileName, Exception cause) {
         try {
             runRepository.create(agentRunId, conversationId, profileName, null);
-            runRepository.finish(agentRunId, null, "error", 0, null, 0, 0, 0, 0, 0,
-                "agent: (run did not start — profile/playbook resolution failed)\n"
-                    + LlmFailureSummary.detail(cause));
+            runRepository.finish(
+                    agentRunId,
+                    null,
+                    "error",
+                    0,
+                    null,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    "agent: (run did not start — profile/playbook resolution failed)\n"
+                            + LlmFailureSummary.detail(cause));
         } catch (Exception recordingFailure) {
-            log.warn("Could not record orchestration setup failure for run {}: {}", agentRunId,
-                recordingFailure.toString());
+            log.warn(
+                    "Could not record orchestration setup failure for run {}: {}",
+                    agentRunId,
+                    recordingFailure.toString());
         }
     }
 
@@ -328,11 +422,10 @@ public class OrchestrationService {
      * Composes what the admin page shows for a failed run: which agent was executing, then the
      * decoded provider diagnosis.
      *
-     * <p>
-     * The agent line is only emitted when the recorded context belongs to <em>this</em> exception.
-     * A specialist failure that the orchestrator recovered from leaves {@code lastFailure} behind,
-     * and stamping it onto a later, unrelated error would name the wrong agent with full
-     * confidence.
+     * <p>The agent line is only emitted when the recorded context belongs to <em>this</em>
+     * exception. A specialist failure that the orchestrator recovered from leaves {@code
+     * lastFailure} behind, and stamping it onto a later, unrelated error would name the wrong agent
+     * with full confidence.
      */
     private static String composeRunError(RunState st, Throwable e) {
         String agentLine = "agent: (context unavailable)";
@@ -345,20 +438,27 @@ public class OrchestrationService {
     /**
      * Runs {@code finish} with the interrupt flag cleared, restoring it afterwards.
      *
-     * <p>
-     * Cancellation arrives as a thread interrupt, and a JDBC write on an interrupted thread can be
-     * refused — which would silently lose the very record that makes a cancelled or aborted run
+     * <p>Cancellation arrives as a thread interrupt, and a JDBC write on an interrupted thread can
+     * be refused — which would silently lose the very record that makes a cancelled or aborted run
      * visible. {@code ChatMessageService} clears the flag for the same reason before its own
      * writes.
      */
-    private void finishOffInterrupt(UUID agentRunId, UUID messageId, String status, int round,
-        Verdict verdict, RunState st, String error) {
+    private void finishOffInterrupt(
+            UUID agentRunId,
+            UUID messageId,
+            String status,
+            int round,
+            Verdict verdict,
+            RunState st,
+            String error) {
         boolean wasInterrupted = Thread.interrupted();
         try {
             finish(agentRunId, messageId, status, round, verdict, st, error);
         } catch (Exception writeFailure) {
-            log.warn("Could not record orchestration outcome for run {}: {}", agentRunId,
-                writeFailure.toString());
+            log.warn(
+                    "Could not record orchestration outcome for run {}: {}",
+                    agentRunId,
+                    writeFailure.toString());
         } finally {
             if (wasInterrupted) {
                 Thread.currentThread().interrupt();
@@ -367,18 +467,25 @@ public class OrchestrationService {
     }
 
     /** Invoked by call_specialist: runs one specialist, records the step, harvests its evidence. */
-    private String runSpecialist(RunState st, List<Playbook> specialists, String playbookName,
-        String subQuestion) {
-        int maxCalls = st.profile != null ? st.profile.maxSpecialistCalls()
-            : properties.resolvedMaxSpecialistCalls();
+    private String runSpecialist(
+            RunState st, List<Playbook> specialists, String playbookName, String subQuestion) {
+        int maxCalls =
+                st.profile != null
+                        ? st.profile.maxSpecialistCalls()
+                        : properties.resolvedMaxSpecialistCalls();
         if (st.specialistCalls >= maxCalls) {
-            return "Specialist-call budget exhausted (" + maxCalls
-                + "). Synthesise your answer from the specialist results you already have.";
+            return "Specialist-call budget exhausted ("
+                    + maxCalls
+                    + "). Synthesise your answer from the specialist results you already have.";
         }
         st.specialistCalls++;
         Playbook pb =
-            specialists.stream().filter(p -> p.name().equals(playbookName)).findFirst().orElseThrow(
-                () -> new IllegalArgumentException("Specialist not in profile: " + playbookName));
+                specialists.stream()
+                        .filter(p -> p.name().equals(playbookName))
+                        .findFirst()
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Specialist not in profile: " + playbookName));
 
         List<LlmMessage> priorSpecialistMessages = st.specialistMessages.get(pb.name());
         List<String> allowed = new ArrayList<>(pb.tools() != null ? pb.tools() : List.of());
@@ -386,9 +493,22 @@ public class OrchestrationService {
             allowed.add("ask_clarifying_question");
         }
 
-        AgentOutcome outcome = runAgent(st, ROLE_SPECIALIST, pb.name(), pb.version(),
-            pb.templateText(), subQuestion, subQuestion, profileSpecialistCfg(st), allowed,
-            pb.codeExecution(), List.<ToolCallback>of(), null, priorSpecialistMessages, null);
+        AgentOutcome outcome =
+                runAgent(
+                        st,
+                        ROLE_SPECIALIST,
+                        pb.name(),
+                        pb.version(),
+                        pb.templateText(),
+                        subQuestion,
+                        subQuestion,
+                        profileSpecialistCfg(st),
+                        allowed,
+                        pb.codeExecution(),
+                        List.<ToolCallback>of(),
+                        null,
+                        priorSpecialistMessages,
+                        null);
 
         if (outcome.result().messages() != null && !outcome.result().messages().isEmpty()) {
             st.specialistMessages.put(pb.name(), outcome.result().messages());
@@ -398,14 +518,17 @@ public class OrchestrationService {
 
         if (outcome.result().clarifyingQuestion() != null) {
             StringBuilder sb = new StringBuilder();
-            sb.append("SPECIALIST NEEDS CLARIFICATION (").append(pb.name()).append("): ")
-                .append(outcome.result().clarifyingQuestion());
+            sb.append("SPECIALIST NEEDS CLARIFICATION (")
+                    .append(pb.name())
+                    .append("): ")
+                    .append(outcome.result().clarifyingQuestion());
             List<String> opts = outcome.result().clarifyingOptions();
             if (opts != null && !opts.isEmpty()) {
                 sb.append(" Options: ").append(String.join(" | ", opts));
             }
-            sb.append("\nResolve it from the conversation context and re-call this specialist with "
-                + "the clarified question, or if you cannot, ask the user via ask_clarifying_question.");
+            sb.append(
+                    "\nResolve it from the conversation context and re-call this specialist with "
+                            + "the clarified question, or if you cannot, ask the user via ask_clarifying_question.");
             return sb.toString();
         }
         String answer = outcome.answerText();
@@ -423,11 +546,21 @@ public class OrchestrationService {
      * tokens / retrieved chunks into the run state. {@code verdictHolder} (reviewer only) is read
      * after the run to store the verdict on the step.
      */
-    private AgentOutcome runAgent(RunState st, String role, String playbookName,
-        Integer playbookVersion, String systemPromptOverride, String query, String traceInput,
-        OrchestratorProperties.RoleConfig cfg, List<String> allowedTools, boolean codeExecution,
-        List<ToolCallback> extraTools, List<LlmMessage> history, List<LlmMessage> priorMessages,
-        Verdict[] verdictHolder) {
+    private AgentOutcome runAgent(
+            RunState st,
+            String role,
+            String playbookName,
+            Integer playbookVersion,
+            String systemPromptOverride,
+            String query,
+            String traceInput,
+            OrchestratorProperties.RoleConfig cfg,
+            List<String> allowedTools,
+            boolean codeExecution,
+            List<ToolCallback> extraTools,
+            List<LlmMessage> history,
+            List<LlmMessage> priorMessages,
+            Verdict[] verdictHolder) {
 
         // Allocated when the step STARTS, not when it finishes. A specialist runs nested inside the
         // orchestrator's turn and therefore completes first, so numbering on completion recorded
@@ -443,30 +576,51 @@ public class OrchestrationService {
         // including the final synthesis — would be logged with no conversation, run or user.
         LlmCallContextHolder.Context previousContext = LlmCallContextHolder.get();
         try {
-            LlmCallContextHolder.set(st.conversationId, st.messageId, st.runId, st.userId,
-                "orchestrator", role);
+            LlmCallContextHolder.set(
+                    st.conversationId, st.messageId, st.runId, st.userId, "orchestrator", role);
             RagResult result =
-                ragService.generateAgenticAnswer(
-                    AgenticRequest.builder().query(query).modelOverride(cfg.model())
-                        .history(history).priorMessages(priorMessages)
-                        .systemPromptOverride(systemPromptOverride).allowedTools(allowedTools)
-                        .thinkingLevel(cfg.thinkingLevel()).codeExecution(codeExecution)
-                        .extraTools(extraTools).allowedAreasLower(st.allowedAreasLower).build(),
-                    token -> {
-                        if (token != null) {
-                            emitted.append(token);
-                        }
-                    });
+                    ragService.generateAgenticAnswer(
+                            AgenticRequest.builder()
+                                    .query(query)
+                                    .modelOverride(cfg.model())
+                                    .history(history)
+                                    .priorMessages(priorMessages)
+                                    .systemPromptOverride(systemPromptOverride)
+                                    .allowedTools(allowedTools)
+                                    .thinkingLevel(cfg.thinkingLevel())
+                                    .codeExecution(codeExecution)
+                                    .extraTools(extraTools)
+                                    .allowedAreasLower(st.allowedAreasLower)
+                                    .build(),
+                            token -> {
+                                if (token != null) {
+                                    emitted.append(token);
+                                }
+                            });
 
             String answerText = extractAnswerText(result, emitted.toString());
             Verdict verdict = verdictHolder != null ? verdictHolder[0] : null;
 
             st.accumulate(result);
-            stepRepository.insert(UUID.randomUUID(), st.runId, seq, role, st.round, playbookName,
-                playbookVersion, cfg.model(), cfg.thinkingLevel(), traceInput, emitted.toString(),
-                messagesAddedBy(result, priorMessages), verdict, result.promptTokens(),
-                result.completionTokens(), result.totalTokens(), result.cachedTokens(),
-                result.thoughtTokens());
+            stepRepository.insert(
+                    UUID.randomUUID(),
+                    st.runId,
+                    seq,
+                    role,
+                    st.round,
+                    playbookName,
+                    playbookVersion,
+                    cfg.model(),
+                    cfg.thinkingLevel(),
+                    traceInput,
+                    emitted.toString(),
+                    messagesAddedBy(result, priorMessages),
+                    verdict,
+                    result.promptTokens(),
+                    result.completionTokens(),
+                    result.totalTokens(),
+                    result.cachedTokens(),
+                    result.thoughtTokens());
 
             // LLM usage is accounted for by AccountingLlmClient, one row per actual call, using
             // the source/role set on LlmCallContextHolder above.
@@ -477,15 +631,27 @@ public class OrchestrationService {
             // its role, playbook, model, prompt and partially-streamed output died with the frame.
             st.lastFailure = new FailureContext(e, role, playbookName, cfg.model(), st.round, seq);
             if (!(e instanceof CancellationException)) {
-                recordFailedStep(st, seq, role, playbookName, playbookVersion, cfg, traceInput,
-                    emitted.toString(), e);
+                recordFailedStep(
+                        st,
+                        seq,
+                        role,
+                        playbookName,
+                        playbookVersion,
+                        cfg,
+                        traceInput,
+                        emitted.toString(),
+                        e);
             }
             throw e;
         } finally {
             if (previousContext != null) {
-                LlmCallContextHolder.set(previousContext.conversationId(),
-                    previousContext.messageId(), previousContext.agentRunId(),
-                    previousContext.userId(), previousContext.source(), previousContext.role());
+                LlmCallContextHolder.set(
+                        previousContext.conversationId(),
+                        previousContext.messageId(),
+                        previousContext.agentRunId(),
+                        previousContext.userId(),
+                        previousContext.source(),
+                        previousContext.role());
             } else {
                 LlmCallContextHolder.clear();
             }
@@ -496,16 +662,36 @@ public class OrchestrationService {
      * Writes the trace row for an agent that threw. Best-effort and deliberately swallowing: a
      * failure to record must never replace the exception the caller is about to see.
      */
-    private void recordFailedStep(RunState st, int seq, String role, String playbookName,
-        Integer playbookVersion, OrchestratorProperties.RoleConfig cfg, String traceInput,
-        String partialOutput, Throwable cause) {
+    private void recordFailedStep(
+            RunState st,
+            int seq,
+            String role,
+            String playbookName,
+            Integer playbookVersion,
+            OrchestratorProperties.RoleConfig cfg,
+            String traceInput,
+            String partialOutput,
+            Throwable cause) {
         try {
-            stepRepository.insertFailed(UUID.randomUUID(), st.runId, seq, role, st.round,
-                playbookName, playbookVersion, cfg.model(), cfg.thinkingLevel(), traceInput,
-                partialOutput, LlmFailureSummary.detail(cause));
+            stepRepository.insertFailed(
+                    UUID.randomUUID(),
+                    st.runId,
+                    seq,
+                    role,
+                    st.round,
+                    playbookName,
+                    playbookVersion,
+                    cfg.model(),
+                    cfg.thinkingLevel(),
+                    traceInput,
+                    partialOutput,
+                    LlmFailureSummary.detail(cause));
         } catch (Exception recordingFailure) {
-            log.warn("Could not record failed {} step for run {}: {}", role, st.runId,
-                recordingFailure.toString());
+            log.warn(
+                    "Could not record failed {} step for run {}: {}",
+                    role,
+                    st.runId,
+                    recordingFailure.toString());
         }
     }
 
@@ -513,16 +699,39 @@ public class OrchestrationService {
         return st.specialistCfg;
     }
 
-    private void finish(UUID agentRunId, UUID messageId, String status, int round, Verdict verdict,
-        RunState st, String error) {
-        runRepository.finish(agentRunId, messageId, status, round, verdict, st.promptTokens,
-            st.completionTokens, st.totalTokens, st.cachedTokens, st.thoughtTokens, error);
+    private void finish(
+            UUID agentRunId,
+            UUID messageId,
+            String status,
+            int round,
+            Verdict verdict,
+            RunState st,
+            String error) {
+        runRepository.finish(
+                agentRunId,
+                messageId,
+                status,
+                round,
+                verdict,
+                st.promptTokens,
+                st.completionTokens,
+                st.totalTokens,
+                st.cachedTokens,
+                st.thoughtTokens,
+                error);
     }
 
     private OrchestrationResult result(RunState st, String content, String status) {
-        return new OrchestrationResult(content, new ArrayList<>(st.chunkIds),
-            new ArrayList<>(st.searchIds), st.promptTokens, st.completionTokens, st.totalTokens,
-            st.cachedTokens, st.thoughtTokens, status);
+        return new OrchestrationResult(
+                content,
+                new ArrayList<>(st.chunkIds),
+                new ArrayList<>(st.searchIds),
+                st.promptTokens,
+                st.completionTokens,
+                st.totalTokens,
+                st.cachedTokens,
+                st.thoughtTokens,
+                status);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -530,12 +739,19 @@ public class OrchestrationService {
     // ------------------------------------------------------------------------------------------
 
     private Playbook requirePlaybook(String name, String role) {
-        Playbook pb = playbookService.getPlaybook(name)
-            .orElseThrow(() -> new IllegalStateException("Orchestrator " + role + " playbook '"
-                + name + "' is not defined in the playbooks table."));
+        Playbook pb =
+                playbookService
+                        .getPlaybook(name)
+                        .orElseThrow(() ->
+                                new IllegalStateException(
+                                        "Orchestrator "
+                                                + role
+                                                + " playbook '"
+                                                + name
+                                                + "' is not defined in the playbooks table."));
         if (pb.templateText() == null || pb.templateText().isBlank()) {
             throw new IllegalStateException(
-                "Orchestrator " + role + " playbook '" + name + "' has empty template text.");
+                    "Orchestrator " + role + " playbook '" + name + "' has empty template text.");
         }
         return pb;
     }
@@ -558,18 +774,19 @@ public class OrchestrationService {
      * new: the specialists' own tool output, which the orchestrator never saw because it lives
      * inside the specialists' nested runs, and what the reviewer wants changed.
      *
-     * <p>
-     * De-duplicated but deliberately NOT cite-scoped. The draft is the thing being revised, and the
-     * reviewer's objection is usually that some claim is unsupported — so the material this turn
-     * needs is exactly what the draft does not yet cite. Scoping it would hand the orchestrator
-     * only what it already used and send it back to delegate for evidence it was holding.
+     * <p>De-duplicated but deliberately NOT cite-scoped. The draft is the thing being revised, and
+     * the reviewer's objection is usually that some claim is unsupported — so the material this
+     * turn needs is exactly what the draft does not yet cite. Scoping it would hand the
+     * orchestrator only what it already used and send it back to delegate for evidence it was
+     * holding.
      */
-    private static String renderRevisionTask(List<String> newEvidence, List<String> allEvidence,
-        String draft, Verdict verdict) {
+    private static String renderRevisionTask(
+            List<String> newEvidence, List<String> allEvidence, String draft, Verdict verdict) {
         StringBuilder sb = new StringBuilder();
         if (!newEvidence.isEmpty()) {
             sb.append("## Source evidence behind the specialist answers above\n")
-                .append(EvidenceDigest.deduped(newEvidence)).append("\n\n");
+                    .append(EvidenceDigest.deduped(newEvidence))
+                    .append("\n\n");
         } else if (allEvidence != null && !allEvidence.isEmpty() && draft != null) {
             // Evidence travels as a DELTA, because the orchestrator's message list is cumulative
             // and re-sending it would duplicate the largest block in the prompt every round. From
@@ -593,13 +810,15 @@ public class OrchestrationService {
             // the mis-citation count climb. Suppressing a body because it was sent once would
             // reinstate that, so this render always stands alone.
             String cited =
-                EvidenceDigest.citeScoped(allEvidence, idsUnderReview(verdict, draft), null);
+                    EvidenceDigest.citeScoped(allEvidence, idsUnderReview(verdict, draft), null);
             if (!cited.isBlank()) {
                 sb.append("## The sources your answer currently cites\n")
-                    .append("Re-read these before moving any citation: they are what the reviewer "
-                        + "judged, and a claim is mis-cited only if the text below does not say "
-                        + "it.\n\n")
-                    .append(cited).append("\n\n");
+                        .append(
+                                "Re-read these before moving any citation: they are what the reviewer "
+                                        + "judged, and a claim is mis-cited only if the text below does not say "
+                                        + "it.\n\n")
+                        .append(cited)
+                        .append("\n\n");
             }
         }
         sb.append("## Reviewer feedback to address\n").append(verdict.feedback()).append("\n\n");
@@ -610,10 +829,11 @@ public class OrchestrationService {
         // because a rejection reads as a research failure unless something says otherwise.
         if (!verdict.citationFixes().isEmpty()) {
             sb.append("## Citation fixes — no research needed\n");
-            sb.append("Each of these is repairable from evidence **already supplied** above: the "
-                + "source was retrieved, the citation on it is wrong, missing or duplicated. Apply "
-                + "them by editing the answer's citations and `## References` — do NOT call "
-                + "call_specialist for any of them.\n");
+            sb.append(
+                    "Each of these is repairable from evidence **already supplied** above: the "
+                            + "source was retrieved, the citation on it is wrong, missing or duplicated. Apply "
+                            + "them by editing the answer's citations and `## References` — do NOT call "
+                            + "call_specialist for any of them.\n");
             for (String fix : verdict.citationFixes()) {
                 sb.append("- ").append(fix).append("\n");
             }
@@ -621,20 +841,23 @@ public class OrchestrationService {
         }
         if (!verdict.unsupportedClaims().isEmpty()) {
             sb.append("## Unsupported claims\n");
-            sb.append("Nothing supplied supports these. Either remove the claim, or delegate to a "
-                + "specialist for the material — this is the only part of the feedback that may "
-                + "warrant a new specialist call.\n");
+            sb.append(
+                    "Nothing supplied supports these. Either remove the claim, or delegate to a "
+                            + "specialist for the material — this is the only part of the feedback that may "
+                            + "warrant a new specialist call.\n");
             for (String claim : verdict.unsupportedClaims()) {
                 sb.append("- ").append(claim).append("\n");
             }
             sb.append("\n");
         }
 
-        sb.append("Revise the answer you just gave. Keep everything the reviewer did not object "
-            + "to.");
+        sb.append(
+                "Revise the answer you just gave. Keep everything the reviewer did not object "
+                        + "to.");
         if (verdict.isCitationOnly()) {
-            sb.append(" Every objection above is a citation fix, so this revision needs no new "
-                + "evidence at all — do NOT call call_specialist.");
+            sb.append(
+                    " Every objection above is a citation fix, so this revision needs no new "
+                            + "evidence at all — do NOT call call_specialist.");
         } else {
             sb.append(" Delegate again only for material that is genuinely missing above.");
         }
@@ -654,8 +877,8 @@ public class OrchestrationService {
      * inside round 3's — the trace would grow quadratically while showing each step work it did not
      * do.
      */
-    private static List<LlmMessage> messagesAddedBy(RagResult result,
-        List<LlmMessage> priorMessages) {
+    private static List<LlmMessage> messagesAddedBy(
+            RagResult result, List<LlmMessage> priorMessages) {
         List<LlmMessage> all = result.messages();
         if (priorMessages == null || all == null || all.size() <= priorMessages.size()) {
             return all;
@@ -669,29 +892,30 @@ public class OrchestrationService {
      * source supports this statement" — rather than a label the reviewer can excuse by finding the
      * fact somewhere else in the pile.
      *
-     * <p>
-     * It therefore has to be told that uncited sources exist but are not shown. Without that it
+     * <p>It therefore has to be told that uncited sources exist but are not shown. Without that it
      * cannot tell "the corpus has nothing on this" from "you did not cite it", phrases its feedback
      * as the former, and the orchestrator answers by delegating a fresh search when re-citing
      * material it already holds would have done.
      */
-    private static String renderReviewTask(String question, String answer, List<String> evidence,
-        EvidenceDigest.SentLedger sent) {
+    private static String renderReviewTask(
+            String question, String answer, List<String> evidence, EvidenceDigest.SentLedger sent) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Validate the candidate answer below. Do NOT search for new information — check "
-            + "it ONLY against the supplied evidence, then call submit_review.\n\n");
+        sb.append(
+                "Validate the candidate answer below. Do NOT search for new information — check "
+                        + "it ONLY against the supplied evidence, then call submit_review.\n\n");
         sb.append("## Original question\n").append(question).append("\n\n");
         sb.append("## Candidate answer\n").append(answer).append("\n\n");
         sb.append("## Evidence gathered by the specialists (the ONLY basis for validation)\n");
         if (evidence.isEmpty()) {
             sb.append("(no evidence was captured)\n");
         } else {
-            sb.append("You are shown the sources this answer cites, and only those. The "
-                + "specialists retrieved others that the answer does not cite; those are not "
-                + "shown here. So when a claim is not supported by the evidence below, the fault "
-                + "may be a missing or wrong citation rather than a missing source — say the "
-                + "answer must cite what supports the claim, rather than concluding no source "
-                + "exists.\n\n");
+            sb.append(
+                    "You are shown the sources this answer cites, and only those. The "
+                            + "specialists retrieved others that the answer does not cite; those are not "
+                            + "shown here. So when a claim is not supported by the evidence below, the fault "
+                            + "may be a missing or wrong citation rather than a missing source — say the "
+                            + "answer must cite what supports the claim, rather than concluding no source "
+                            + "exists.\n\n");
             sb.append(EvidenceDigest.citeScoped(evidence, answer, sent)).append("\n");
         }
         return sb.toString();
@@ -700,29 +924,30 @@ public class OrchestrationService {
     /**
      * The follow-up turn of a review the reviewer is already having.
      *
-     * <p>
-     * Everything it said before, and every source it was shown, is still in this conversation, so
-     * this turn carries only what changed: the revised answer, and the bodies of sources the
+     * <p>Everything it said before, and every source it was shown, is still in this conversation,
+     * so this turn carries only what changed: the revised answer, and the bodies of sources the
      * revision cites that have not been sent yet. That second half is not an economy — a revision
      * may cite a source the first draft did not, and judging a citation against text the reviewer
      * cannot see is precisely the failure cite-scoping exists to prevent.
      *
-     * <p>
-     * It also deliberately does not restate the framing paragraph from {@link #renderReviewTask}:
-     * that is already above, and repeating instructions the model has already been given is how a
-     * transcript grows without saying anything.
+     * <p>It also deliberately does not restate the framing paragraph from {@link
+     * #renderReviewTask}: that is already above, and repeating instructions the model has already
+     * been given is how a transcript grows without saying anything.
      */
-    private static String renderReviewFollowUp(String answer, List<String> evidence,
-        EvidenceDigest.SentLedger sent) {
+    private static String renderReviewFollowUp(
+            String answer, List<String> evidence, EvidenceDigest.SentLedger sent) {
         String fresh = evidence.isEmpty() ? "" : EvidenceDigest.citeScoped(evidence, answer, sent);
         StringBuilder sb = new StringBuilder();
-        sb.append("The answer has been revised in response to your review. Re-validate it, then "
-            + "call submit_review. Your earlier notes and every source you were already shown are "
-            + "above in this conversation.\n\n");
+        sb.append(
+                "The answer has been revised in response to your review. Re-validate it, then "
+                        + "call submit_review. Your earlier notes and every source you were already shown are "
+                        + "above in this conversation.\n\n");
         sb.append("## Revised candidate answer\n").append(answer).append("\n\n");
         sb.append("## Sources this revision cites that you have not been shown yet\n");
-        sb.append(fresh.isBlank() ? "(none — every source this revision cites is already above)\n"
-            : fresh + "\n");
+        sb.append(
+                fresh.isBlank()
+                        ? "(none — every source this revision cites is already above)\n"
+                        : fresh + "\n");
         return sb.toString();
     }
 
@@ -731,26 +956,23 @@ public class OrchestrationService {
      * wanting; this one was never examined at all, and wording it as though review merely "did not
      * pass" would tell the reader less than the truth about how much to trust it.
      *
-     * <p>
-     * It deliberately takes no cause: the diagnosis belongs in the log and {@code agent_runs}, both
-     * of which receive it, and provider text has no business in a user-facing message.
+     * <p>It deliberately takes no cause: the diagnosis belongs in the log and {@code agent_runs},
+     * both of which receive it, and provider text has no business in a user-facing message.
      */
     /**
      * The ids the reviewer's objection actually names, as a bracketed list {@code citeScoped} can
      * scope to — falling back to the whole draft when it names none.
      *
-     * <p>
-     * Bounding this matters: scoping to everything the ANSWER cites sent 18 full chunk bodies back
-     * on every empty-delta round, and measured at 217,041 and 134,984 prompt tokens for two
+     * <p>Bounding this matters: scoping to everything the ANSWER cites sent 18 full chunk bodies
+     * back on every empty-delta round, and measured at 217,041 and 134,984 prompt tokens for two
      * orchestrator turns that had previously cost ~50,000 each. The objection names the handful of
      * ids in dispute, and those are the only ones the turn has to re-read.
      *
-     * <p>
-     * The scan is a plain uuid match rather than {@code CitationVerifier.citedIds}, because a
-     * reviewer writes an id however it likes — {@code [f485f143-…]} in one verdict and
-     * {@code `f485f143-…`} in the next — and a bracket-only scan silently misses the second. Over-
-     * matching is safe here and under-matching is not: this only SELECTS which evidence to include,
-     * so a spurious hit costs one extra chunk while a miss costs the turn its source text.
+     * <p>The scan is a plain uuid match rather than {@code CitationVerifier.citedIds}, because a
+     * reviewer writes an id however it likes — {@code [f485f143-…]} in one verdict and {@code
+     * `f485f143-…`} in the next — and a bracket-only scan silently misses the second. Over-matching
+     * is safe here and under-matching is not: this only SELECTS which evidence to include, so a
+     * spurious hit costs one extra chunk while a miss costs the turn its source text.
      */
     private static String idsUnderReview(Verdict verdict, String draft) {
         StringBuilder objection = new StringBuilder();
@@ -771,26 +993,31 @@ public class OrchestrationService {
         return ids.length() == 0 ? draft : ids.toString();
     }
 
-    private static final Pattern UUID_ANYWHERE = Pattern
-        .compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+    private static final Pattern UUID_ANYWHERE =
+            Pattern.compile(
+                    "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
 
     private static String unreviewedNote() {
         return "\n\n---\n⚠️ *This answer could not be checked — the automated review failed to "
-            + "run, so nothing has validated its claims or citations. Treat it as unverified.*";
+                + "run, so nothing has validated its claims or citations. Treat it as unverified.*";
     }
 
     private static String flagNote(int round, Verdict verdict) {
-        String reason = verdict != null && verdict.feedback() != null ? verdict.feedback()
-            : "unspecified concerns";
-        return "\n\n---\n⚠️ *This answer did not pass automated review after " + (round + 1)
-            + " attempt(s). Reviewer notes: " + reason + "*";
+        String reason =
+                verdict != null && verdict.feedback() != null
+                        ? verdict.feedback()
+                        : "unspecified concerns";
+        return "\n\n---\n⚠️ *This answer did not pass automated review after "
+                + (round + 1)
+                + " attempt(s). Reviewer notes: "
+                + reason
+                + "*";
     }
 
     /**
      * The boundary the orchestrator marks between anything it says about the work and the answer.
      *
-     * <p>
-     * It exists because the preamble arrives by two routes and only one of them is a choice the
+     * <p>It exists because the preamble arrives by two routes and only one of them is a choice the
      * model makes. Gemini separates reasoning properly — 45,508 thought tokens over 630 production
      * calls, delivered as {@code LlmPart("thought")} which {@link #extractAnswerText} already
      * ignores — and still writes a deliberate lead-in into the answer itself (<i>"The reviewer
@@ -800,10 +1027,9 @@ public class OrchestrationService {
      * there streams its chain-of-thought AS content. A prompt can address the first and cannot
      * address the second, so the split has to be one the model marks rather than one we infer.
      *
-     * <p>
-     * Deliberately not a stripper: "drop everything before the first heading" would also delete a
-     * legitimate opening sentence, and CLAUDE.md § 6 records three separate incidents here where a
-     * deletion heuristic destroyed real content. Absent the marker, nothing is removed.
+     * <p>Deliberately not a stripper: "drop everything before the first heading" would also delete
+     * a legitimate opening sentence, and CLAUDE.md § 6 records three separate incidents here where
+     * a deletion heuristic destroyed real content. Absent the marker, nothing is removed.
      */
     static final String ANSWER_MARKER = "<<<FINAL_ANSWER>>>";
 
@@ -812,24 +1038,25 @@ public class OrchestrationService {
      * contract, not a step's. The first draft is reachable no other way: its query is the user's
      * bare question, so no code-side task string wraps it.
      *
-     * <p>
-     * It lives here rather than in the orchestrator playbook because {@link #afterAnswerMarker}
+     * <p>It lives here rather than in the orchestrator playbook because {@link #afterAnswerMarker}
      * depends on it and fails OPEN — no marker means the text passes through untouched. A playbook
      * is a database row edited through the admin UI and imported from a separate repo, so were that
      * row the only thing asking for the marker, editing it would silently restore the leak with
      * nothing to notice.
      */
-    static final String ANSWER_MARKER_CONTRACT = "Your reply to a question is delivered to the "
-        + "user verbatim as the answer. Write the line " + ANSWER_MARKER + " on its own "
-        + "immediately before the answer begins, and put nothing after that line except the "
-        + "answer itself. Anything before it — planning, notes on what you changed, sign-offs — "
-        + "is discarded, so it is the place for that, not the answer.";
+    static final String ANSWER_MARKER_CONTRACT =
+            "Your reply to a question is delivered to the "
+                    + "user verbatim as the answer. Write the line "
+                    + ANSWER_MARKER
+                    + " on its own "
+                    + "immediately before the answer begins, and put nothing after that line except the "
+                    + "answer itself. Anything before it — planning, notes on what you changed, sign-offs — "
+                    + "is discarded, so it is the place for that, not the answer.";
 
     /**
      * Everything after the LAST marker, or the whole text when there is none.
      *
-     * <p>
-     * Last rather than first: a model that narrates before complying mentions the token and then
+     * <p>Last rather than first: a model that narrates before complying mentions the token and then
      * emits it, and taking the last occurrence is what survives that. The cost of being wrong is
      * bounded in the other direction — a blank tail falls back to the full text, so the one failure
      * this mechanism could cause (delivering nothing) cannot happen.
@@ -867,14 +1094,15 @@ public class OrchestrationService {
         return afterAnswerMarker(stripThinkAndTools(emittedFallback).trim());
     }
 
-    private static void collectEvidence(RagResult result, List<String> evidence,
-        String specialist) {
+    private static void collectEvidence(
+            RagResult result, List<String> evidence, String specialist) {
         if (result.messages() == null) {
             return;
         }
         for (LlmMessage m : result.messages()) {
-            if ("tool".equalsIgnoreCase(m.role()) && m.content() != null
-                && !m.content().isBlank()) {
+            if ("tool".equalsIgnoreCase(m.role())
+                    && m.content() != null
+                    && !m.content().isBlank()) {
                 String tool = m.toolName() != null ? m.toolName() : "tool";
                 evidence.add("[" + specialist + " · " + tool + "]\n" + m.content());
             }
@@ -884,12 +1112,11 @@ public class OrchestrationService {
     /**
      * The shared transcript rule, plus the one thing only this caller wants removed.
      *
-     * <p>
-     * Clarifying-question markup is stripped <b>here and not in
-     * {@link AssistantTranscript#toModelText}</b>: this text is an answer being extracted, so the
-     * question is chrome. On the history-replay path it is not — the user's follow-up is the bare
-     * answer ("Option A") with no restatement, so removing the question there would leave the model
-     * an answer to a question it can no longer see.
+     * <p>Clarifying-question markup is stripped <b>here and not in {@link
+     * AssistantTranscript#toModelText}</b>: this text is an answer being extracted, so the question
+     * is chrome. On the history-replay path it is not — the user's follow-up is the bare answer
+     * ("Option A") with no restatement, so removing the question there would leave the model an
+     * answer to a question it can no longer see.
      */
     private static String stripThinkAndTools(String content) {
         String withoutThinkOrBanners = AssistantTranscript.toModelText(content);
@@ -899,8 +1126,10 @@ public class OrchestrationService {
         StringBuilder sb = new StringBuilder();
         for (String line : withoutThinkOrBanners.split("\\r?\\n")) {
             String trimmed = line.trim();
-            if (trimmed.startsWith("<clarifying-question") || trimmed.startsWith("<question>")
-                || trimmed.startsWith("<option>") || trimmed.startsWith("</clarifying-question")) {
+            if (trimmed.startsWith("<clarifying-question")
+                    || trimmed.startsWith("<question>")
+                    || trimmed.startsWith("<option>")
+                    || trimmed.startsWith("</clarifying-question")) {
                 continue;
             }
             sb.append(line).append("\n");
@@ -909,30 +1138,52 @@ public class OrchestrationService {
     }
 
     private Map<String, Object> configSnapshot(ResolvedProfile p) {
-        return Map.of("profile", p.name(), "orchestratorPlaybook", p.orchestratorPlaybook(),
-            "reviewerPlaybook", p.reviewerPlaybook(), "specialistPlaybooks",
-            p.specialistPlaybooks(), "orchestrator", roleMap(p.orchestrator()), "reviewer",
-            roleMap(p.reviewer()), "specialist", roleMap(p.specialist()), "maxReviewRounds",
-            p.maxReviewRounds(), "maxSpecialistCalls", p.maxSpecialistCalls());
+        return Map.of(
+                "profile",
+                p.name(),
+                "orchestratorPlaybook",
+                p.orchestratorPlaybook(),
+                "reviewerPlaybook",
+                p.reviewerPlaybook(),
+                "specialistPlaybooks",
+                p.specialistPlaybooks(),
+                "orchestrator",
+                roleMap(p.orchestrator()),
+                "reviewer",
+                roleMap(p.reviewer()),
+                "specialist",
+                roleMap(p.specialist()),
+                "maxReviewRounds",
+                p.maxReviewRounds(),
+                "maxSpecialistCalls",
+                p.maxSpecialistCalls());
     }
 
     private static Map<String, Object> roleMap(OrchestratorProperties.RoleConfig c) {
-        return Map.of("model", String.valueOf(c.model()), "thinkingLevel",
-            String.valueOf(c.thinkingLevel()));
+        return Map.of(
+                "model",
+                String.valueOf(c.model()),
+                "thinkingLevel",
+                String.valueOf(c.thinkingLevel()));
     }
 
     /** Mutable per-run accumulator. Orchestration runs single-threaded, so no synchronisation. */
     /**
      * Which agent was executing when a call threw, captured at the throw site because the role,
-     * playbook and model are frame-locals of {@code runAgent} and are gone by the time the run-level
-     * catch sees the exception.
+     * playbook and model are frame-locals of {@code runAgent} and are gone by the time the
+     * run-level catch sees the exception.
      *
-     * <p>
-     * {@code throwable} is held so the context can be matched to the exception that actually ends
-     * the run: a specialist failure the orchestrator recovers from must not label a later error.
+     * <p>{@code throwable} is held so the context can be matched to the exception that actually
+     * ends the run: a specialist failure the orchestrator recovers from must not label a later
+     * error.
      */
-    private record FailureContext(Throwable throwable, String role, String playbookName,
-        String model, int round, int seq) {
+    private record FailureContext(
+            Throwable throwable,
+            String role,
+            String playbookName,
+            String model,
+            int round,
+            int seq) {
 
         boolean matches(Throwable candidate) {
             for (Throwable c = candidate; c != null; c = c.getCause()) {
@@ -950,8 +1201,18 @@ public class OrchestrationService {
             // The failing step's own number, not a count of finished ones: seq is now allocated
             // when a step starts, so "afterSteps=N" would have named the step that failed while
             // claiming N had completed before it.
-            return "role=" + role + " playbook=" + playbookName + " model=" + model + " round="
-                + round + " atStep=" + seq + " specialistCalls=" + st.specialistCalls;
+            return "role="
+                    + role
+                    + " playbook="
+                    + playbookName
+                    + " model="
+                    + model
+                    + " round="
+                    + round
+                    + " atStep="
+                    + seq
+                    + " specialistCalls="
+                    + st.specialistCalls;
         }
     }
 
@@ -985,8 +1246,7 @@ public class OrchestrationService {
         /**
          * One conversation per specialist playbook, kept for the life of the run.
          *
-         * <p>
-         * A specialist is the only agent that holds the retrieved chunk TEXT — its tool results
+         * <p>A specialist is the only agent that holds the retrieved chunk TEXT — its tool results
          * stay in its own nested run and the orchestrator sees only its prose. So discarding the
          * session meant a follow-up could be answered only by searching the corpus again from
          * nothing, paying for a fresh agentic loop to recover what was already in a transcript we
@@ -998,17 +1258,15 @@ public class OrchestrationService {
          * The reviewer's conversation, carried across rounds for the same reason the orchestrator's
          * is — and for one the orchestrator does not have.
          *
-         * <p>
-         * A reviewer rebuilt from scratch cannot read what it asked for last round, and measured on
-         * run {@code 049d7a97} it contradicted itself: round 1 required a claim be "anchored
+         * <p>A reviewer rebuilt from scratch cannot read what it asked for last round, and measured
+         * on run {@code 049d7a97} it contradicted itself: round 1 required a claim be "anchored
          * directly to [689234f4]", round 2 objected that [689234f4] must "not be used to support"
          * it. The orchestrator complied with the first and was rejected for it, and the run then
          * exhausted its rounds. Continuing the conversation is also what makes the reviewer's
          * prompt append-only, which is why the agentic roles cache at ~71% where this one managed
          * 8-16%.
          *
-         * <p>
-         * It stays independent of the ORCHESTRATOR either way: what it inherits is its own
+         * <p>It stays independent of the ORCHESTRATOR either way: what it inherits is its own
          * transcript, never the drafts, tool calls and deliberation of the agent it is checking.
          */
         List<LlmMessage> reviewerMessages;
@@ -1022,20 +1280,27 @@ public class OrchestrationService {
 
         /**
          * How much of {@link #evidence} the orchestrator has already been sent. Entries beyond this
-         * are new since its last turn; everything below it is already in
-         * {@link #orchestratorMessages} and re-sending it would duplicate.
+         * are new since its last turn; everything below it is already in {@link
+         * #orchestratorMessages} and re-sending it would duplicate.
          */
         int evidenceSent;
 
-        RunState(UUID runId, UUID conversationId, UUID messageId, ResolvedProfile profile,
-            UUID userId, Set<String> allowedAreasLower) {
+        RunState(
+                UUID runId,
+                UUID conversationId,
+                UUID messageId,
+                ResolvedProfile profile,
+                UUID userId,
+                Set<String> allowedAreasLower) {
             this.runId = runId;
             this.conversationId = conversationId;
             this.messageId = messageId;
             this.profile = profile;
             this.userId = userId;
-            this.allowedAreasLower = Set.copyOf(
-                Objects.requireNonNull(allowedAreasLower, "allowedAreasLower must not be null"));
+            this.allowedAreasLower =
+                    Set.copyOf(
+                            Objects.requireNonNull(
+                                    allowedAreasLower, "allowedAreasLower must not be null"));
         }
 
         void accumulate(RagResult r) {

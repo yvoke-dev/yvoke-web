@@ -15,8 +15,9 @@ public class LoginController {
     private final Optional<AvailableAreasProvider> availableAreasProvider;
 
     @Autowired
-    public LoginController(@Value("${app.security.mock}") boolean mockAuth,
-        Optional<AvailableAreasProvider> availableAreasProvider) {
+    public LoginController(
+            @Value("${app.security.mock}") boolean mockAuth,
+            Optional<AvailableAreasProvider> availableAreasProvider) {
         this.mockAuth = mockAuth;
         this.availableAreasProvider = availableAreasProvider;
     }
@@ -32,7 +33,9 @@ public class LoginController {
             return "redirect:/oauth2/authorization/entra";
         }
         List<String> availableAreas =
-            availableAreasProvider.map(AvailableAreasProvider::listAreaNames).orElseGet(List::of);
+                availableAreasProvider
+                        .map(AvailableAreasProvider::listAreaNames)
+                        .orElseGet(List::of);
         model.addAttribute("availableAreas", availableAreas != null ? availableAreas : List.of());
         return "login";
     }

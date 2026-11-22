@@ -18,8 +18,12 @@ import org.junit.jupiter.api.Test;
 public class McpToolUtilsTagRequiredTest {
 
     private static Collection tagged() {
-        return new Collection(UUID.randomUUID(), "OIM - Manuals - Standard", "Manuals",
-            List.of("9.3.1", "10.0"), null);
+        return new Collection(
+                UUID.randomUUID(),
+                "OIM - Manuals - Standard",
+                "Manuals",
+                List.of("9.3.1", "10.0"),
+                null);
     }
 
     private static Collection untagged() {
@@ -32,11 +36,12 @@ public class McpToolUtilsTagRequiredTest {
 
         assertNotNull(err, "expected an error for an untagged call on a tag-scoped collection");
         assertTrue(err.startsWith("Error:"), "expected a tool error string, got: " + err);
-        assertTrue(err.contains("OIM - Manuals - Standard"),
-            "error must name the collection: " + err);
+        assertTrue(
+                err.contains("OIM - Manuals - Standard"), "error must name the collection: " + err);
         // Enumerated so recovery costs zero extra discovery calls.
-        assertTrue(err.contains("9.3.1") && err.contains("10.0"),
-            "error must list the valid tags, got: " + err);
+        assertTrue(
+                err.contains("9.3.1") && err.contains("10.0"),
+                "error must list the valid tags, got: " + err);
     }
 
     @Test

@@ -38,7 +38,18 @@ class DocumentDetailsMapper implements RowMapper<DocumentDetails> {
         Map<String, Object> metadata = JdbcMappers.jsonbToMap(rs, "metadata", objectMapper);
         List<String> tags = JdbcMappers.arrayToStringList(rs, "tags");
 
-        return new DocumentDetails(id, collectionId, collection, kind, title, metadata,
-            ingestionStatus, chunkCount, kgProcessed, kgFailedChunks, tags, createdAt);
+        return new DocumentDetails(
+                id,
+                collectionId,
+                collection,
+                kind,
+                title,
+                metadata,
+                ingestionStatus,
+                chunkCount,
+                kgProcessed,
+                kgFailedChunks,
+                tags,
+                createdAt);
     }
 }

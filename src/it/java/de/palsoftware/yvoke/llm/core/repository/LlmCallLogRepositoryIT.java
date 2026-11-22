@@ -12,20 +12,40 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration"
+        })
 public class LlmCallLogRepositoryIT {
 
-    @Autowired
-    private LlmCallLogRepository repository;
+    @Autowired private LlmCallLogRepository repository;
 
     @Test
     void testInsertAndGetModelUsageSummaries() {
         String modelName = "it-test-llm-call-log";
-        LlmCallLog logEntry = new LlmCallLog(UUID.randomUUID(), null, null, null, null,
-            "test_source", "test_role", modelName, 100, 50, 10, 0, 160, BigDecimal.valueOf(1.50),
-            BigDecimal.valueOf(10.00), BigDecimal.valueOf(0.20), BigDecimal.ZERO,
-            BigDecimal.valueOf(0.000650), 120, Instant.now());
+        LlmCallLog logEntry =
+                new LlmCallLog(
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        "test_source",
+                        "test_role",
+                        modelName,
+                        100,
+                        50,
+                        10,
+                        0,
+                        160,
+                        BigDecimal.valueOf(1.50),
+                        BigDecimal.valueOf(10.00),
+                        BigDecimal.valueOf(0.20),
+                        BigDecimal.ZERO,
+                        BigDecimal.valueOf(0.000650),
+                        120,
+                        Instant.now());
 
         repository.insert(logEntry);
 

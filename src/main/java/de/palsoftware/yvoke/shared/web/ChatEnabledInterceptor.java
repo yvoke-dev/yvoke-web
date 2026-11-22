@@ -18,11 +18,12 @@ public class ChatEnabledInterceptor implements HandlerInterceptor {
     }
 
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
-        Object handler) throws Exception {
+    public boolean preHandle(
+            HttpServletRequest request, HttpServletResponse response, Object handler)
+            throws Exception {
         if (!chatEnabled) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                "Webchat is disabled.");
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE, "Webchat is disabled.");
         }
         return true;
     }

@@ -26,19 +26,20 @@ public class RerankClient {
     private final ApplicationEventPublisher eventPublisher;
 
     @Autowired
-    public RerankClient(@Qualifier("rerankRestClientBuilder") RestClient.Builder restClientBuilder,
-        @Value("${app.ai.ranking.api-key}") String apiKey,
-        @Value("${app.ai.ranking.model}") String model,
-        @Value("${app.ai.ranking.base-url}") String baseUrl,
-        @Autowired(required = false) ApplicationEventPublisher eventPublisher) {
+    public RerankClient(
+            @Qualifier("rerankRestClientBuilder") RestClient.Builder restClientBuilder,
+            @Value("${app.ai.ranking.api-key}") String apiKey,
+            @Value("${app.ai.ranking.model}") String model,
+            @Value("${app.ai.ranking.base-url}") String baseUrl,
+            @Autowired(required = false) ApplicationEventPublisher eventPublisher) {
         this.restClient = restClientBuilder.baseUrl(baseUrl).build();
         this.apiKey = apiKey;
         this.model = model;
         this.eventPublisher = eventPublisher;
     }
 
-    public RerankClient(RestClient.Builder restClientBuilder, String apiKey, String model,
-        String baseUrl) {
+    public RerankClient(
+            RestClient.Builder restClientBuilder, String apiKey, String model, String baseUrl) {
         this(restClientBuilder, apiKey, model, baseUrl, null);
     }
 
@@ -52,39 +53,57 @@ public class RerankClient {
 
         log.info("Sending {} documents to Voyage Rerank API (model={})", documents.size(), model);
 
-        RerankResponse response = restClient.post().uri("/rerank")
-            .header("Authorization", "Bearer " + apiKey).contentType(MediaType.APPLICATION_JSON)
-            .body(Map.of("model", model, "query", query, "documents", documents)).retrieve()
-            .body(RerankResponse.class);
+        RerankResponse response =
+                restClient
+                        .post()
+                        .uri("/rerank")
+                        .header("Authorization", "Bearer " + apiKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("model", model, "query", query, "documents", documents))
+                        .retrieve()
+                        .body(RerankResponse.class);
 
         if (response == null || response.getData() == null) {
             throw new IllegalStateException(
-                "Failed to get reranking response from Voyage AI; empty response.");
+                    "Failed to get reranking response from Voyage AI; empty response.");
         }
 
         if (eventPublisher != null) {
             try {
                 int totalTokens = 0;
                 if (response.getUsage() != null
-                    && response.getUsage().get("total_tokens") != null) {
+                        && response.getUsage().get("total_tokens") != null) {
                     totalTokens = ((Number) response.getUsage().get("total_tokens")).intValue();
                 } else {
-                    int totalChars = query.length()
-                        + documents.stream().mapToInt(d -> d != null ? d.length() : 0).sum();
+                    int totalChars =
+                            query.length()
+                                    + documents.stream()
+                                            .mapToInt(d -> d != null ? d.length() : 0)
+                                            .sum();
                     totalTokens = Math.max(1, totalChars / 4);
                 }
                 LlmCallContextHolder.Context ctx = LlmCallContextHolder.get();
-                eventPublisher.publishEvent(new LlmCallLoggedEvent(
-                    ctx != null ? ctx.conversationId() : null, ctx != null ? ctx.messageId() : null,
-                    ctx != null ? ctx.agentRunId() : null, ctx != null ? ctx.userId() : null,
-                    "rerank", "rerank", model, totalTokens, 0, 0, 0));
+                eventPublisher.publishEvent(
+                        new LlmCallLoggedEvent(
+                                ctx != null ? ctx.conversationId() : null,
+                                ctx != null ? ctx.messageId() : null,
+                                ctx != null ? ctx.agentRunId() : null,
+                                ctx != null ? ctx.userId() : null,
+                                "rerank",
+                                "rerank",
+                                model,
+                                totalTokens,
+                                0,
+                                0,
+                                0));
             } catch (Exception e) {
                 log.warn("Failed to publish rerank usage event: {}", e.getMessage());
             }
         }
 
         return response.getData().stream()
-            .map(data -> new RerankResult(data.getIndex(), data.getRelevanceScore())).toList();
+                .map(data -> new RerankResult(data.getIndex(), data.getRelevanceScore()))
+                .toList();
     }
 
     public static record RerankResult(int index, double relevanceScore) {}

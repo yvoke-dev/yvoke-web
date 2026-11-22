@@ -38,11 +38,12 @@ class AreaAdminControllerTest {
     @BeforeEach
     void setUp() {
         areaService = mock(AreaService.class);
-        mvc = MockMvcBuilders
-            .standaloneSetup(new AreaAdminController(areaService, mock(AdminAuditLogger.class)))
-            .build();
+        mvc =
+                MockMvcBuilders.standaloneSetup(
+                                new AreaAdminController(areaService, mock(AdminAuditLogger.class)))
+                        .build();
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
     }
 
     @AfterEach
@@ -53,29 +54,36 @@ class AreaAdminControllerTest {
     @Test
     void thePageListsEveryAreaWithItsMembers() throws Exception {
         List<AreaWithMembers> areas =
-            List.of(new AreaWithMembers(TestAreas.area("OIM"), AreaMembers.NONE));
+                List.of(new AreaWithMembers(TestAreas.area("OIM"), AreaMembers.NONE));
         when(areaService.listAdministeredAreasWithMembers()).thenReturn(areas);
 
-        mvc.perform(get("/admin/areas")).andExpect(view().name("admin/areas"))
-            .andExpect(model().attribute("areas", areas));
+        mvc.perform(get("/admin/areas"))
+                .andExpect(view().name("admin/areas"))
+                .andExpect(model().attribute("areas", areas));
     }
 
     @Test
     void everyPostedFieldReachesTheSave() throws Exception {
-        mvc.perform(post("/admin/areas").param("originalName", "OIM").param("name", "Oracle-IAM")
-            .param("title", "Oracle Identity").param("description", "Docs")
-            .param("prototype", "true").param("defaultPlaybook", "oim-full")
-            .param("defaultProfile", "OIM")).andExpect(redirectedUrl("/admin/areas"))
-            .andExpect(flash().attributeExists("success"));
+        mvc.perform(
+                        post("/admin/areas")
+                                .param("originalName", "OIM")
+                                .param("name", "Oracle-IAM")
+                                .param("title", "Oracle Identity")
+                                .param("description", "Docs")
+                                .param("prototype", "true")
+                                .param("defaultPlaybook", "oim-full")
+                                .param("defaultProfile", "OIM"))
+                .andExpect(redirectedUrl("/admin/areas"))
+                .andExpect(flash().attributeExists("success"));
 
-        verify(areaService).saveArea("OIM", "Oracle-IAM", "Oracle Identity", "Docs", true,
-            "oim-full", "OIM");
+        verify(areaService)
+                .saveArea("OIM", "Oracle-IAM", "Oracle Identity", "Docs", true, "oim-full", "OIM");
     }
 
     @Test
     void aNewAreaNeedsOnlyItsName() throws Exception {
         mvc.perform(post("/admin/areas").param("name", "PingID"))
-            .andExpect(redirectedUrl("/admin/areas"));
+                .andExpect(redirectedUrl("/admin/areas"));
 
         verify(areaService).saveArea(null, "PingID", null, null, false, null, null);
     }
@@ -83,7 +91,8 @@ class AreaAdminControllerTest {
     @Test
     void deletePassesTheName() throws Exception {
         mvc.perform(post("/admin/areas/delete").param("name", "PingID"))
-            .andExpect(redirectedUrl("/admin/areas")).andExpect(flash().attributeExists("success"));
+                .andExpect(redirectedUrl("/admin/areas"))
+                .andExpect(flash().attributeExists("success"));
 
         verify(areaService).deleteArea("PingID");
     }
@@ -94,69 +103,85 @@ class AreaAdminControllerTest {
         when(areaService.deleteArea(" pingid ")).thenReturn("PingID");
 
         mvc.perform(post("/admin/areas/delete").param("name", " pingid "))
-            .andExpect(flash().attribute("success", "Area 'PingID' deleted."));
+                .andExpect(flash().attribute("success", "Area 'PingID' deleted."));
     }
 
     @Test
     void areaAdmin_creatingNewArea_isForbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
         mvc.perform(post("/admin/areas").param("name", "NewArea"))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void areaAdmin_renamingArea_isBadRequest() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
         mvc.perform(post("/admin/areas").param("originalName", "OIM").param("name", "RenamedOIM"))
-            .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     void areaAdmin_changingAreaCapitalization_isBadRequest() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
         mvc.perform(post("/admin/areas").param("originalName", "OIM").param("name", "oim"))
-            .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     void areaAdmin_modifyingUnauthorizedArea_isForbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
         mvc.perform(post("/admin/areas").param("originalName", "Finance").param("name", "Finance"))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void areaAdmin_modifyingAuthorizedArea_succeeds() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
-        mvc.perform(post("/admin/areas").param("originalName", "OIM").param("name", "OIM")
-            .param("title", "Updated Title")).andExpect(redirectedUrl("/admin/areas"))
-            .andExpect(flash().attributeExists("success"));
+        mvc.perform(
+                        post("/admin/areas")
+                                .param("originalName", "OIM")
+                                .param("name", "OIM")
+                                .param("title", "Updated Title"))
+                .andExpect(redirectedUrl("/admin/areas"))
+                .andExpect(flash().attributeExists("success"));
 
         verify(areaService).saveArea("OIM", "OIM", "Updated Title", null, false, null, null);
     }
 
     @Test
     void areaAdmin_deletingArea_isForbidden() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
         mvc.perform(post("/admin/areas/delete").param("name", "OIM"))
-            .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void constructorRejectsNullAuditLogger() {
         assertThatThrownBy(() -> new AreaAdminController(areaService, null))
-            .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(NullPointerException.class);
     }
 }

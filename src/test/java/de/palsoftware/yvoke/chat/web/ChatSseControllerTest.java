@@ -47,7 +47,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 class ChatSseControllerTest {
 
     private final ChatConversationService chatConversationService =
-        mock(ChatConversationService.class);
+            mock(ChatConversationService.class);
 
     private static GenerationConcurrencyLimiter allowingLimiter() {
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
@@ -63,14 +63,21 @@ class ChatSseControllerTest {
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
 
         UUID conversationId = UUID.randomUUID();
-        doThrow(new AccessDeniedException("not your conversation")).when(chatConversationService)
-            .verifyOwnership(conversationId, false);
+        doThrow(new AccessDeniedException("not your conversation"))
+                .when(chatConversationService)
+                .verifyOwnership(conversationId, false);
 
-        ChatSseController controller = new ChatSseController(chatMessageService,
-            chatConversationService, chatCancellationService, sseExecutor, limiter);
+        ChatSseController controller =
+                new ChatSseController(
+                        chatMessageService,
+                        chatConversationService,
+                        chatCancellationService,
+                        sseExecutor,
+                        limiter);
 
-        assertThrows(AccessDeniedException.class,
-            () -> controller.sendMessageStream(conversationId, "hello", null));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> controller.sendMessageStream(conversationId, "hello", null));
 
         verify(limiter, never()).tryAcquire();
         verify(limiter, never()).release();
@@ -89,13 +96,19 @@ class ChatSseControllerTest {
         ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
         AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
         when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
-            .thenThrow(new AccessDeniedException("Access denied to conversation"));
+                .thenThrow(new AccessDeniedException("Access denied to conversation"));
 
-        ChatSseController controller = new ChatSseController(chatMessageService,
-            chatConversationService, chatCancellationService, sseExecutor, allowingLimiter());
+        ChatSseController controller =
+                new ChatSseController(
+                        chatMessageService,
+                        chatConversationService,
+                        chatCancellationService,
+                        sseExecutor,
+                        allowingLimiter());
 
-        assertThrows(AccessDeniedException.class,
-            () -> controller.sendMessageStream(UUID.randomUUID(), "hello", null));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> controller.sendMessageStream(UUID.randomUUID(), "hello", null));
 
         // The async streaming task must never be submitted: the SSE response is never committed, so
         // Spring MVC can still write a clean HTTP error response.
@@ -108,24 +121,21 @@ class ChatSseControllerTest {
      * that. It sits above {@code prepare()} and above {@code tryAcquire()}, and each ordering
      * prevents a different failure.
      *
-     * <p>
-     * Below {@code prepare()}: an empty send — Enter on an empty composer, a client retry, a
-     * double-submit — would persist an empty {@code user} message. That row is not inert.
-     * {@code getPriorHistory} replays every user message into the next turn's prompt, so the empty
+     * <p>Below {@code prepare()}: an empty send — Enter on an empty composer, a client retry, a
+     * double-submit — would persist an empty {@code user} message. That row is not inert. {@code
+     * getPriorHistory} replays every user message into the next turn's prompt, so the empty
      * question is re-sent to the model for the rest of the conversation, and if it is the
      * conversation's first row {@code saveUserMessage} also fires {@code autoTitle}, naming the
      * conversation the empty string. Neither is visible to the user; both are permanent.
      *
-     * <p>
-     * Below {@code tryAcquire()}: this branch returns BEFORE the try/finally that owns
-     * {@code release()}, so a permit taken here is never given back. The semaphore has no timeout
-     * and no reaper, so every blank submit would permanently shrink global generation capacity
-     * until all users get 429 and only a restart recovers it. {@code
+     * <p>Below {@code tryAcquire()}: this branch returns BEFORE the try/finally that owns {@code
+     * release()}, so a permit taken here is never given back. The semaphore has no timeout and no
+     * reaper, so every blank submit would permanently shrink global generation capacity until all
+     * users get 429 and only a restart recovers it. {@code
      * generationPermitIsReleasedOnEveryTerminalPath} cannot see that — it only sends non-blank
      * content, so it never enters this branch.
      *
-     * <p>
-     * The limiter is deliberately left unstubbed: it must not be consulted at all, so there is
+     * <p>The limiter is deliberately left unstubbed: it must not be consulted at all, so there is
      * nothing to stub.
      */
     @Test
@@ -135,12 +145,24 @@ class ChatSseControllerTest {
         AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
 
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new ChatSseController(chatMessageService,
-            chatConversationService, chatCancellationService, sseExecutor, limiter)).build();
+        MockMvc mockMvc =
+                MockMvcBuilders.standaloneSetup(
+                                new ChatSseController(
+                                        chatMessageService,
+                                        chatConversationService,
+                                        chatCancellationService,
+                                        sseExecutor,
+                                        limiter))
+                        .build();
 
         String body =
-            mockMvc.perform(post("/chat/" + UUID.randomUUID() + "/send").param("content", "   "))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+                mockMvc.perform(
+                                post("/chat/" + UUID.randomUUID() + "/send")
+                                        .param("content", "   "))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
 
         // One SSE event, the terminal one, and nothing before it.
         assertThat(body).isEqualTo("data:[DONE]\n\n");
@@ -152,9 +174,19 @@ class ChatSseControllerTest {
     }
 
     private static ChatMessageService.PreparedChat dummyPreparedChat() {
-        return new ChatMessageService.PreparedChat(UUID.randomUUID(), UUID.randomUUID(), "content",
-            "model", "systemPrompt", List.of(), List.of(), null, false, "test-playbook", 1,
-            AgenticChatContext.ALL_AREAS);
+        return new ChatMessageService.PreparedChat(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "content",
+                "model",
+                "systemPrompt",
+                List.of(),
+                List.of(),
+                null,
+                false,
+                "test-playbook",
+                1,
+                AgenticChatContext.ALL_AREAS);
     }
 
     @Test
@@ -166,11 +198,18 @@ class ChatSseControllerTest {
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
         when(limiter.tryAcquire()).thenReturn(false); // at capacity
 
-        ChatSseController controller = new ChatSseController(chatMessageService,
-            chatConversationService, chatCancellationService, sseExecutor, limiter);
+        ChatSseController controller =
+                new ChatSseController(
+                        chatMessageService,
+                        chatConversationService,
+                        chatCancellationService,
+                        sseExecutor,
+                        limiter);
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-            () -> controller.sendMessageStream(UUID.randomUUID(), "hello", null));
+        ResponseStatusException ex =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> controller.sendMessageStream(UUID.randomUUID(), "hello", null));
         Assertions.assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
 
         // Prepare is never called on 429, no slot acquired to release, and no generation started.
@@ -185,16 +224,22 @@ class ChatSseControllerTest {
         ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
         AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
         when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
-            .thenThrow(new IllegalArgumentException("invalid playbook"));
+                .thenThrow(new IllegalArgumentException("invalid playbook"));
 
         GenerationConcurrencyLimiter limiter = mock(GenerationConcurrencyLimiter.class);
         when(limiter.tryAcquire()).thenReturn(true);
 
-        ChatSseController controller = new ChatSseController(chatMessageService,
-            chatConversationService, chatCancellationService, sseExecutor, limiter);
+        ChatSseController controller =
+                new ChatSseController(
+                        chatMessageService,
+                        chatConversationService,
+                        chatCancellationService,
+                        sseExecutor,
+                        limiter);
 
-        assertThrows(IllegalArgumentException.class,
-            () -> controller.sendMessageStream(UUID.randomUUID(), "hello", null));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.sendMessageStream(UUID.randomUUID(), "hello", null));
 
         verify(limiter).release();
         verify(sseExecutor, never()).submit(any(Runnable.class));
@@ -211,30 +256,41 @@ class ChatSseControllerTest {
      */
     @Test
     void generationPermitIsReleasedOnEveryTerminalPath() {
-        for (Runnable streamBehaviour : List.<Runnable>of(() -> {
-        }, () -> {
-            throw new RuntimeException("boom");
-        }, () -> {
-            throw new CancellationException();
-        })) {
+        for (Runnable streamBehaviour :
+                List.<Runnable>of(
+                        () -> {},
+                        () -> {
+                            throw new RuntimeException("boom");
+                        },
+                        () -> {
+                            throw new CancellationException();
+                        })) {
             ChatMessageService chatMessageService = mock(ChatMessageService.class);
             ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
             AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
-            when(sseExecutor.submit(any(Runnable.class))).thenAnswer(invocation -> {
-                invocation.getArgument(0, Runnable.class).run();
-                return null;
-            });
+            when(sseExecutor.submit(any(Runnable.class)))
+                    .thenAnswer(invocation -> {
+                        invocation.getArgument(0, Runnable.class).run();
+                        return null;
+                    });
             when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
-                .thenReturn(dummyPreparedChat());
-            Mockito.doAnswer(inv -> {
-                streamBehaviour.run();
-                return null;
-            }).when(chatMessageService).stream(any(), any(), any());
+                    .thenReturn(dummyPreparedChat());
+            Mockito.doAnswer(
+                    inv -> {
+                        streamBehaviour.run();
+                        return null;
+                    })
+                    .when(chatMessageService)
+                    .stream(any(), any(), any());
 
             GenerationConcurrencyLimiter limiter = allowingLimiter();
-            new ChatSseController(chatMessageService, chatConversationService,
-                chatCancellationService, sseExecutor, limiter)
-                .sendMessageStream(UUID.randomUUID(), "hello", null);
+            new ChatSseController(
+                            chatMessageService,
+                            chatConversationService,
+                            chatCancellationService,
+                            sseExecutor,
+                            limiter)
+                    .sendMessageStream(UUID.randomUUID(), "hello", null);
             verify(limiter).tryAcquire();
             verify(limiter).release();
             verify(chatCancellationService).deregister(any(UUID.class), any(Thread.class));
@@ -244,66 +300,74 @@ class ChatSseControllerTest {
     /**
      * A failed token write must say <em>what</em> failed and <em>where</em>. Every write failure
      * used to unwind as a bare {@code ClientGoneException}, which asserts a cause ("the client
-     * disconnected") that is only one of the possibilities: Spring wraps any
-     * non-{@code IOException} thrown by the emitter's write path into
-     * {@code IllegalStateException}, so a transport fault with a live client arrives here too and
-     * gets mislabelled. Since {@code ChatMessageService.stream}'s generic catch swallows it and
-     * logs the chain, the exception itself is the only place the diagnosis can live — and the token
-     * position is what separates a failure at the response-commit (token #0) from one mid-answer.
+     * disconnected") that is only one of the possibilities: Spring wraps any non-{@code
+     * IOException} thrown by the emitter's write path into {@code IllegalStateException}, so a
+     * transport fault with a live client arrives here too and gets mislabelled. Since {@code
+     * ChatMessageService.stream}'s generic catch swallows it and logs the chain, the exception
+     * itself is the only place the diagnosis can live — and the token position is what separates a
+     * failure at the response-commit (token #0) from one mid-answer.
      */
     @Test
     void aFailedTokenWriteNamesItsPositionAndPreservesTheCause() {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
         AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
-        when(sseExecutor.submit(any(Runnable.class))).thenAnswer(invocation -> {
-            invocation.getArgument(0, Runnable.class).run();
-            return null;
-        });
+        when(sseExecutor.submit(any(Runnable.class)))
+                .thenAnswer(invocation -> {
+                    invocation.getArgument(0, Runnable.class).run();
+                    return null;
+                });
         when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
-            .thenReturn(dummyPreparedChat());
+                .thenReturn(dummyPreparedChat());
 
         // Two tokens go through (no handler is installed outside a real async dispatch, so they are
         // buffered rather than written), then the task completes the emitter — after which every
         // further write is refused, exactly as a mid-stream transport failure would be.
         AtomicReference<Consumer<String>> sinkRef = new AtomicReference<>();
-        doAnswer(invocation -> {
-            Consumer<String> sink = invocation.getArgument(2);
-            sink.accept("S");
-            sink.accept("S");
-            sinkRef.set(sink);
-            return null;
-        }).when(chatMessageService).stream(any(), any(), any());
+        doAnswer(
+                invocation -> {
+                    Consumer<String> sink = invocation.getArgument(2);
+                    sink.accept("S");
+                    sink.accept("S");
+                    sinkRef.set(sink);
+                    return null;
+                })
+                .when(chatMessageService)
+                .stream(any(), any(), any());
 
-        new ChatSseController(chatMessageService, chatConversationService, chatCancellationService,
-            sseExecutor, allowingLimiter()).sendMessageStream(UUID.randomUUID(), "hello", null);
+        new ChatSseController(
+                        chatMessageService,
+                        chatConversationService,
+                        chatCancellationService,
+                        sseExecutor,
+                        allowingLimiter())
+                .sendMessageStream(UUID.randomUUID(), "hello", null);
 
-        assertThatThrownBy(() -> sinkRef.get().accept("E")).hasMessageContaining("token #2")
-            .hasCauseInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> sinkRef.get().accept("E"))
+                .hasMessageContaining("token #2")
+                .hasCauseInstanceOf(IllegalStateException.class);
     }
 
     /**
-     * {@code WebMvcConfig.configureAsyncSupport} sets the MVC async default to 60 s
-     * ({@code setDefaultTimeout(60000)}), which is right for an ordinary request and fatal for a
+     * {@code WebMvcConfig.configureAsyncSupport} sets the MVC async default to 60 s ({@code
+     * setDefaultTimeout(60000)}), which is right for an ordinary request and fatal for a
      * generation. An agentic turn on this corpus routinely runs minutes — several tool round trips,
      * a rerank, a thinking model — and the 600 000 ms passed to this emitter is the ONLY thing
      * overriding that default for the streaming endpoint.
      *
-     * <p>
-     * Construct it as {@code new SseEmitter()} and the timeout falls back to the MVC default, at
+     * <p>Construct it as {@code new SseEmitter()} and the timeout falls back to the MVC default, at
      * which point every answer that takes longer than a minute dies in {@code onTimeout}: the
      * future is cancelled mid-generation, the emitter completes, and the user is left with a
-     * truncated answer and no error — {@code ChatMessageService.stream} never reaches
-     * {@code saveAssistantMessage}, so nothing is persisted either. Short questions keep working,
-     * so the regression arrives as an unreproducible "long questions cut off" report rather than as
-     * a failed build.
+     * truncated answer and no error — {@code ChatMessageService.stream} never reaches {@code
+     * saveAssistantMessage}, so nothing is persisted either. Short questions keep working, so the
+     * regression arrives as an unreproducible "long questions cut off" report rather than as a
+     * failed build.
      *
-     * <p>
-     * No other test can see it. Every test here drives the emitter through mocks that finish
-     * instantly, and the one SSE integration test in the whole {@code it-tests} profile
-     * ({@code ChatAsyncControllerIT.testStreamingModeUnaffected}) streams a scripted reply in
-     * milliseconds. Nothing anywhere is slow enough to observe a timeout, so the value has to be
-     * asserted directly.
+     * <p>No other test can see it. Every test here drives the emitter through mocks that finish
+     * instantly, and the one SSE integration test in the whole {@code it-tests} profile ({@code
+     * ChatAsyncControllerIT.testStreamingModeUnaffected}) streams a scripted reply in milliseconds.
+     * Nothing anywhere is slow enough to observe a timeout, so the value has to be asserted
+     * directly.
      */
     @Test
     void theEmitterOutlivesTheSixtySecondMvcAsyncDefault() {
@@ -311,11 +375,16 @@ class ChatSseControllerTest {
         ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
         AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
         when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
-            .thenReturn(dummyPreparedChat());
+                .thenReturn(dummyPreparedChat());
 
-        SseEmitter emitter = new ChatSseController(chatMessageService, chatConversationService,
-            chatCancellationService, sseExecutor, allowingLimiter())
-            .sendMessageStream(UUID.randomUUID(), "hello", null);
+        SseEmitter emitter =
+                new ChatSseController(
+                                chatMessageService,
+                                chatConversationService,
+                                chatCancellationService,
+                                sseExecutor,
+                                allowingLimiter())
+                        .sendMessageStream(UUID.randomUUID(), "hello", null);
 
         // Ten minutes, deliberately an order of magnitude above WebMvcConfig's 60 s default.
         assertThat(emitter.getTimeout()).isEqualTo(600_000L);
@@ -326,38 +395,48 @@ class ChatSseControllerTest {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
 
-        when(sseExecutor.submit(any(Runnable.class))).thenAnswer(invocation -> {
-            Runnable r = invocation.getArgument(0);
-            r.run();
-            return null;
-        });
+        when(sseExecutor.submit(any(Runnable.class)))
+                .thenAnswer(invocation -> {
+                    Runnable r = invocation.getArgument(0);
+                    r.run();
+                    return null;
+                });
 
         when(chatMessageService.prepare(any(UUID.class), anyString(), any()))
-            .thenReturn(dummyPreparedChat());
+                .thenReturn(dummyPreparedChat());
 
-        Mockito.doThrow(new RuntimeException("Test stream failure")).when(chatMessageService)
-            .stream(any(), any(), any());
+        Mockito.doThrow(new RuntimeException("Test stream failure"))
+                .when(chatMessageService)
+                .stream(any(), any(), any());
 
         ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
-        ChatSseController controller = new ChatSseController(chatMessageService,
-            chatConversationService, chatCancellationService, sseExecutor, allowingLimiter());
+        ChatSseController controller =
+                new ChatSseController(
+                        chatMessageService,
+                        chatConversationService,
+                        chatCancellationService,
+                        sseExecutor,
+                        allowingLimiter());
 
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        MvcResult result = mockMvc
-            .perform(MockMvcRequestBuilders.post("/chat/" + UUID.randomUUID() + "/send")
-                .param("content", "hello"))
-            .andExpect(MockMvcResultMatchers.status().isOk()).andReturn();
+        MvcResult result =
+                mockMvc.perform(
+                                MockMvcRequestBuilders.post("/chat/" + UUID.randomUUID() + "/send")
+                                        .param("content", "hello"))
+                        .andExpect(MockMvcResultMatchers.status().isOk())
+                        .andReturn();
 
         String content = result.getResponse().getContentAsString();
         Assertions.assertTrue(
-            content.contains("data:[ERROR] The assistant could not complete this response."),
-            "Response should contain the generic [ERROR] message");
+                content.contains("data:[ERROR] The assistant could not complete this response."),
+                "Response should contain the generic [ERROR] message");
         // The raw exception detail must never be echoed to the client (SEC-17).
-        Assertions.assertFalse(content.contains("Test stream failure"),
-            "Response must not leak the raw exception message");
-        Assertions.assertTrue(content.contains("data:[DONE]"),
-            "Response should be completed with [DONE]");
+        Assertions.assertFalse(
+                content.contains("Test stream failure"),
+                "Response must not leak the raw exception message");
+        Assertions.assertTrue(
+                content.contains("data:[DONE]"), "Response should be completed with [DONE]");
     }
 
     @Test
@@ -368,28 +447,39 @@ class ChatSseControllerTest {
         UUID conversationId = UUID.randomUUID();
 
         when(chatMessageService.prepare(eq(conversationId), anyString(), eq("diff-playbook")))
-            .thenThrow(new IllegalArgumentException(
-                "Playbook cannot be changed once a conversation has started."));
+                .thenThrow(
+                        new IllegalArgumentException(
+                                "Playbook cannot be changed once a conversation has started."));
 
-        ChatSseController controller = new ChatSseController(chatMessageService,
-            chatConversationService, chatCancellationService, sseExecutor, allowingLimiter());
+        ChatSseController controller =
+                new ChatSseController(
+                        chatMessageService,
+                        chatConversationService,
+                        chatCancellationService,
+                        sseExecutor,
+                        allowingLimiter());
 
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
-            .setControllerAdvice(new ApiExceptionHandler()).build();
+        MockMvc mockMvc =
+                MockMvcBuilders.standaloneSetup(controller)
+                        .setControllerAdvice(new ApiExceptionHandler())
+                        .build();
 
-        mockMvc
-            .perform(MockMvcRequestBuilders.post("/chat/" + conversationId + "/send")
-                .param("content", "Follow up message").param("promptName", "diff-playbook"))
-            .andExpect(MockMvcResultMatchers.status().isBadRequest())
-            .andExpect(MockMvcResultMatchers.jsonPath("$.error")
-                .value("Playbook cannot be changed once a conversation has started."));
+        mockMvc.perform(
+                        MockMvcRequestBuilders.post("/chat/" + conversationId + "/send")
+                                .param("content", "Follow up message")
+                                .param("promptName", "diff-playbook"))
+                .andExpect(MockMvcResultMatchers.status().isBadRequest())
+                .andExpect(
+                        MockMvcResultMatchers.jsonPath("$.error")
+                                .value(
+                                        "Playbook cannot be changed once a conversation has started."));
 
         verify(sseExecutor, never()).submit(any(Runnable.class));
     }
 
     @Test
     void sendMessageStream_emptyPlaybookTemplateText_returnsBadRequestAndReleasesPermit()
-        throws Exception {
+            throws Exception {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatCancellationService chatCancellationService = mock(ChatCancellationService.class);
         AsyncTaskExecutor sseExecutor = mock(AsyncTaskExecutor.class);
@@ -397,21 +487,31 @@ class ChatSseControllerTest {
         UUID conversationId = UUID.randomUUID();
 
         when(chatMessageService.prepare(eq(conversationId), anyString(), eq("blank-playbook")))
-            .thenThrow(
-                new IllegalArgumentException("The selected playbook has empty template text."));
+                .thenThrow(
+                        new IllegalArgumentException(
+                                "The selected playbook has empty template text."));
 
-        ChatSseController controller = new ChatSseController(chatMessageService,
-            chatConversationService, chatCancellationService, sseExecutor, limiter);
+        ChatSseController controller =
+                new ChatSseController(
+                        chatMessageService,
+                        chatConversationService,
+                        chatCancellationService,
+                        sseExecutor,
+                        limiter);
 
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
-            .setControllerAdvice(new ApiExceptionHandler()).build();
+        MockMvc mockMvc =
+                MockMvcBuilders.standaloneSetup(controller)
+                        .setControllerAdvice(new ApiExceptionHandler())
+                        .build();
 
-        mockMvc
-            .perform(MockMvcRequestBuilders.post("/chat/" + conversationId + "/send")
-                .param("content", "Hello").param("promptName", "blank-playbook"))
-            .andExpect(MockMvcResultMatchers.status().isBadRequest())
-            .andExpect(MockMvcResultMatchers.jsonPath("$.error")
-                .value("The selected playbook has empty template text."));
+        mockMvc.perform(
+                        MockMvcRequestBuilders.post("/chat/" + conversationId + "/send")
+                                .param("content", "Hello")
+                                .param("promptName", "blank-playbook"))
+                .andExpect(MockMvcResultMatchers.status().isBadRequest())
+                .andExpect(
+                        MockMvcResultMatchers.jsonPath("$.error")
+                                .value("The selected playbook has empty template text."));
 
         verify(limiter).release();
         verify(sseExecutor, never()).submit(any(Runnable.class));
@@ -426,15 +526,21 @@ class ChatSseControllerTest {
         UUID conversationId = UUID.randomUUID();
 
         when(chatMessageService.prepare(eq(conversationId), anyString(), any()))
-            .thenReturn(dummyPreparedChat());
+                .thenReturn(dummyPreparedChat());
         when(sseExecutor.submit(any(Runnable.class)))
-            .thenThrow(new RuntimeException("executor rejected"));
+                .thenThrow(new RuntimeException("executor rejected"));
 
-        ChatSseController controller = new ChatSseController(chatMessageService,
-            chatConversationService, chatCancellationService, sseExecutor, limiter);
+        ChatSseController controller =
+                new ChatSseController(
+                        chatMessageService,
+                        chatConversationService,
+                        chatCancellationService,
+                        sseExecutor,
+                        limiter);
 
         assertThatThrownBy(() -> controller.sendMessageStream(conversationId, "hello", null))
-            .isInstanceOf(RuntimeException.class).hasMessageContaining("executor rejected");
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("executor rejected");
         verify(limiter, Mockito.times(1)).release();
     }
 
@@ -447,18 +553,24 @@ class ChatSseControllerTest {
         UUID conversationId = UUID.randomUUID();
 
         when(chatMessageService.prepare(eq(conversationId), anyString(), any()))
-            .thenReturn(dummyPreparedChat());
+                .thenReturn(dummyPreparedChat());
 
         AtomicReference<FutureTask<?>> queuedTask = new AtomicReference<>();
-        when(sseExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
-            Runnable r = inv.getArgument(0);
-            FutureTask<?> ft = new FutureTask<>(r, null);
-            queuedTask.set(ft);
-            return ft;
-        });
+        when(sseExecutor.submit(any(Runnable.class)))
+                .thenAnswer(inv -> {
+                    Runnable r = inv.getArgument(0);
+                    FutureTask<?> ft = new FutureTask<>(r, null);
+                    queuedTask.set(ft);
+                    return ft;
+                });
 
-        ChatSseController controller = new ChatSseController(chatMessageService,
-            chatConversationService, chatCancellationService, sseExecutor, limiter);
+        ChatSseController controller =
+                new ChatSseController(
+                        chatMessageService,
+                        chatConversationService,
+                        chatCancellationService,
+                        sseExecutor,
+                        limiter);
 
         SseEmitter emitter = controller.sendMessageStream(conversationId, "hello", null);
 
@@ -487,22 +599,28 @@ class ChatSseControllerTest {
         UUID conversationId = UUID.randomUUID();
 
         when(chatMessageService.prepare(eq(conversationId), anyString(), any()))
-            .thenReturn(dummyPreparedChat());
-        doThrow(new AssertionError("boom-error")).when(chatMessageService).stream(any(), any(),
-            any());
-        when(sseExecutor.submit(any(Runnable.class))).thenAnswer(inv -> {
-            ((Runnable) inv.getArgument(0)).run();
-            return CompletableFuture.completedFuture(null);
-        });
+                .thenReturn(dummyPreparedChat());
+        doThrow(new AssertionError("boom-error")).when(chatMessageService).stream(
+                any(), any(), any());
+        when(sseExecutor.submit(any(Runnable.class)))
+                .thenAnswer(inv -> {
+                    ((Runnable) inv.getArgument(0)).run();
+                    return CompletableFuture.completedFuture(null);
+                });
 
-        ChatSseController controller = new ChatSseController(chatMessageService,
-            chatConversationService, chatCancellationService, sseExecutor, limiter);
+        ChatSseController controller =
+                new ChatSseController(
+                        chatMessageService,
+                        chatConversationService,
+                        chatCancellationService,
+                        sseExecutor,
+                        limiter);
 
         SseEmitter emitter = controller.sendMessageStream(conversationId, "hello", null);
 
         // Permit is returned and emitter is marked completed (no 600s hang).
         assertThat(limiter.tryAcquire()).isTrue();
         assertThatThrownBy(() -> emitter.send("after-complete"))
-            .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class);
     }
 }

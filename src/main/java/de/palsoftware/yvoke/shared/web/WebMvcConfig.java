@@ -19,8 +19,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
     private final RateLimitInterceptor rateLimitInterceptor;
     private final UserArgumentResolver userArgumentResolver;
 
-    public WebMvcConfig(ChatEnabledInterceptor chatEnabledInterceptor,
-        RateLimitInterceptor rateLimitInterceptor, UserArgumentResolver userArgumentResolver) {
+    public WebMvcConfig(
+            ChatEnabledInterceptor chatEnabledInterceptor,
+            RateLimitInterceptor rateLimitInterceptor,
+            UserArgumentResolver userArgumentResolver) {
         this.chatEnabledInterceptor = chatEnabledInterceptor;
         this.rateLimitInterceptor = rateLimitInterceptor;
         this.userArgumentResolver = userArgumentResolver;
@@ -34,7 +36,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Bean
     public AsyncTaskExecutor mvcTaskExecutor() {
         AsyncTaskExecutor delegate =
-            new TaskExecutorAdapter(Executors.newVirtualThreadPerTaskExecutor());
+                new TaskExecutorAdapter(Executors.newVirtualThreadPerTaskExecutor());
         return new DelegatingSecurityContextAsyncTaskExecutor(delegate);
     }
 
@@ -49,7 +51,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(chatEnabledInterceptor).addPathPatterns("/chat", "/chat/**");
         // Rate-limit the expensive, LLM/embedding/ingest-triggering routes — not the cheap GET
         // polls. (/admin/search only consumes a token when `query` is non-blank.)
-        registry.addInterceptor(rateLimitInterceptor).addPathPatterns("/chat/*/send",
-            "/chat/*/send-async", "/chat/*/validate-playbook", "/admin/search", "/api/ingest/**");
+        registry.addInterceptor(rateLimitInterceptor)
+                .addPathPatterns(
+                        "/chat/*/send",
+                        "/chat/*/send-async",
+                        "/chat/*/validate-playbook",
+                        "/admin/search",
+                        "/api/ingest/**");
     }
 }

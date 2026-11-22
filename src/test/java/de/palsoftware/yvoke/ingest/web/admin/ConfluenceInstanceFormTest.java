@@ -39,14 +39,27 @@ class ConfluenceInstanceFormTest {
     }
 
     private static ConfluenceInstanceForm valid() {
-        return new ConfluenceInstanceForm(null, "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net", "svc@example.com", "DOCS", "12345", "public", "draft",
-            "OIM - Docs", "10.0", false, true);
+        return new ConfluenceInstanceForm(
+                null,
+                "iCC Wiki",
+                "icc-wiki",
+                "https://acme.atlassian.net",
+                "svc@example.com",
+                "DOCS",
+                "12345",
+                "public",
+                "draft",
+                "OIM - Docs",
+                "10.0",
+                false,
+                true);
     }
 
     private static Set<String> propertiesInError(ConfluenceInstanceForm form) {
-        return validator.validate(form).stream().map(ConstraintViolation::getPropertyPath)
-            .map(Object::toString).collect(Collectors.toSet());
+        return validator.validate(form).stream()
+                .map(ConstraintViolation::getPropertyPath)
+                .map(Object::toString)
+                .collect(Collectors.toSet());
     }
 
     /**
@@ -55,12 +68,16 @@ class ConfluenceInstanceFormTest {
      */
     @Test
     void theFormHasNoTokenComponentAtAll() {
-        String[] components = Arrays.stream(ConfluenceInstanceForm.class.getRecordComponents())
-            .map(RecordComponent::getName).toArray(String[]::new);
+        String[] components =
+                Arrays.stream(ConfluenceInstanceForm.class.getRecordComponents())
+                        .map(RecordComponent::getName)
+                        .toArray(String[]::new);
 
-        assertThat(components).noneMatch(name -> name.toLowerCase(Locale.ROOT).contains("token")
-            || name.toLowerCase(Locale.ROOT).contains("secret")
-            || name.toLowerCase(Locale.ROOT).contains("password"));
+        assertThat(components)
+                .noneMatch(name ->
+                        name.toLowerCase(Locale.ROOT).contains("token")
+                                || name.toLowerCase(Locale.ROOT).contains("secret")
+                                || name.toLowerCase(Locale.ROOT).contains("password"));
     }
 
     @Test
@@ -70,11 +87,19 @@ class ConfluenceInstanceFormTest {
 
     @Test
     void everyMandatoryFieldIsRequired() {
-        ConfluenceInstanceForm blank = new ConfluenceInstanceForm(null, "  ", "", " ", "", "  ", "",
-            null, null, "   ", null, false, true);
+        ConfluenceInstanceForm blank =
+                new ConfluenceInstanceForm(
+                        null, "  ", "", " ", "", "  ", "", null, null, "   ", null, false, true);
 
-        assertThat(propertiesInError(blank)).contains("name", "slug", "domain", "email", "space",
-            "rootPageId", "targetCollection");
+        assertThat(propertiesInError(blank))
+                .contains(
+                        "name",
+                        "slug",
+                        "domain",
+                        "email",
+                        "space",
+                        "rootPageId",
+                        "targetCollection");
     }
 
     /**
@@ -86,20 +111,45 @@ class ConfluenceInstanceFormTest {
     @Test
     void theSlugMustMatchTheFormatTheDatabaseAndTheJobKindAgreeOn() {
         for (String bad : new String[] {"ICC-Wiki", "icc wiki", "icc:wiki", "-icc", "icc/wiki"}) {
-            ConfluenceInstanceForm form = new ConfluenceInstanceForm(null, "iCC Wiki", bad,
-                "https://acme.atlassian.net", "svc@example.com", "DOCS", "12345", null, null,
-                "OIM - Docs", null, false, true);
-            assertThat(propertiesInError(form)).as("slug %s must be rejected", bad)
-                .contains("slug");
+            ConfluenceInstanceForm form =
+                    new ConfluenceInstanceForm(
+                            null,
+                            "iCC Wiki",
+                            bad,
+                            "https://acme.atlassian.net",
+                            "svc@example.com",
+                            "DOCS",
+                            "12345",
+                            null,
+                            null,
+                            "OIM - Docs",
+                            null,
+                            false,
+                            true);
+            assertThat(propertiesInError(form))
+                    .as("slug %s must be rejected", bad)
+                    .contains("slug");
         }
     }
 
     /** Nothing checked this before: a non-numeric page id fails at the first CQL call, not here. */
     @Test
     void theRootPageIdMustBeNumeric() {
-        ConfluenceInstanceForm form = new ConfluenceInstanceForm(null, "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net", "svc@example.com", "DOCS", "DOCS-12345", null, null,
-            "OIM - Docs", null, false, true);
+        ConfluenceInstanceForm form =
+                new ConfluenceInstanceForm(
+                        null,
+                        "iCC Wiki",
+                        "icc-wiki",
+                        "https://acme.atlassian.net",
+                        "svc@example.com",
+                        "DOCS",
+                        "DOCS-12345",
+                        null,
+                        null,
+                        "OIM - Docs",
+                        null,
+                        false,
+                        true);
 
         assertThat(propertiesInError(form)).contains("rootPageId");
     }
@@ -111,21 +161,51 @@ class ConfluenceInstanceFormTest {
      */
     @Test
     void aDomainThatIsNotAnAbsoluteHttpUrlIsAFieldError() {
-        for (String bad : new String[] {"acme.atlassian.net", "ftp://acme.atlassian.net",
-            "javascript:alert(1)", "https://"}) {
+        for (String bad :
+                new String[] {
+                    "acme.atlassian.net",
+                    "ftp://acme.atlassian.net",
+                    "javascript:alert(1)",
+                    "https://"
+                }) {
             ConfluenceInstanceForm form =
-                new ConfluenceInstanceForm(null, "iCC Wiki", "icc-wiki", bad, "svc@example.com",
-                    "DOCS", "12345", null, null, "OIM - Docs", null, false, true);
-            assertThat(propertiesInError(form)).as("domain %s must be rejected", bad)
-                .contains("domain");
+                    new ConfluenceInstanceForm(
+                            null,
+                            "iCC Wiki",
+                            "icc-wiki",
+                            bad,
+                            "svc@example.com",
+                            "DOCS",
+                            "12345",
+                            null,
+                            null,
+                            "OIM - Docs",
+                            null,
+                            false,
+                            true);
+            assertThat(propertiesInError(form))
+                    .as("domain %s must be rejected", bad)
+                    .contains("domain");
         }
     }
 
     @Test
     void anEmailThatIsNotAnAddressIsAFieldError() {
         ConfluenceInstanceForm form =
-            new ConfluenceInstanceForm(null, "iCC Wiki", "icc-wiki", "https://acme.atlassian.net",
-                "not-an-email", "DOCS", "12345", null, null, "OIM - Docs", null, false, true);
+                new ConfluenceInstanceForm(
+                        null,
+                        "iCC Wiki",
+                        "icc-wiki",
+                        "https://acme.atlassian.net",
+                        "not-an-email",
+                        "DOCS",
+                        "12345",
+                        null,
+                        null,
+                        "OIM - Docs",
+                        null,
+                        false,
+                        true);
 
         assertThat(propertiesInError(form)).contains("email");
     }
@@ -133,19 +213,34 @@ class ConfluenceInstanceFormTest {
     /** Every message is flashed verbatim to an administrator, so none may be a bare field name. */
     @Test
     void everyRejectionCarriesAnActionableMessage() {
-        ConfluenceInstanceForm blank = new ConfluenceInstanceForm(null, null, null, null, null,
-            null, null, null, null, null, null, false, true);
+        ConfluenceInstanceForm blank =
+                new ConfluenceInstanceForm(
+                        null, null, null, null, null, null, null, null, null, null, null, false,
+                        true);
 
-        assertThat(validator.validate(blank)).isNotEmpty()
-            .allSatisfy(violation -> assertThat(violation.getMessage()).hasSizeGreaterThan(10));
+        assertThat(validator.validate(blank))
+                .isNotEmpty()
+                .allSatisfy(violation -> assertThat(violation.getMessage()).hasSizeGreaterThan(10));
     }
 
     /** Surrounding whitespace is normalized before validation, not after it. */
     @Test
     void valuesAreTrimmedAndBlanksBecomeNull() {
-        ConfluenceInstanceForm form = new ConfluenceInstanceForm(null, " iCC Wiki ", " icc-wiki ",
-            " https://acme.atlassian.net ", " svc@example.com ", " DOCS ", " 12345 ", "  ", "  ",
-            " OIM - Docs ", "  ", false, true);
+        ConfluenceInstanceForm form =
+                new ConfluenceInstanceForm(
+                        null,
+                        " iCC Wiki ",
+                        " icc-wiki ",
+                        " https://acme.atlassian.net ",
+                        " svc@example.com ",
+                        " DOCS ",
+                        " 12345 ",
+                        "  ",
+                        "  ",
+                        " OIM - Docs ",
+                        "  ",
+                        false,
+                        true);
 
         assertThat(validator.validate(form)).isEmpty();
         assertThat(form.name()).isEqualTo("iCC Wiki");
@@ -158,9 +253,22 @@ class ConfluenceInstanceFormTest {
     @Test
     void theInstanceItBuildsCarriesTheEditedFieldsAndNoCredential() {
         UUID id = UUID.randomUUID();
-        ConfluenceInstance instance = new ConfluenceInstanceForm(id, "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net", "svc@example.com", "DOCS", "12345", "public", "draft",
-            "OIM - Docs", "10.0", true, false).toInstance();
+        ConfluenceInstance instance =
+                new ConfluenceInstanceForm(
+                                id,
+                                "iCC Wiki",
+                                "icc-wiki",
+                                "https://acme.atlassian.net",
+                                "svc@example.com",
+                                "DOCS",
+                                "12345",
+                                "public",
+                                "draft",
+                                "OIM - Docs",
+                                "10.0",
+                                true,
+                                false)
+                        .toInstance();
 
         assertThat(instance.id()).isEqualTo(id);
         assertThat(instance.name()).isEqualTo("iCC Wiki");

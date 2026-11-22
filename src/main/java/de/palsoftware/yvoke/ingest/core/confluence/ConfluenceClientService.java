@@ -48,13 +48,11 @@ import org.springframework.web.util.UriComponentsBuilder;
 /**
  * Talks to Confluence on behalf of ONE {@link ConfluenceInstance} per call.
  *
- * <p>
- * Every entry point takes the instance explicitly. Nothing here reads a global configuration: a
+ * <p>Every entry point takes the instance explicitly. Nothing here reads a global configuration: a
  * deployment connects several sites at once, and a service that remembers "the" connector silently
  * sends one site's crawl through another site's credentials.
  *
- * <p>
- * Both caches are therefore keyed by instance: the {@link RestClient} by instance id (plus a
+ * <p>Both caches are therefore keyed by instance: the {@link RestClient} by instance id (plus a
  * signature over the connection fields, so an edited domain/e-mail/token takes effect immediately
  * instead of at the next restart), and the display-name cache by (instance, account id) — the same
  * Atlassian account id exists on unrelated sites, and a single-keyed cache would render one site's
@@ -93,20 +91,34 @@ public class ConfluenceClientService {
     private final Map<UserCacheKey, String> userDisplayNameCache = new ConcurrentHashMap<>();
 
     @Autowired
-    public ConfluenceClientService(SecretCipher secretCipher,
-        @Qualifier("confluenceRestClientBuilder") RestClient.Builder restClientBuilder,
-        @Value("${app.confluence.retry.max-attempts}") int retryMaxAttempts,
-        @Value("${app.confluence.retry.initial-backoff-ms}") long retryInitialBackoffMs,
-        @Value("${app.confluence.retry.max-backoff-ms}") long retryMaxBackoffMs,
-        @Value("${app.confluence.allowed-hosts}") String allowedHosts, Environment environment) {
-        this(secretCipher, restClientBuilder, retryMaxAttempts, retryInitialBackoffMs,
-            retryMaxBackoffMs, environment == null || !DevProfiles.anyActive(environment),
-            parseAllowedHosts(allowedHosts), MAX_ATTACHMENT_BYTES);
+    public ConfluenceClientService(
+            SecretCipher secretCipher,
+            @Qualifier("confluenceRestClientBuilder") RestClient.Builder restClientBuilder,
+            @Value("${app.confluence.retry.max-attempts}") int retryMaxAttempts,
+            @Value("${app.confluence.retry.initial-backoff-ms}") long retryInitialBackoffMs,
+            @Value("${app.confluence.retry.max-backoff-ms}") long retryMaxBackoffMs,
+            @Value("${app.confluence.allowed-hosts}") String allowedHosts,
+            Environment environment) {
+        this(
+                secretCipher,
+                restClientBuilder,
+                retryMaxAttempts,
+                retryInitialBackoffMs,
+                retryMaxBackoffMs,
+                environment == null || !DevProfiles.anyActive(environment),
+                parseAllowedHosts(allowedHosts),
+                MAX_ATTACHMENT_BYTES);
     }
 
-    ConfluenceClientService(SecretCipher secretCipher, RestClient.Builder restClientBuilder,
-        int retryMaxAttempts, long retryInitialBackoffMs, long retryMaxBackoffMs,
-        boolean requireHttps, List<String> allowedHosts, long maxAttachmentBytes) {
+    ConfluenceClientService(
+            SecretCipher secretCipher,
+            RestClient.Builder restClientBuilder,
+            int retryMaxAttempts,
+            long retryInitialBackoffMs,
+            long retryMaxBackoffMs,
+            boolean requireHttps,
+            List<String> allowedHosts,
+            long maxAttachmentBytes) {
         this.secretCipher = secretCipher;
         this.restClientBuilder = restClientBuilder;
         this.retryMaxAttempts = Math.max(1, retryMaxAttempts);
@@ -115,15 +127,18 @@ public class ConfluenceClientService {
         this.requireHttps = requireHttps;
         this.allowedHosts = allowedHosts == null ? List.of() : List.copyOf(allowedHosts);
         this.maxAttachmentBytes =
-            maxAttachmentBytes > 0 ? maxAttachmentBytes : MAX_ATTACHMENT_BYTES;
+                maxAttachmentBytes > 0 ? maxAttachmentBytes : MAX_ATTACHMENT_BYTES;
     }
 
     private static List<String> parseAllowedHosts(String raw) {
         if (raw == null || raw.isBlank()) {
             return List.of();
         }
-        return Arrays.stream(raw.split(",")).map(String::trim).filter(s -> !s.isEmpty())
-            .map(s -> s.toLowerCase(Locale.ROOT)).toList();
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> s.toLowerCase(Locale.ROOT))
+                .toList();
     }
 
     /** A built client plus the connection fields it was built from. */
@@ -138,12 +153,11 @@ public class ConfluenceClientService {
     /**
      * The base URL every request for {@code instance} is issued against.
      *
-     * <p>
-     * KNOWN LIMITATION — Confluence Data Center under a context path is not supported.
-     * {@link ConfluenceDomains#canonicalize} appends {@code /wiki}, which is the correct REST base
-     * for Atlassian Cloud but wrong for a Data Center install served from a context path:
-     * {@code https://wiki.example.com/Confluence} becomes {@code .../Confluence/wiki}, and every
-     * call 404s. The rule is kept identical to the one the previous singleton configuration used so
+     * <p>KNOWN LIMITATION — Confluence Data Center under a context path is not supported. {@link
+     * ConfluenceDomains#canonicalize} appends {@code /wiki}, which is the correct REST base for
+     * Atlassian Cloud but wrong for a Data Center install served from a context path: {@code
+     * https://wiki.example.com/Confluence} becomes {@code .../Confluence/wiki}, and every call
+     * 404s. The rule is kept identical to the one the previous singleton configuration used so
      * existing corpora keep their {@code source_file} identity (which is derived from this value);
      * supporting DC means storing whether a site is Cloud or DC, which is a schema change, not a
      * configuration flag.
@@ -155,27 +169,33 @@ public class ConfluenceClientService {
     /**
      * Decrypts the instance's stored API token.
      *
-     * <p>
-     * Failures name the instance and its {@link TokenHealth} — never the token, and never a generic
-     * "connector is not configured", which with several instances says nothing about which one is
-     * broken or what to do about it.
+     * <p>Failures name the instance and its {@link TokenHealth} — never the token, and never a
+     * generic "connector is not configured", which with several instances says nothing about which
+     * one is broken or what to do about it.
      *
      * @throws IllegalStateException if no token is stored, or the stored ciphertext cannot be read
-     *         with the currently configured key
+     *     with the currently configured key
      */
     public String resolveApiToken(ConfluenceInstance instance) {
         TokenHealth health = instance.tokenHealth(secretCipher.keyId());
         if (health == TokenHealth.MISSING) {
-            throw new IllegalStateException("Confluence instance '" + instance.name()
-                + "': no API token is stored (token health: " + health
-                + "); enter the token on the connectors page.");
+            throw new IllegalStateException(
+                    "Confluence instance '"
+                            + instance.name()
+                            + "': no API token is stored (token health: "
+                            + health
+                            + "); enter the token on the connectors page.");
         }
         try {
             return secretCipher.decryptOrThrow(instance.apiTokenEnc());
         } catch (SecretDecryptionException e) {
-            throw new IllegalStateException("Confluence instance '" + instance.name()
-                + "': stored API token cannot be decrypted (APP_SECRET_KEY rotated?) (token health: "
-                + health + "); re-enter the token on the connectors page.", e);
+            throw new IllegalStateException(
+                    "Confluence instance '"
+                            + instance.name()
+                            + "': stored API token cannot be decrypted (APP_SECRET_KEY rotated?) (token health: "
+                            + health
+                            + "); re-enter the token on the connectors page.",
+                    e);
         }
     }
 
@@ -195,7 +215,7 @@ public class ConfluenceClientService {
             return cached.client();
         }
         RestClient client =
-            getClient(instance.domain(), instance.email(), resolveApiToken(instance));
+                getClient(instance.domain(), instance.email(), resolveApiToken(instance));
         clientCache.put(instanceId, new CachedClient(signature, client));
         // A changed domain points at a different site, where the cached account ids mean different
         // people (or nothing at all).
@@ -204,13 +224,12 @@ public class ConfluenceClientService {
     }
 
     /**
-     * Drops everything cached for one instance: its {@link RestClient} — which carries
-     * {@code Basic base64(email:plaintextToken)} as a DEFAULT HEADER — and every display name
-     * resolved through it.
+     * Drops everything cached for one instance: its {@link RestClient} — which carries {@code Basic
+     * base64(email:plaintextToken)} as a DEFAULT HEADER — and every display name resolved through
+     * it.
      *
-     * <p>
-     * Without this, a deleted instance's client (and a revoked token with it) stayed reachable in
-     * the heap until the next restart, and the display-name cache only ever shrank when a client
+     * <p>Without this, a deleted instance's client (and a revoked token with it) stayed reachable
+     * in the heap until the next restart, and the display-name cache only ever shrank when a client
      * happened to be rebuilt.
      */
     public void evict(UUID instanceId) {
@@ -244,14 +263,21 @@ public class ConfluenceClientService {
         // ConfluenceDomains validates the URL's shape; it performs NO SSRF check, so the network
         // guard stays here, on the path that actually builds a client.
         assertSafeConfluenceUrl(base);
-        String authHeader = "Basic " + Base64.getEncoder()
-            .encodeToString((email + ":" + apiToken).getBytes(StandardCharsets.UTF_8));
+        String authHeader =
+                "Basic "
+                        + Base64.getEncoder()
+                                .encodeToString(
+                                        (email + ":" + apiToken).getBytes(StandardCharsets.UTF_8));
 
         // Derive from the shared pooled builder so Confluence calls reuse connections and inherit
         // the configured connect/read timeouts (rather than the un-pooled, un-timed default JDK
         // client).
-        return restClientBuilder.clone().baseUrl(base).defaultHeader("Authorization", authHeader)
-            .defaultHeader("Accept", "application/json").build();
+        return restClientBuilder
+                .clone()
+                .baseUrl(base)
+                .defaultHeader("Authorization", authHeader)
+                .defaultHeader("Accept", "application/json")
+                .build();
     }
 
     private void assertSafeConfluenceUrl(String url) {
@@ -263,12 +289,12 @@ public class ConfluenceClientService {
         }
         String scheme = uri.getScheme();
         if (scheme == null
-            || !(scheme.equalsIgnoreCase("https") || scheme.equalsIgnoreCase("http"))) {
+                || !(scheme.equalsIgnoreCase("https") || scheme.equalsIgnoreCase("http"))) {
             throw new BlockedHostException("Confluence URL must use http(s): " + url);
         }
         if (requireHttps && !scheme.equalsIgnoreCase("https")) {
             throw new BlockedHostException(
-                "Confluence URL must use https outside development profiles: " + url);
+                    "Confluence URL must use https outside development profiles: " + url);
         }
         String host = uri.getHost();
         if (host == null || host.isBlank()) {
@@ -280,8 +306,11 @@ public class ConfluenceClientService {
         try {
             SsrfAddressValidator.resolveAndValidate(host);
         } catch (UnknownHostException e) {
-            throw new BlockedHostException(e.getMessage() != null ? e.getMessage()
-                : "Confluence host cannot be resolved: " + host, e);
+            throw new BlockedHostException(
+                    e.getMessage() != null
+                            ? e.getMessage()
+                            : "Confluence host cannot be resolved: " + host,
+                    e);
         }
     }
 
@@ -306,16 +335,23 @@ public class ConfluenceClientService {
     private static void assertSameHostAsBase(String baseUrl, URI candidate) {
         String baseHost = URI.create(baseUrl).getHost();
         String candidateHost = candidate.getHost();
-        if (baseHost == null || candidateHost == null
-            || !baseHost.equalsIgnoreCase(candidateHost)) {
+        if (baseHost == null
+                || candidateHost == null
+                || !baseHost.equalsIgnoreCase(candidateHost)) {
             throw new IllegalArgumentException(
-                "Refusing to follow Confluence URL to a different host: " + candidate);
+                    "Refusing to follow Confluence URL to a different host: " + candidate);
         }
     }
 
     @SuppressWarnings("unchecked")
-    public ConnectionTestResult testConnection(String domain, String email, String apiToken,
-        String space, String parentPageId, String includeLabels, String excludeLabels) {
+    public ConnectionTestResult testConnection(
+            String domain,
+            String email,
+            String apiToken,
+            String space,
+            String parentPageId,
+            String includeLabels,
+            String excludeLabels) {
         if (domain.isBlank() || email.isBlank() || apiToken.isBlank()) {
             return ConnectionTestResult.failure("Domain, Email, and API Token must not be blank.");
         }
@@ -326,17 +362,24 @@ public class ConfluenceClientService {
             // 1. Verify Space
             log.info("Testing Confluence space info: space={}", space);
             Map<String, Object> spaceResult =
-                client.get().uri("/rest/api/space/{space}", space.trim()).retrieve()
-                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+                    client.get()
+                            .uri("/rest/api/space/{space}", space.trim())
+                            .retrieve()
+                            .body(new ParameterizedTypeReference<Map<String, Object>>() {});
 
             String spaceName = spaceResult != null ? (String) spaceResult.get("name") : space;
 
             // 2. Verify Parent Page
             log.info("Testing Confluence parent page info: id={}", parentPageId);
-            Map<String, Object> pageResult = client.get()
-                .uri(uriBuilder -> uriBuilder.path("/rest/api/content/{id}")
-                    .queryParam("expand", "version").build(parentPageId.trim()))
-                .retrieve().body(new ParameterizedTypeReference<Map<String, Object>>() {});
+            Map<String, Object> pageResult =
+                    client.get()
+                            .uri(uriBuilder ->
+                                    uriBuilder
+                                            .path("/rest/api/content/{id}")
+                                            .queryParam("expand", "version")
+                                            .build(parentPageId.trim()))
+                            .retrieve()
+                            .body(new ParameterizedTypeReference<Map<String, Object>>() {});
 
             String pageTitle = "Unknown Page";
             int versionNumber = 1;
@@ -351,10 +394,16 @@ public class ConfluenceClientService {
             // 3. Retrieve Page Count under Parent using CQL search
             String cql = buildCqlQuery(space, parentPageId, includeLabels, excludeLabels);
             log.info("Testing Confluence CQL query: {}", cql);
-            Map<String, Object> searchResult = client.get()
-                .uri(uriBuilder -> uriBuilder.path("/rest/api/content/search")
-                    .queryParam("cql", cql).queryParam("limit", 5).build())
-                .retrieve().body(new ParameterizedTypeReference<Map<String, Object>>() {});
+            Map<String, Object> searchResult =
+                    client.get()
+                            .uri(uriBuilder ->
+                                    uriBuilder
+                                            .path("/rest/api/content/search")
+                                            .queryParam("cql", cql)
+                                            .queryParam("limit", 5)
+                                            .build())
+                            .retrieve()
+                            .body(new ParameterizedTypeReference<Map<String, Object>>() {});
 
             int totalPagesFound = 0;
             StringBuilder samplePages = new StringBuilder();
@@ -363,33 +412,42 @@ public class ConfluenceClientService {
                     totalPagesFound = ((Number) searchResult.get("totalSize")).intValue();
                 }
                 List<Map<String, Object>> results =
-                    (List<Map<String, Object>>) searchResult.get("results");
+                        (List<Map<String, Object>>) searchResult.get("results");
                 if (results != null) {
                     for (Map<String, Object> p : results) {
                         // Page titles are attacker-controllable (any author in the space); escape
                         // before
                         // embedding in
                         // HTML.
-                        samplePages.append(String.format("<li><strong>%s</strong> (ID: %s)</li>",
-                            HtmlUtils.htmlEscape(String.valueOf(p.get("title"))),
-                            HtmlUtils.htmlEscape(String.valueOf(p.get("id")))));
+                        samplePages.append(
+                                String.format(
+                                        "<li><strong>%s</strong> (ID: %s)</li>",
+                                        HtmlUtils.htmlEscape(String.valueOf(p.get("title"))),
+                                        HtmlUtils.htmlEscape(String.valueOf(p.get("id")))));
                     }
                 }
             }
 
-            return ConnectionTestResult.success(spaceName, pageTitle, versionNumber,
-                totalPagesFound, samplePages.toString());
+            return ConnectionTestResult.success(
+                    spaceName, pageTitle, versionNumber, totalPagesFound, samplePages.toString());
 
         } catch (RestClientResponseException e) {
             String rawBody = e.getResponseBodyAsString();
-            String logPreview = rawBody == null ? ""
-                : rawBody.replaceAll("[\\r\\n]+", " ").substring(0,
-                    Math.min(rawBody.length(), MAX_LOGGED_ERROR_BODY_CHARS));
-            log.warn("Confluence test failed with HTTP {}: {}", e.getStatusCode().value(),
-                logPreview);
+            String logPreview =
+                    rawBody == null
+                            ? ""
+                            : rawBody.replaceAll("[\\r\\n]+", " ")
+                                    .substring(
+                                            0,
+                                            Math.min(
+                                                    rawBody.length(), MAX_LOGGED_ERROR_BODY_CHARS));
+            log.warn(
+                    "Confluence test failed with HTTP {}: {}",
+                    e.getStatusCode().value(),
+                    logPreview);
             // Never return remote response bodies to the browser (SSRF response-body oracle).
-            return ConnectionTestResult
-                .failure("Atlassian API returned HTTP " + e.getStatusCode().value());
+            return ConnectionTestResult.failure(
+                    "Atlassian API returned HTTP " + e.getStatusCode().value());
         } catch (BlockedHostException e) {
             log.warn("Confluence connection test blocked: {}", e.getMessage());
             return ConnectionTestResult.failure("Confluence host is not allowed.");
@@ -399,27 +457,36 @@ public class ConfluenceClientService {
         } catch (Exception e) {
             log.error("Confluence connection test failed", e);
             return ConnectionTestResult.failure(
-                "Confluence connection test failed (" + e.getClass().getSimpleName() + ")");
+                    "Confluence connection test failed (" + e.getClass().getSimpleName() + ")");
         }
     }
 
     /**
-     * Crawls the instance's configured page tree, handing each CQL result page to
-     * {@code batchProcessor}. Space, root page and label filters all come from {@code instance} — a
-     * crawl is scoped to exactly one site.
+     * Crawls the instance's configured page tree, handing each CQL result page to {@code
+     * batchProcessor}. Space, root page and label filters all come from {@code instance} — a crawl
+     * is scoped to exactly one site.
      */
     @SuppressWarnings("unchecked")
-    public void crawlAllDescendantPages(ConfluenceInstance instance,
-        Consumer<List<Map<String, Object>>> batchProcessor) {
+    public void crawlAllDescendantPages(
+            ConfluenceInstance instance, Consumer<List<Map<String, Object>>> batchProcessor) {
         String space = instance.space();
-        String cql = buildCqlQuery(space, instance.rootPageId(), instance.includeLabels(),
-            instance.excludeLabels());
+        String cql =
+                buildCqlQuery(
+                        space,
+                        instance.rootPageId(),
+                        instance.includeLabels(),
+                        instance.excludeLabels());
         String base = baseUrl(instance);
 
         // First URL (not yet encoded, so we use UriComponentsBuilder to build it correctly)
-        URI currentUri = UriComponentsBuilder.fromUriString(base).path("/rest/api/content/search")
-            .queryParam("cql", cql).queryParam("limit", 50)
-            .queryParam("expand", "version,ancestors,space").build().toUri();
+        URI currentUri =
+                UriComponentsBuilder.fromUriString(base)
+                        .path("/rest/api/content/search")
+                        .queryParam("cql", cql)
+                        .queryParam("limit", 50)
+                        .queryParam("expand", "version,ancestors,space")
+                        .build()
+                        .toUri();
 
         while (currentUri != null) {
             log.info("Fetching Confluence CQL page batch: {}", currentUri);
@@ -428,8 +495,9 @@ public class ConfluenceClientService {
             // enqueued hundreds of pages, with no resume point.
             URI uri = currentUri;
             Map<String, Object> response =
-                withRateLimitRetry("the descendant page crawl of space " + space,
-                    () -> fetchSearchPage(instance, base, uri));
+                    withRateLimitRetry(
+                            "the descendant page crawl of space " + space,
+                            () -> fetchSearchPage(instance, base, uri));
 
             if (response == null) {
                 break;
@@ -455,26 +523,31 @@ public class ConfluenceClientService {
     /**
      * How many pages live under the instance's root page when its INCLUDE-label filter is IGNORED.
      *
-     * <p>
-     * Pages are selected for ingestion by a hand-applied Confluence label, so a page nobody labels
-     * is invisible to the knowledge base forever with no signal anywhere. Subtracting the crawl's
-     * own page count from this one turns that silence into a number an operator sees at the end of
-     * every sync. The exclude-label filter is still applied — a page excluded on purpose is not
-     * curation drift.
+     * <p>Pages are selected for ingestion by a hand-applied Confluence label, so a page nobody
+     * labels is invisible to the knowledge base forever with no signal anywhere. Subtracting the
+     * crawl's own page count from this one turns that silence into a number an operator sees at the
+     * end of every sync. The exclude-label filter is still applied — a page excluded on purpose is
+     * not curation drift.
      *
-     * <p>
-     * Deliberately a COUNT and not a listing: {@code limit=1} fetches one result row and reads
+     * <p>Deliberately a COUNT and not a listing: {@code limit=1} fetches one result row and reads
      * {@code totalSize}, so this costs one request no matter how large the tree is.
      */
     public int countPagesIgnoringIncludeLabels(ConfluenceInstance instance) {
         String cql =
-            buildCqlQuery(instance.space(), instance.rootPageId(), null, instance.excludeLabels());
+                buildCqlQuery(
+                        instance.space(), instance.rootPageId(), null, instance.excludeLabels());
         String base = baseUrl(instance);
-        URI uri = UriComponentsBuilder.fromUriString(base).path("/rest/api/content/search")
-            .queryParam("cql", cql).queryParam("limit", 1).build().toUri();
+        URI uri =
+                UriComponentsBuilder.fromUriString(base)
+                        .path("/rest/api/content/search")
+                        .queryParam("cql", cql)
+                        .queryParam("limit", 1)
+                        .build()
+                        .toUri();
         Map<String, Object> response =
-            withRateLimitRetry("the unlabelled-page count of space " + instance.space(),
-                () -> fetchSearchPage(instance, base, uri));
+                withRateLimitRetry(
+                        "the unlabelled-page count of space " + instance.space(),
+                        () -> fetchSearchPage(instance, base, uri));
         Object totalSize = response == null ? null : response.get("totalSize");
         return totalSize instanceof Number number ? number.intValue() : 0;
     }
@@ -487,24 +560,36 @@ public class ConfluenceClientService {
     Map<String, Object> fetchSearchPage(ConfluenceInstance instance, String baseUrl, URI uri) {
         assertSafeConfluenceUrl(uri.toString());
         assertSameHostAsBase(baseUrl, uri);
-        return getClient(instance).get().uri(uri).retrieve()
-            .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+        return getClient(instance)
+                .get()
+                .uri(uri)
+                .retrieve()
+                .body(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    private String buildCqlQuery(String space, String parentPageId, String includeLabels,
-        String excludeLabels) {
+    private String buildCqlQuery(
+            String space, String parentPageId, String includeLabels, String excludeLabels) {
         StringBuilder cqlBuilder = new StringBuilder();
-        cqlBuilder.append(String.format("type=page and space='%s' and (ancestor='%s' or id='%s')",
-            escapeCql(space.trim()), escapeCql(parentPageId.trim()),
-            escapeCql(parentPageId.trim())));
+        cqlBuilder.append(
+                String.format(
+                        "type=page and space='%s' and (ancestor='%s' or id='%s')",
+                        escapeCql(space.trim()),
+                        escapeCql(parentPageId.trim()),
+                        escapeCql(parentPageId.trim())));
 
         if (includeLabels != null && !includeLabels.isBlank()) {
             String[] labels = includeLabels.split(",");
-            List<String> quotedLabels = Arrays.stream(labels).map(String::trim)
-                .filter(s -> !s.isBlank()).map(s -> "\"" + escapeCql(s) + "\"").toList();
+            List<String> quotedLabels =
+                    Arrays.stream(labels)
+                            .map(String::trim)
+                            .filter(s -> !s.isBlank())
+                            .map(s -> "\"" + escapeCql(s) + "\"")
+                            .toList();
             if (!quotedLabels.isEmpty()) {
-                cqlBuilder.append(" and label in (").append(String.join(",", quotedLabels))
-                    .append(")");
+                cqlBuilder
+                        .append(" and label in (")
+                        .append(String.join(",", quotedLabels))
+                        .append(")");
             }
         }
 
@@ -531,8 +616,7 @@ public class ConfluenceClientService {
      * Fetches a page body, retrying HTTP 429 with backoff (honouring {@code Retry-After}, capped by
      * {@code app.confluence.retry.max-backoff-ms}).
      *
-     * <p>
-     * A failure THROWS rather than returning {@code ""}: a swallowed fetch error is
+     * <p>A failure THROWS rather than returning {@code ""}: a swallowed fetch error is
      * indistinguishable from an empty page, so a throttled or unauthorized crawl of several hundred
      * pages used to complete green while producing an empty corpus. The thrown message deliberately
      * carries only the page id and status code — never the response body or any credential.
@@ -540,19 +624,26 @@ public class ConfluenceClientService {
     public ConfluencePageContent getPageContent(ConfluenceInstance instance, String pageId) {
         Optional<ConfluencePageContent> storage;
         try {
-            storage = withRateLimitRetry("the body fetch for page " + pageId,
-                () -> fetchPageContent(instance, pageId, "storage"));
+            storage =
+                    withRateLimitRetry(
+                            "the body fetch for page " + pageId,
+                            () -> fetchPageContent(instance, pageId, "storage"));
         } catch (RestClientResponseException e) {
             // Some bodies are only retrievable via body.view (e.g. legacy storage formats).
             log.warn(
-                "Failed to retrieve body.storage for page {}, falling back to body.view. Status: {}",
-                pageId, e.getStatusCode());
+                    "Failed to retrieve body.storage for page {}, falling back to body.view. Status: {}",
+                    pageId,
+                    e.getStatusCode());
             return fetchViewContentOrFail(instance, pageId, e);
         } catch (IllegalStateException e) {
             throw e;
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Failed to retrieve the body of Confluence page "
-                + pageId + ": " + e.getClass().getSimpleName(), e);
+            throw new IllegalStateException(
+                    "Failed to retrieve the body of Confluence page "
+                            + pageId
+                            + ": "
+                            + e.getClass().getSimpleName(),
+                    e);
         }
         if (storage.isPresent()) {
             return storage.get();
@@ -560,24 +651,23 @@ public class ConfluenceClientService {
         // A 200 with no body.storage at all. Nothing threw, so the catch above did not run — take
         // the same body.view fallback deliberately rather than letting "" reach the ingest as a
         // page that looks legitimately empty and is then version-skipped forever.
-        log.warn("Confluence returned no body.storage for page {}; falling back to body.view",
-            pageId);
+        log.warn(
+                "Confluence returned no body.storage for page {}; falling back to body.view",
+                pageId);
         return fetchViewContentOrFail(instance, pageId, null);
     }
-
 
     /**
      * Runs {@code call}, retrying HTTP 429 with backoff (honouring {@code Retry-After}, capped by
      * {@code app.confluence.retry.max-backoff-ms}) up to {@code app.confluence.retry.max-attempts}.
      *
-     * <p>
-     * Any other {@link RestClientResponseException} is rethrown unchanged so callers with a
+     * <p>Any other {@link RestClientResponseException} is rethrown unchanged so callers with a
      * fallback (the body.storage → body.view path) can still see it. Exhausting the 429 budget
      * throws an {@link IllegalStateException} naming {@code what} — never the response body or a
      * credential.
      */
     private <T> T withRateLimitRetry(String what, Supplier<T> call) {
-        for (int attempt = 1;; attempt++) {
+        for (int attempt = 1; ; attempt++) {
             try {
                 return call.get();
             } catch (RestClientResponseException e) {
@@ -585,46 +675,60 @@ public class ConfluenceClientService {
                     throw e;
                 }
                 if (attempt >= retryMaxAttempts) {
-                    throw new IllegalStateException("Confluence rate-limited " + what
-                        + " (HTTP 429) after " + attempt + " attempts");
+                    throw new IllegalStateException(
+                            "Confluence rate-limited "
+                                    + what
+                                    + " (HTTP 429) after "
+                                    + attempt
+                                    + " attempts");
                 }
                 backoff(what, attempt, e);
             }
         }
     }
 
-    private ConfluencePageContent fetchViewContentOrFail(ConfluenceInstance instance, String pageId,
-        @Nullable RestClientResponseException cause) {
-        String why = cause == null ? "no body.storage in the response"
-            : "HTTP " + cause.getStatusCode().value() + " on body.storage";
+    private ConfluencePageContent fetchViewContentOrFail(
+            ConfluenceInstance instance,
+            String pageId,
+            @Nullable RestClientResponseException cause) {
+        String why =
+                cause == null
+                        ? "no body.storage in the response"
+                        : "HTTP " + cause.getStatusCode().value() + " on body.storage";
         try {
             return fetchPageContent(instance, pageId, "view")
-                .orElseThrow(() -> new IllegalStateException(
-                    "Confluence returned neither body.storage nor body.view for page " + pageId
-                        + " (" + why + "). Treating this as an empty page would record it as"
-                        + " successfully ingested and the version-skip would never retry it, so the"
-                        + " job fails instead."));
+                    .orElseThrow(() ->
+                            new IllegalStateException(
+                                    "Confluence returned neither body.storage nor body.view for page "
+                                            + pageId
+                                            + " ("
+                                            + why
+                                            + "). Treating this as an empty page would record it as"
+                                            + " successfully ingested and the version-skip would never retry it, so the"
+                                            + " job fails instead."));
         } catch (IllegalStateException e) {
             throw e;
         } catch (RuntimeException e) {
             throw new IllegalStateException(
-                "Failed to retrieve the body of Confluence page " + pageId + " (" + why + ")", e);
+                    "Failed to retrieve the body of Confluence page " + pageId + " (" + why + ")",
+                    e);
         }
     }
-
 
     /** Largest exponent the doubling backoff may use before the cap applies. */
     private static final int MAX_BACKOFF_SHIFT = 20;
 
     /**
      * Honours {@code Retry-After} (seconds) when present, else exponential backoff; both capped.
-     * The shift is clamped: a configured {@code max-attempts} above 64 otherwise overflows
-     * {@code 1L << (attempt - 1)} to a negative delay and {@code Thread.sleep} throws.
+     * The shift is clamped: a configured {@code max-attempts} above 64 otherwise overflows {@code
+     * 1L << (attempt - 1)} to a negative delay and {@code Thread.sleep} throws.
      */
     private void backoff(String what, int attempt, RestClientResponseException e) {
         long delayMs = retryInitialBackoffMs * (1L << Math.min(attempt - 1, MAX_BACKOFF_SHIFT));
         String retryAfter =
-            e.getResponseHeaders() != null ? e.getResponseHeaders().getFirst("Retry-After") : null;
+                e.getResponseHeaders() != null
+                        ? e.getResponseHeaders().getFirst("Retry-After")
+                        : null;
         if (retryAfter != null) {
             try {
                 delayMs = Math.max(delayMs, Long.parseLong(retryAfter.trim()) * 1000L);
@@ -633,44 +737,49 @@ public class ConfluenceClientService {
             }
         }
         delayMs = Math.min(delayMs, retryMaxBackoffMs);
-        log.warn("Confluence returned HTTP 429 for {} (attempt {}/{}); retrying in {} ms", what,
-            attempt, retryMaxAttempts, delayMs);
+        log.warn(
+                "Confluence returned HTTP 429 for {} (attempt {}/{}); retrying in {} ms",
+                what,
+                attempt,
+                retryMaxAttempts,
+                delayMs);
         try {
             Thread.sleep(delayMs);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(
-                "Interrupted while backing off from Confluence rate limiting for " + what,
-                interrupted);
+                    "Interrupted while backing off from Confluence rate limiting for " + what,
+                    interrupted);
         }
     }
 
     /**
-     * The raw page content and metadata fetch, returning empty when the response carries no
-     * {@code body.<type>.value}.
+     * The raw page content and metadata fetch, returning empty when the response carries no {@code
+     * body.<type>.value}.
      *
-     * <p>
-     * Package-private seam: keeps the retry policy testable without a live Confluence. There is no
-     * String-returning sibling on purpose — one existed, and it was a working, discoverable entry
-     * point that silently discarded the author, date and version this record exists to carry.
+     * <p>Package-private seam: keeps the retry policy testable without a live Confluence. There is
+     * no String-returning sibling on purpose — one existed, and it was a working, discoverable
+     * entry point that silently discarded the author, date and version this record exists to carry.
      *
-     * <p>
-     * The Optional is the whole point: an ABSENT field and an EMPTY value are different facts that
-     * used to collapse into the same {@code ""}. A page that genuinely has no content reports an
-     * empty value, and {@code ingestPage} rightly records it as a completed zero-chunk document. A
-     * 200 whose body was simply not expanded (legacy storage formats do this) carries no field at
+     * <p>The Optional is the whole point: an ABSENT field and an EMPTY value are different facts
+     * that used to collapse into the same {@code ""}. A page that genuinely has no content reports
+     * an empty value, and {@code ingestPage} rightly records it as a completed zero-chunk document.
+     * A 200 whose body was simply not expanded (legacy storage formats do this) carries no field at
      * all — and because no exception was thrown, the {@code body.view} fallback never fired, so the
      * page was recorded as empty too, its {@code confluence_page_version} was stored, and the
      * version-skip meant no later crawl ever retried it. Silent, permanent content loss from a
      * green job. Callers must now decide, so the two cases can no longer be confused.
      */
     @SuppressWarnings("unchecked")
-    Optional<ConfluencePageContent> fetchPageContent(ConfluenceInstance instance, String pageId,
-        String bodyType) {
+    Optional<ConfluencePageContent> fetchPageContent(
+            ConfluenceInstance instance, String pageId, String bodyType) {
         RestClient client = getClient(instance);
         String uri = "/rest/api/content/" + pageId + "?expand=body." + bodyType + ",version";
-        Map<String, Object> response = client.get().uri(uri).retrieve()
-            .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+        Map<String, Object> response =
+                client.get()
+                        .uri(uri)
+                        .retrieve()
+                        .body(new ParameterizedTypeReference<Map<String, Object>>() {});
 
         if (response != null && response.get("body") != null) {
             Map<String, Object> bodyObj = (Map<String, Object>) response.get("body");
@@ -682,8 +791,8 @@ public class ConfluenceClientService {
                     String author = extractAuthor(versionObj);
                     String lastUpdated = extractLastUpdated(versionObj);
                     Integer version = extractVersionNumber(versionObj);
-                    return Optional
-                        .of(new ConfluencePageContent(xhtml, author, lastUpdated, version));
+                    return Optional.of(
+                            new ConfluencePageContent(xhtml, author, lastUpdated, version));
                 }
             }
         }
@@ -727,8 +836,10 @@ public class ConfluenceClientService {
         }
         if (when instanceof Number num) {
             try {
-                return Instant.ofEpochMilli(num.longValue()).atZone(ZoneOffset.UTC).toLocalDate()
-                    .toString();
+                return Instant.ofEpochMilli(num.longValue())
+                        .atZone(ZoneOffset.UTC)
+                        .toLocalDate()
+                        .toString();
             } catch (DateTimeException ignored) {
                 // Only reachable on an epoch value too large for an Instant. A broader catch here
                 // would also swallow a programming error and report it as "no date".
@@ -779,18 +890,18 @@ public class ConfluenceClientService {
     /**
      * Lists a page's attachments, retrying HTTP 429 like every other Confluence call.
      *
-     * <p>
-     * A failure PROPAGATES rather than degrading to an empty list: swallowing it meant that with
+     * <p>A failure PROPAGATES rather than degrading to an empty list: swallowing it meant that with
      * {@code processAttachments=true} against a throttling server every page ingested green with
      * all attachment text silently missing — the same "green while empty" pathology the page-body
      * fetch was fixed for.
      */
     @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> getPageAttachments(ConfluenceInstance instance,
-        String pageId) {
+    public List<Map<String, Object>> getPageAttachments(
+            ConfluenceInstance instance, String pageId) {
         Map<String, Object> response =
-            withRateLimitRetry("the attachment listing for page " + pageId,
-                () -> fetchAttachmentList(instance, pageId));
+                withRateLimitRetry(
+                        "the attachment listing for page " + pageId,
+                        () -> fetchAttachmentList(instance, pageId));
         if (response != null && response.get("results") != null) {
             return (List<Map<String, Object>>) response.get("results");
         }
@@ -799,16 +910,22 @@ public class ConfluenceClientService {
 
     /** Package-private seam: keeps the retry policy testable without a live Confluence. */
     Map<String, Object> fetchAttachmentList(ConfluenceInstance instance, String pageId) {
-        String uri = "/rest/api/content/" + pageId
-            + "/child/attachment?limit=100&expand=version,metadata,extensions";
-        return getClient(instance).get().uri(uri).retrieve()
-            .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+        String uri =
+                "/rest/api/content/"
+                        + pageId
+                        + "/child/attachment?limit=100&expand=version,metadata,extensions";
+        return getClient(instance)
+                .get()
+                .uri(uri)
+                .retrieve()
+                .body(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
     public byte[] downloadAttachment(ConfluenceInstance instance, String downloadUrl) {
         log.info("Downloading attachment: {}", downloadUrl);
-        return withRateLimitRetry("the download of attachment " + downloadUrl,
-            () -> fetchAttachment(instance, downloadUrl));
+        return withRateLimitRetry(
+                "the download of attachment " + downloadUrl,
+                () -> fetchAttachment(instance, downloadUrl));
     }
 
     /** Package-private seam: keeps the retry policy testable without a live Confluence. */
@@ -821,43 +938,55 @@ public class ConfluenceClientService {
             assertSafeConfluenceUrl(downloadUrl);
             assertSameHostAsBase(baseUrl(instance), URI.create(downloadUrl));
         }
-        return getClient(instance).get().uri(downloadUrl).exchange((request, response) -> {
-            if (response.getStatusCode().isError()) {
-                byte[] errBody = new byte[0];
-                try (InputStream errStream = response.getBody()) {
-                    errBody = BoundedStreams.readBounded(errStream, 4096);
-                } catch (IllegalArgumentException | IOException ignored) {
-                    // Truncated/unreadable error body is non-fatal
-                }
-                throw new RestClientResponseException(
-                    "HTTP " + response.getStatusCode().value() + " downloading attachment",
-                    response.getStatusCode(), response.getStatusText(), response.getHeaders(),
-                    errBody, StandardCharsets.UTF_8);
-            }
-            long contentLength = response.getHeaders().getContentLength();
-            if (contentLength > maxAttachmentBytes) {
-                throw new AttachmentTooLargeException("Attachment exceeds maximum allowed size ("
-                    + maxAttachmentBytes + " bytes): Content-Length=" + contentLength);
-            }
-            try (InputStream body = response.getBody()) {
-                return BoundedStreams.readBounded(body, maxAttachmentBytes);
-            } catch (IllegalArgumentException e) {
-                throw new AttachmentTooLargeException(
-                    "Attachment exceeds maximum allowed size (" + maxAttachmentBytes + " bytes)");
-            }
-        });
+        return getClient(instance)
+                .get()
+                .uri(downloadUrl)
+                .exchange((request, response) -> {
+                    if (response.getStatusCode().isError()) {
+                        byte[] errBody = new byte[0];
+                        try (InputStream errStream = response.getBody()) {
+                            errBody = BoundedStreams.readBounded(errStream, 4096);
+                        } catch (IllegalArgumentException | IOException ignored) {
+                            // Truncated/unreadable error body is non-fatal
+                        }
+                        throw new RestClientResponseException(
+                                "HTTP "
+                                        + response.getStatusCode().value()
+                                        + " downloading attachment",
+                                response.getStatusCode(),
+                                response.getStatusText(),
+                                response.getHeaders(),
+                                errBody,
+                                StandardCharsets.UTF_8);
+                    }
+                    long contentLength = response.getHeaders().getContentLength();
+                    if (contentLength > maxAttachmentBytes) {
+                        throw new AttachmentTooLargeException(
+                                "Attachment exceeds maximum allowed size ("
+                                        + maxAttachmentBytes
+                                        + " bytes): Content-Length="
+                                        + contentLength);
+                    }
+                    try (InputStream body = response.getBody()) {
+                        return BoundedStreams.readBounded(body, maxAttachmentBytes);
+                    } catch (IllegalArgumentException e) {
+                        throw new AttachmentTooLargeException(
+                                "Attachment exceeds maximum allowed size ("
+                                        + maxAttachmentBytes
+                                        + " bytes)");
+                    }
+                });
     }
 
     /**
      * Whether the URL carries an authority, decided by PARSING it with the same parser the request
      * pipeline uses.
      *
-     * <p>
-     * Deciding it with {@code startsWith("http://") || startsWith("https://")} was a guard bypass:
-     * that test is case-SENSITIVE while {@code UriComponentsBuilder} reads the scheme
-     * case-insensitively and Apache HttpClient lower-cases it in {@code HttpHost}. So
-     * {@code HTTPS://169.254.169.254/latest/meta-data/…} looked relative, skipped BOTH guards, and
-     * was still issued as an absolute authenticated request to the cloud metadata endpoint — whose
+     * <p>Deciding it with {@code startsWith("http://") || startsWith("https://")} was a guard
+     * bypass: that test is case-SENSITIVE while {@code UriComponentsBuilder} reads the scheme
+     * case-insensitively and Apache HttpClient lower-cases it in {@code HttpHost}. So {@code
+     * HTTPS://169.254.169.254/latest/meta-data/…} looked relative, skipped BOTH guards, and was
+     * still issued as an absolute authenticated request to the cloud metadata endpoint — whose
      * response Tika then appended into the ingested page. Parsing also catches the
      * protocol-relative {@code //host/path} form, which has an authority and no scheme at all.
      */
@@ -891,10 +1020,15 @@ public class ConfluenceClientService {
         }
         String displayName = "User(" + accountId + ")";
         try {
-            Map<String, Object> response = client.get()
-                .uri(uriBuilder -> uriBuilder.path("/rest/api/user")
-                    .queryParam("accountId", accountId).build())
-                .retrieve().body(new ParameterizedTypeReference<Map<String, Object>>() {});
+            Map<String, Object> response =
+                    client.get()
+                            .uri(uriBuilder ->
+                                    uriBuilder
+                                            .path("/rest/api/user")
+                                            .queryParam("accountId", accountId)
+                                            .build())
+                            .retrieve()
+                            .body(new ParameterizedTypeReference<Map<String, Object>>() {});
             if (response != null && response.get("displayName") != null) {
                 displayName = (String) response.get("displayName");
             }
@@ -905,12 +1039,28 @@ public class ConfluenceClientService {
         return displayName;
     }
 
-    public record ConnectionTestResult(boolean ok, String message, String spaceName,
-        String parentPageTitle, int parentPageVersion, int pagesCount, String samplePagesHtml) {
-        public static ConnectionTestResult success(String spaceName, String parentPageTitle,
-            int parentPageVersion, int pagesCount, String samplePagesHtml) {
-            return new ConnectionTestResult(true, "Successfully connected to Confluence!",
-                spaceName, parentPageTitle, parentPageVersion, pagesCount, samplePagesHtml);
+    public record ConnectionTestResult(
+            boolean ok,
+            String message,
+            String spaceName,
+            String parentPageTitle,
+            int parentPageVersion,
+            int pagesCount,
+            String samplePagesHtml) {
+        public static ConnectionTestResult success(
+                String spaceName,
+                String parentPageTitle,
+                int parentPageVersion,
+                int pagesCount,
+                String samplePagesHtml) {
+            return new ConnectionTestResult(
+                    true,
+                    "Successfully connected to Confluence!",
+                    spaceName,
+                    parentPageTitle,
+                    parentPageVersion,
+                    pagesCount,
+                    samplePagesHtml);
         }
 
         public static ConnectionTestResult failure(String message) {

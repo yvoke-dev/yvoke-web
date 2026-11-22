@@ -25,12 +25,17 @@ public class ConversationAdminService {
         this.chatAdminQueryRepository = chatAdminQueryRepository;
     }
 
-    public record ConversationAdminView(List<AdminConversation> conversations,
-        List<ConversationUserOption> userOptions, ConversationOverviewStats stats, int currentPage,
-        int totalPages, long totalCount, int pageSize) {}
+    public record ConversationAdminView(
+            List<AdminConversation> conversations,
+            List<ConversationUserOption> userOptions,
+            ConversationOverviewStats stats,
+            int currentPage,
+            int totalPages,
+            long totalCount,
+            int pageSize) {}
 
-    public ConversationAdminView getConversationAdminView(ConversationFilter filter, int page,
-        int size) {
+    public ConversationAdminView getConversationAdminView(
+            ConversationFilter filter, int page, int size) {
         int clampedSize = (size <= 0 || size > 100) ? 20 : size;
         ConversationOverviewStats stats = chatAdminQueryRepository.getConversationStats(filter);
         long totalCount = stats.totalConversations();
@@ -39,11 +44,18 @@ public class ConversationAdminService {
         long offset = (long) clampedPage * clampedSize;
 
         List<AdminConversation> conversations =
-            chatAdminQueryRepository.listFilteredConversations(filter, clampedSize, offset);
-        List<ConversationUserOption> userOptions = chatAdminQueryRepository
-            .listConversationUserOptions(filter.userIds(), filter.allowedAreasLower());
+                chatAdminQueryRepository.listFilteredConversations(filter, clampedSize, offset);
+        List<ConversationUserOption> userOptions =
+                chatAdminQueryRepository.listConversationUserOptions(
+                        filter.userIds(), filter.allowedAreasLower());
 
-        return new ConversationAdminView(conversations, userOptions, stats, clampedPage, totalPages,
-            totalCount, clampedSize);
+        return new ConversationAdminView(
+                conversations,
+                userOptions,
+                stats,
+                clampedPage,
+                totalPages,
+                totalCount,
+                clampedSize);
     }
 }

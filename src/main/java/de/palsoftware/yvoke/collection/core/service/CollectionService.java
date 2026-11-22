@@ -58,30 +58,35 @@ public class CollectionService {
             return listCollections();
         }
         Set<String> set =
-            StreamSupport.stream(areasLower.spliterator(), false).filter(Objects::nonNull)
-                .map(s -> s.trim().toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+                StreamSupport.stream(areasLower.spliterator(), false)
+                        .filter(Objects::nonNull)
+                        .map(s -> s.trim().toLowerCase(Locale.ROOT))
+                        .collect(Collectors.toSet());
         if (set.isEmpty()) {
             return List.of();
         }
         return listCollections().stream()
-            .filter(c -> c.area() != null && set.contains(c.area().trim().toLowerCase(Locale.ROOT)))
-            .toList();
+                .filter(c ->
+                        c.area() != null && set.contains(c.area().trim().toLowerCase(Locale.ROOT)))
+                .toList();
     }
 
     /**
      * Lists collections in areas administered by the current user (all collections for Superadmin).
      */
     public List<Collection> listForAdminUser() {
-        return AreaAccessContext.allowedAdminAreasLower().map(this::listByAreas)
-            .orElseGet(this::listCollections);
+        return AreaAccessContext.allowedAdminAreasLower()
+                .map(this::listByAreas)
+                .orElseGet(this::listCollections);
     }
 
     public Optional<Collection> findByIdForAdmin(UUID id) {
         if (id == null) {
             return Optional.empty();
         }
-        return collectionRepository.findById(id)
-            .filter(c -> AreaAccessContext.canAdministerArea(c.area()));
+        return collectionRepository
+                .findById(id)
+                .filter(c -> AreaAccessContext.canAdministerArea(c.area()));
     }
 
     public Optional<Collection> findByNameForAdmin(String name) {
@@ -99,9 +104,8 @@ public class CollectionService {
     /**
      * The tags one collection declares, empty for an unknown or blank name.
      *
-     * <p>
-     * This is the same list {@code CollectionTagEnqueueValidator} admits an ingest against, so the
-     * admin filters offer exactly the tags that collection's content can carry.
+     * <p>This is the same list {@code CollectionTagEnqueueValidator} admits an ingest against, so
+     * the admin filters offer exactly the tags that collection's content can carry.
      */
     public List<String> listTagsOf(String collectionName) {
         return getCollection(collectionName).map(Collection::tags).orElseGet(List::of);
@@ -115,7 +119,7 @@ public class CollectionService {
         String trimmedName = name.trim();
         if ("Both".equalsIgnoreCase(trimmedName) || "All".equalsIgnoreCase(trimmedName)) {
             throw new IllegalArgumentException(
-                "Collection name '" + trimmedName + "' is reserved.");
+                    "Collection name '" + trimmedName + "' is reserved.");
         }
 
         Optional<Collection> existing = collectionRepository.findByName(trimmedName);
@@ -124,19 +128,22 @@ public class CollectionService {
         }
 
         try {
-            return collectionRepository.create(trimmedName, description,
-                areaService.requireArea(area));
+            return collectionRepository.create(
+                    trimmedName, description, areaService.requireArea(area));
         } catch (DataIntegrityViolationException e) {
-            throw new IllegalArgumentException("Collection '" + trimmedName + "' already exists.",
-                e);
+            throw new IllegalArgumentException(
+                    "Collection '" + trimmedName + "' already exists.", e);
         }
     }
 
     /** Moves an existing collection to another area. */
     @Transactional
     public String moveCollection(String name, String area) {
-        Collection collection = getCollection(name).orElseThrow(
-            () -> new IllegalArgumentException("Collection '" + name + "' does not exist."));
+        Collection collection =
+                getCollection(name)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Collection '" + name + "' does not exist."));
         String storedArea = areaService.requireArea(area);
         collectionRepository.updateArea(collection.id(), storedArea);
         return storedArea;

@@ -1,7 +1,5 @@
 package de.palsoftware.yvoke.shared.security;
 
-
-
 import java.time.Instant;
 import java.util.Collection;
 import java.util.HashMap;
@@ -17,13 +15,17 @@ public class MockOidcUser implements OidcUser {
     private final List<GrantedAuthority> authorities;
     private final OidcIdToken idToken;
 
-    public MockOidcUser(String entraOid, String email, String displayName,
-        List<GrantedAuthority> authorities) {
+    public MockOidcUser(
+            String entraOid, String email, String displayName, List<GrantedAuthority> authorities) {
         this(entraOid, email, displayName, authorities, List.of());
     }
 
-    public MockOidcUser(String entraOid, String email, String displayName,
-        List<GrantedAuthority> authorities, List<String> roles) {
+    public MockOidcUser(
+            String entraOid,
+            String email,
+            String displayName,
+            List<GrantedAuthority> authorities,
+            List<String> roles) {
         this.displayName = displayName;
         this.authorities = authorities;
 
@@ -34,8 +36,9 @@ public class MockOidcUser implements OidcUser {
         claims.put("email", email);
         claims.put("name", displayName);
         claims.put("roles", roles != null ? List.copyOf(roles) : List.of());
-        this.idToken = new OidcIdToken("mock-token-value", Instant.now(),
-            Instant.now().plusSeconds(3600), claims);
+        this.idToken =
+                new OidcIdToken(
+                        "mock-token-value", Instant.now(), Instant.now().plusSeconds(3600), claims);
     }
 
     @Override

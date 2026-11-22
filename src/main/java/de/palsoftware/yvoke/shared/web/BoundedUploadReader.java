@@ -26,7 +26,7 @@ public final class BoundedUploadReader {
         long declaredSize = file.getSize();
         if (declaredSize > maxBytes) {
             throw new IllegalArgumentException(
-                "Uploaded file exceeds maximum allowed size of " + maxBytes + " bytes.");
+                    "Uploaded file exceeds maximum allowed size of " + maxBytes + " bytes.");
         }
         byte[] bytes = readBounded(file.getInputStream(), maxBytes);
         return new String(bytes, StandardCharsets.UTF_8);

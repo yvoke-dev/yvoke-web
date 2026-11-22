@@ -11,8 +11,11 @@ public class UserRowMapper implements RowMapper<User> {
     @Override
     public User mapRow(ResultSet rs, int rowNum) throws SQLException {
         Timestamp lastSeenTs = rs.getTimestamp("last_seen_at");
-        return new User(rs.getObject("id", UUID.class), rs.getString("entra_oid"),
-            rs.getString("email"), rs.getString("display_name"),
-            lastSeenTs != null ? lastSeenTs.toInstant() : null);
+        return new User(
+                rs.getObject("id", UUID.class),
+                rs.getString("entra_oid"),
+                rs.getString("email"),
+                rs.getString("display_name"),
+                lastSeenTs != null ? lastSeenTs.toInstant() : null);
     }
 }

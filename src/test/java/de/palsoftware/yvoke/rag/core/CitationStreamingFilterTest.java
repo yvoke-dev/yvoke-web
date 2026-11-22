@@ -146,10 +146,10 @@ public class CitationStreamingFilterTest {
     public class WithRealVerifier {
 
         private static final UUID REAL_CHUNK_ID =
-            UUID.fromString("8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b");
+                UUID.fromString("8f7c1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b");
 
         private static final UUID REAL_DOCUMENT_ID =
-            UUID.fromString("1a2b3c4d-5e6f-4a8b-9c0d-1e2f3a4b5c6d");
+                UUID.fromString("1a2b3c4d-5e6f-4a8b-9c0d-1e2f3a4b5c6d");
 
         private CitationStreamingFilter realFilter;
 
@@ -157,22 +157,25 @@ public class CitationStreamingFilterTest {
         public void setUp() {
             ChunkRepository chunkRepository = mock(ChunkRepository.class);
             DocumentRepository documentRepository = mock(DocumentRepository.class);
-            when(chunkRepository.findExistingIds(anyCollection())).thenAnswer(inv -> {
-                Set<UUID> result = new HashSet<>((Collection<UUID>) inv.getArgument(0));
-                result.retainAll(Set.of(REAL_CHUNK_ID));
-                return result;
-            });
+            when(chunkRepository.findExistingIds(anyCollection()))
+                    .thenAnswer(inv -> {
+                        Set<UUID> result = new HashSet<>((Collection<UUID>) inv.getArgument(0));
+                        result.retainAll(Set.of(REAL_CHUNK_ID));
+                        return result;
+                    });
             // A real document, not an empty set. This fixture exists because the original bug
             // hid behind a mocked verifier; stubbing documents to empty left the document half of
             // the classifier just as unexercised — and a bare uuid now resolves against BOTH
             // tables, so an always-empty document set would silently cover only half of it.
-            when(documentRepository.findExistingIds(anyCollection())).thenAnswer(inv -> {
-                Set<UUID> result = new HashSet<>((Collection<UUID>) inv.getArgument(0));
-                result.retainAll(Set.of(REAL_DOCUMENT_ID));
-                return result;
-            });
-            realFilter = new CitationStreamingFilter(
-                new CitationVerifier(chunkRepository, documentRepository));
+            when(documentRepository.findExistingIds(anyCollection()))
+                    .thenAnswer(inv -> {
+                        Set<UUID> result = new HashSet<>((Collection<UUID>) inv.getArgument(0));
+                        result.retainAll(Set.of(REAL_DOCUMENT_ID));
+                        return result;
+                    });
+            realFilter =
+                    new CitationStreamingFilter(
+                            new CitationVerifier(chunkRepository, documentRepository));
         }
 
         /** Streams the text one character at a time, as an SSE token stream would. */
@@ -248,7 +251,7 @@ public class CitationStreamingFilterTest {
         public void testHexLikeProseSurvivesTheStream() {
             // Words spelled from hex letters, and plain 6-digit numbers, are not chunk ids.
             String text =
-                "Error code [500123] in the [facade] pattern; see [8f7c1a2b] and [decade].";
+                    "Error code [500123] in the [facade] pattern; see [8f7c1a2b] and [decade].";
             assertEquals(text, stream(text));
         }
 

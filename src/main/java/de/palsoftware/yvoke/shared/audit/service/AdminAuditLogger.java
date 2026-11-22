@@ -20,7 +20,7 @@ public class AdminAuditLogger {
 
     public AdminAuditLogger(AuditLogRepository auditLogRepository, UserService userService) {
         this.auditLogRepository =
-            Objects.requireNonNull(auditLogRepository, "auditLogRepository must not be null");
+                Objects.requireNonNull(auditLogRepository, "auditLogRepository must not be null");
         this.userService = Objects.requireNonNull(userService, "userService must not be null");
     }
 
@@ -34,8 +34,10 @@ public class AdminAuditLogger {
             return current.get().entraOid();
         }
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.isAuthenticated() && auth.getName() != null
-            && !auth.getName().isBlank()) {
+        if (auth != null
+                && auth.isAuthenticated()
+                && auth.getName() != null
+                && !auth.getName().isBlank()) {
             return auth.getName();
         }
         return "anonymous_admin";

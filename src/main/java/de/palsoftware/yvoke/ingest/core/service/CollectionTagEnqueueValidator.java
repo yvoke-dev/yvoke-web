@@ -24,34 +24,43 @@ public class CollectionTagEnqueueValidator implements EnqueueValidator {
 
     @Override
     public EnqueueRequest validate(EnqueueRequest req) {
-        Collection col = collectionRepository.findByName(req.collection().trim())
-            .orElseThrow(() -> new IllegalArgumentException(
-                "Collection '" + req.collection() + "' does not exist."));
+        Collection col =
+                collectionRepository
+                        .findByName(req.collection().trim())
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Collection '" + req.collection() + "' does not exist."));
 
         List<String> finalTags = new ArrayList<>();
         if (!col.tags().isEmpty()) {
             List<String> reqTags = req.tags();
             if (reqTags == null || reqTags.isEmpty()) {
                 throw new IllegalArgumentException(
-                    "Field 'tag' (or 'tags') must not be blank/empty for collection '"
-                        + req.collection() + "'");
+                        "Field 'tag' (or 'tags') must not be blank/empty for collection '"
+                                + req.collection()
+                                + "'");
             }
             for (String tag : reqTags) {
                 if (tag == null || tag.isBlank()) {
                     throw new IllegalArgumentException(
-                        "Tag in requested list must not be blank for collection '"
-                            + req.collection() + "'");
+                            "Tag in requested list must not be blank for collection '"
+                                    + req.collection()
+                                    + "'");
                 }
                 String trimmedTag = tag.trim();
                 if (!col.tags().contains(trimmedTag)) {
-                    throw new IllegalArgumentException("Tag '" + trimmedTag
-                        + "' is not valid for collection '" + req.collection() + "'");
+                    throw new IllegalArgumentException(
+                            "Tag '"
+                                    + trimmedTag
+                                    + "' is not valid for collection '"
+                                    + req.collection()
+                                    + "'");
                 }
                 finalTags.add(trimmedTag);
             }
         }
 
-        return new EnqueueRequest(req.kind(), req.sourceRef(), finalTags, col.name(),
-            req.settings());
+        return new EnqueueRequest(
+                req.kind(), req.sourceRef(), finalTags, col.name(), req.settings());
     }
 }

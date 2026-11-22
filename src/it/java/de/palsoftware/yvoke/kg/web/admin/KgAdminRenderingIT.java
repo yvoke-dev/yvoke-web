@@ -27,27 +27,27 @@ import org.springframework.web.context.WebApplicationContext;
  * the active-entity panel (relationships + neighborhood + metadata). A missing accessor on a
  * per-view DTO would throw during rendering and surface as a 500.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-    properties = "app.security.mock=true")
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = "app.security.mock=true")
 public class KgAdminRenderingIT {
 
     private static final String COLLECTION = "OIM-KGVIEW-TEST";
     private static final String TAG = "9.3";
 
-    @Autowired
-    private WebApplicationContext context;
+    @Autowired private WebApplicationContext context;
 
-    @Autowired
-    private KgWriteRepository kgRepository;
+    @Autowired private KgWriteRepository kgRepository;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private MockMvc mockMvc;
 
     private static OidcLoginRequestPostProcessor admin() {
-        return oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"),
-            new SimpleGrantedAuthority("ROLE_USER"));
+        return oidcLogin()
+                .authorities(
+                        new SimpleGrantedAuthority("ROLE_ADMIN"),
+                        new SimpleGrantedAuthority("ROLE_USER"));
     }
 
     @BeforeEach
@@ -55,15 +55,24 @@ public class KgAdminRenderingIT {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
 
         jdbcTemplate.update(
-            "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
-            UUID.randomUUID(), COLLECTION);
+                "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
+                UUID.randomUUID(),
+                COLLECTION);
 
-        UUID subjectId = kgRepository.upsertEntity(COLLECTION, TAG, "OAuth Module", "module",
-            "Handles OAuth flows.");
+        UUID subjectId =
+                kgRepository.upsertEntity(
+                        COLLECTION, TAG, "OAuth Module", "module", "Handles OAuth flows.");
         UUID objectId =
-            kgRepository.upsertEntity(COLLECTION, TAG, "OIM", "product", "The product.");
-        kgRepository.upsertRelationship(COLLECTION, TAG, "OAuth Module", "depends_on", "OIM",
-            subjectId, objectId, "OAuth relies on OIM.");
+                kgRepository.upsertEntity(COLLECTION, TAG, "OIM", "product", "The product.");
+        kgRepository.upsertRelationship(
+                COLLECTION,
+                TAG,
+                "OAuth Module",
+                "depends_on",
+                "OIM",
+                subjectId,
+                objectId,
+                "OAuth relies on OIM.");
     }
 
     @AfterEach
@@ -74,25 +83,31 @@ public class KgAdminRenderingIT {
 
     @Test
     public void overviewRendersScopeDtos() throws Exception {
-        mockMvc.perform(get("/admin/kg").with(admin())).andExpect(status().isOk())
-            .andExpect(content().string(Matchers.containsString(COLLECTION)));
+        mockMvc.perform(get("/admin/kg").with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString(COLLECTION)));
     }
 
     @Test
     public void browseRendersEntityDtosWithDisplayTag() throws Exception {
-        mockMvc
-            .perform(get("/admin/kg/view").param("collection", COLLECTION).param("tag", TAG)
-                .with(admin()))
-            .andExpect(status().isOk())
-            .andExpect(content().string(Matchers.containsString("OAuth Module")));
+        mockMvc.perform(
+                        get("/admin/kg/view")
+                                .param("collection", COLLECTION)
+                                .param("tag", TAG)
+                                .with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString("OAuth Module")));
     }
 
     @Test
     public void activeEntityPanelRendersRelationshipAndEntityDtos() throws Exception {
-        mockMvc
-            .perform(get("/admin/kg/view").param("collection", COLLECTION).param("tag", TAG)
-                .param("selectedEntity", "OAuth Module").with(admin()))
-            .andExpect(status().isOk())
-            .andExpect(content().string(Matchers.containsString("Handles OAuth flows.")));
+        mockMvc.perform(
+                        get("/admin/kg/view")
+                                .param("collection", COLLECTION)
+                                .param("tag", TAG)
+                                .param("selectedEntity", "OAuth Module")
+                                .with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString("Handles OAuth flows.")));
     }
 }

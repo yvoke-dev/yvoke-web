@@ -30,7 +30,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-
 @Controller
 @RequestMapping("/admin")
 public class KgAdminController {
@@ -45,10 +44,14 @@ public class KgAdminController {
     private final UserService userService;
     private final CollectionService collectionService;
 
-    public KgAdminController(KgAdminViewService kgAdminViewService,
-        KgGraphReadRepository kgReadRepository, KgWriteRepository kgWriteRepository,
-        KgConsolidator kgConsolidator, AuditLogRepository auditLogRepository,
-        UserService userService, CollectionService collectionService) {
+    public KgAdminController(
+            KgAdminViewService kgAdminViewService,
+            KgGraphReadRepository kgReadRepository,
+            KgWriteRepository kgWriteRepository,
+            KgConsolidator kgConsolidator,
+            AuditLogRepository auditLogRepository,
+            UserService userService,
+            CollectionService collectionService) {
         this.kgAdminViewService = kgAdminViewService;
         this.kgReadRepository = kgReadRepository;
         this.kgWriteRepository = kgWriteRepository;
@@ -67,32 +70,39 @@ public class KgAdminController {
         log.info("KgAdminController: Accessing KG Overview view");
         var scopes = kgAdminViewService.listScopes();
         if (!AreaAccessContext.isSuperAdmin()) {
-            Set<String> administeredCollectionNames = collectionService.listForAdminUser().stream()
-                .map(c -> c.name().toLowerCase()).collect(Collectors.toSet());
+            Set<String> administeredCollectionNames =
+                    collectionService.listForAdminUser().stream()
+                            .map(c -> c.name().toLowerCase())
+                            .collect(Collectors.toSet());
             scopes =
-                scopes.stream()
-                    .filter(s -> s.collection() != null
-                        && administeredCollectionNames.contains(s.collection().toLowerCase()))
-                    .toList();
+                    scopes.stream()
+                            .filter(s ->
+                                    s.collection() != null
+                                            && administeredCollectionNames.contains(
+                                                    s.collection().toLowerCase()))
+                            .toList();
         }
         model.addAttribute("scopes", scopes);
         return "admin/kg";
     }
 
     @GetMapping("/kg/view")
-    public String viewKg(@RequestParam String collection,
-        @RequestParam(required = false) String tag, @RequestParam(required = false) String query,
-        @RequestParam(required = false) String kind,
-        @RequestParam(required = false) String selectedEntity,
-        @RequestParam(defaultValue = "2") int hops, @RequestParam(defaultValue = "0") int page,
-        Model model) {
+    public String viewKg(
+            @RequestParam String collection,
+            @RequestParam(required = false) String tag,
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) String kind,
+            @RequestParam(required = false) String selectedEntity,
+            @RequestParam(defaultValue = "2") int hops,
+            @RequestParam(defaultValue = "0") int page,
+            Model model) {
 
         log.info("KgAdminController: Accessing KG Graph view for collection '{}'", collection);
 
         Optional<Collection> colOpt = collectionService.getCollection(collection);
         if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Collection not found: " + collection);
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Collection not found: " + collection);
         }
 
         String queryParam = (query != null && !query.isBlank()) ? query : null;
@@ -109,7 +119,8 @@ public class KgAdminController {
 
         if (queryParam != null) {
             List<KgEntityView> searchResults =
-                kgAdminViewService.searchEntities(queryParam, 50, tagParam, collection, kindParam);
+                    kgAdminViewService.searchEntities(
+                            queryParam, 50, tagParam, collection, kindParam);
             model.addAttribute("searchResults", searchResults);
             model.addAttribute("browseMode", false);
             model.addAttribute("currentPage", 0);
@@ -119,8 +130,13 @@ public class KgAdminController {
             // Default to browsing all entities in the scope (optionally filtered by kind).
             int size = 50;
             int safePage = PagingParams.clampPageForOffset(page, size);
-            List<KgEntityView> searchResults = kgAdminViewService.listEntities(collection, tagParam,
-                kindParam, size, PagingParams.safeOffset(safePage, size));
+            List<KgEntityView> searchResults =
+                    kgAdminViewService.listEntities(
+                            collection,
+                            tagParam,
+                            kindParam,
+                            size,
+                            PagingParams.safeOffset(safePage, size));
             long totalCount = kgAdminViewService.countEntities(collection, tagParam, kindParam);
             int totalPages = PagingParams.totalPages(totalCount, size);
 
@@ -134,29 +150,35 @@ public class KgAdminController {
         if (selectedEntity != null && !selectedEntity.isBlank()) {
             // Generic semantic relationships incident to the entity (works for any collection,
             // including the manuals graph whose edges use free-form predicates).
-            model.addAttribute("relationships",
-                kgAdminViewService.entityRelationships(selectedEntity, tagParam, collection));
+            model.addAttribute(
+                    "relationships",
+                    kgAdminViewService.entityRelationships(selectedEntity, tagParam, collection));
 
             Optional<KgNeighborhoodView> neighborhood =
-                kgAdminViewService.neighborhood(selectedEntity, tagParam, collection);
+                    kgAdminViewService.neighborhood(selectedEntity, tagParam, collection);
             if (neighborhood.isPresent()) {
                 KgNeighborhoodView nb = neighborhood.get();
                 model.addAttribute("neighborhood", nb);
                 model.addAttribute("activeEntity", nb.entity());
                 model.addAttribute("selectedEntityName", selectedEntity);
-                model.addAttribute("metadataJson",
-                    nb.entity() != null ? nb.entity().metadataJson() : "{}");
+                model.addAttribute(
+                        "metadataJson", nb.entity() != null ? nb.entity().metadataJson() : "{}");
 
-                model.addAttribute("fkWalk",
-                    kgAdminViewService.fkWalk(selectedEntity, hops, tagParam, collection));
-                model.addAttribute("callers",
-                    kgAdminViewService.calls(selectedEntity, "callers", 50, tagParam, collection));
-                model.addAttribute("callees",
-                    kgAdminViewService.calls(selectedEntity, "callees", 50, tagParam, collection));
+                model.addAttribute(
+                        "fkWalk",
+                        kgAdminViewService.fkWalk(selectedEntity, hops, tagParam, collection));
+                model.addAttribute(
+                        "callers",
+                        kgAdminViewService.calls(
+                                selectedEntity, "callers", 50, tagParam, collection));
+                model.addAttribute(
+                        "callees",
+                        kgAdminViewService.calls(
+                                selectedEntity, "callees", 50, tagParam, collection));
             } else {
                 // Fallback direct entity search if not a table
                 Optional<KgEntityView> exact =
-                    kgAdminViewService.firstFuzzyMatch(selectedEntity, tagParam, collection);
+                        kgAdminViewService.firstFuzzyMatch(selectedEntity, tagParam, collection);
                 if (exact.isPresent()) {
                     KgEntityView entity = exact.get();
                     model.addAttribute("activeEntity", entity);
@@ -170,19 +192,21 @@ public class KgAdminController {
     }
 
     @PostMapping("/kg/clear")
-    public String clearGraph(@RequestParam String collection,
-        @RequestParam(required = false) String tag, RedirectAttributes redirectAttributes) {
+    public String clearGraph(
+            @RequestParam String collection,
+            @RequestParam(required = false) String tag,
+            RedirectAttributes redirectAttributes) {
 
         Optional<Collection> colOpt = collectionService.getCollection(collection);
         if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Collection not found: " + collection);
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Collection not found: " + collection);
         }
 
         String tagParam = (tag != null && !tag.isBlank()) ? tag : null;
         if (tagParam == null) {
-            redirectAttributes.addFlashAttribute("error",
-                "A specific tag is required to clear the knowledge graph.");
+            redirectAttributes.addFlashAttribute(
+                    "error", "A specific tag is required to clear the knowledge graph.");
             return "redirect:/admin/kg";
         }
 
@@ -190,53 +214,81 @@ public class KgAdminController {
         int relationshipCount = kgReadRepository.getRelationshipCount(collection, tagParam);
         kgWriteRepository.deleteTagGraph(collection, tagParam);
 
-        auditLogRepository.log(getCurrentAdminOid(), "CLEAR_KG", collection, Map.of("tag", tagParam,
-            "entitiesDeleted", entityCount, "relationshipsDeleted", relationshipCount));
+        auditLogRepository.log(
+                getCurrentAdminOid(),
+                "CLEAR_KG",
+                collection,
+                Map.of(
+                        "tag",
+                        tagParam,
+                        "entitiesDeleted",
+                        entityCount,
+                        "relationshipsDeleted",
+                        relationshipCount));
 
-        redirectAttributes.addFlashAttribute("success",
-            "Cleared knowledge graph for " + collection + " / " + tagParam + " — deleted "
-                + entityCount + " entities and " + relationshipCount + " relationships.");
+        redirectAttributes.addFlashAttribute(
+                "success",
+                "Cleared knowledge graph for "
+                        + collection
+                        + " / "
+                        + tagParam
+                        + " — deleted "
+                        + entityCount
+                        + " entities and "
+                        + relationshipCount
+                        + " relationships.");
         return "redirect:/admin/kg";
     }
 
     /**
-     * The collection is resolved to its STORED spelling before consolidating.
-     * {@code KgConsolidator} matches {@code WHERE c.name = :collection} — case-sensitive, untrimmed
-     * — at four SQL sites, so forwarding the raw request parameter matched zero rows and still
-     * flashed "Consolidation done … Groups: 0", a success message for work that never ran (the
-     * other caller, {@code DocumentIngestService}, is safe because the enqueue validator has
-     * already canonicalised the name). An unknown collection is now an error rather than a silent
-     * no-op: "Groups: 0" is a legitimate result for a graph with nothing to merge, so the operator
-     * could not otherwise tell the two apart.
+     * The collection is resolved to its STORED spelling before consolidating. {@code
+     * KgConsolidator} matches {@code WHERE c.name = :collection} — case-sensitive, untrimmed — at
+     * four SQL sites, so forwarding the raw request parameter matched zero rows and still flashed
+     * "Consolidation done … Groups: 0", a success message for work that never ran (the other
+     * caller, {@code DocumentIngestService}, is safe because the enqueue validator has already
+     * canonicalised the name). An unknown collection is now an error rather than a silent no-op:
+     * "Groups: 0" is a legitimate result for a graph with nothing to merge, so the operator could
+     * not otherwise tell the two apart.
      */
     @PostMapping("/kg/consolidate")
-    public String consolidateKg(@RequestParam String collection, @RequestParam String tag,
-        RedirectAttributes redirectAttributes) {
+    public String consolidateKg(
+            @RequestParam String collection,
+            @RequestParam String tag,
+            RedirectAttributes redirectAttributes) {
 
         String tagParam = (tag != null && !tag.isBlank()) ? tag.trim() : null;
         if (tagParam == null) {
-            redirectAttributes.addFlashAttribute("error",
-                "A specific tag is required to consolidate the knowledge graph.");
+            redirectAttributes.addFlashAttribute(
+                    "error", "A specific tag is required to consolidate the knowledge graph.");
             return "redirect:/admin/kg";
         }
 
         Optional<Collection> colOpt = collectionService.getCollection(collection);
         if (colOpt.isEmpty() || !AreaAccessContext.canAdministerArea(colOpt.get().area())) {
-            redirectAttributes.addFlashAttribute("error",
-                "Unknown collection: '" + collection + "'. Nothing was consolidated.");
+            redirectAttributes.addFlashAttribute(
+                    "error", "Unknown collection: '" + collection + "'. Nothing was consolidated.");
             return "redirect:/admin/kg";
         }
         String collectionName = colOpt.get().name();
 
-        auditLogRepository.log(getCurrentAdminOid(), "CONSOLIDATE_KG",
-            collectionName + " " + tagParam, Map.of("collection", collectionName, "tag", tagParam));
+        auditLogRepository.log(
+                getCurrentAdminOid(),
+                "CONSOLIDATE_KG",
+                collectionName + " " + tagParam,
+                Map.of("collection", collectionName, "tag", tagParam));
 
         var stats = kgConsolidator.consolidate(collectionName, tagParam);
 
-        redirectAttributes.addFlashAttribute("success", String.format(
-            "Consolidation done for %s / %s! Groups: %d, Entities Deleted: %d, Relationships Repointed: %d, Collapsed: %d",
-            collectionName, tagParam, stats.groupsProcessed(), stats.rowsDeleted(),
-            stats.relationshipsRepointCount(), stats.relationshipsCollapsedCount()));
+        redirectAttributes.addFlashAttribute(
+                "success",
+                String.format(
+                        "Consolidation done for %s / %s! Groups: %d, Entities Deleted: %d, Relationships Repointed: %d, Collapsed: %d",
+                        collectionName,
+                        tagParam,
+                        stats.groupsProcessed(),
+                        stats.rowsDeleted(),
+                        stats.relationshipsRepointCount(),
+                        stats.relationshipsCollapsedCount()));
         return "redirect:/admin/kg";
     }
 }

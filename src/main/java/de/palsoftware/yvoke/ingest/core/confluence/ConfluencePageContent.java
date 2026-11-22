@@ -10,4 +10,14 @@ import jakarta.annotation.Nullable;
  * @param lastUpdated ISO date (YYYY-MM-DD) of the last update, if present
  * @param version version number of the page, if present
  */
-public record ConfluencePageContent(String xhtml,@Nullable String author,@Nullable String lastUpdated,@Nullable Integer version){public ConfluencePageContent{if(xhtml==null){xhtml="";}}}
+public record ConfluencePageContent(
+        String xhtml,
+        @Nullable String author,
+        @Nullable String lastUpdated,
+        @Nullable Integer version) {
+    public ConfluencePageContent {
+        if (xhtml == null) {
+            xhtml = "";
+        }
+    }
+}

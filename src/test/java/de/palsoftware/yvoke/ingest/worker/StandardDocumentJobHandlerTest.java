@@ -18,7 +18,7 @@ public class StandardDocumentJobHandlerTest {
     @Test
     public void registersForStandardKindAndExpectsEntities() {
         StandardDocumentJobHandler handler =
-            new StandardDocumentJobHandler(mock(DocumentIngestService.class));
+                new StandardDocumentJobHandler(mock(DocumentIngestService.class));
 
         assertThat(handler.kind()).isEqualTo("standard");
         assertThat(handler.expectsEntities()).isFalse();
@@ -28,9 +28,25 @@ public class StandardDocumentJobHandlerTest {
     public void delegatesRunToService() {
         DocumentIngestService service = mock(DocumentIngestService.class);
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = new IngestionJob(UUID.randomUUID(), "standard", "sourceRef", List.of(),
-            UUID.randomUUID(), "col", null, null, 0, 0, null, null, OffsetDateTime.now(), null,
-            null, Map.of(), null);
+        IngestionJob job =
+                new IngestionJob(
+                        UUID.randomUUID(),
+                        "standard",
+                        "sourceRef",
+                        List.of(),
+                        UUID.randomUUID(),
+                        "col",
+                        null,
+                        null,
+                        0,
+                        0,
+                        null,
+                        null,
+                        OffsetDateTime.now(),
+                        null,
+                        null,
+                        Map.of(),
+                        null);
         JobCounts counts = new JobCounts(1, 10, 5, 2, 0);
         when(ctx.job()).thenReturn(job);
         when(service.ingest(job, ctx)).thenReturn(counts);

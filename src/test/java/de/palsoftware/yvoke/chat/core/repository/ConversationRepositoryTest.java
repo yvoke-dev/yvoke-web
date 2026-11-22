@@ -47,7 +47,7 @@ public class ConversationRepositoryTest {
 
         statementSpec = mock(JdbcClient.StatementSpec.class);
         querySpec =
-            (JdbcClient.MappedQuerySpec<Conversation>) mock(JdbcClient.MappedQuerySpec.class);
+                (JdbcClient.MappedQuerySpec<Conversation>) mock(JdbcClient.MappedQuerySpec.class);
 
         when(jdbcClient.sql(anyString())).thenReturn(statementSpec);
         when(statementSpec.param(anyString(), any())).thenReturn(statementSpec);
@@ -82,9 +82,12 @@ public class ConversationRepositoryTest {
         UUID userId = UUID.randomUUID();
         Map<String, Object> settings = Map.of("corpus", "OIM", "limit", 8);
 
-        Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            conversationRepository.create(id, userId, "New Title", settings, "invalid-source");
-        });
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    conversationRepository.create(
+                            id, userId, "New Title", settings, "invalid-source");
+                });
     }
 
     /**
@@ -94,8 +97,7 @@ public class ConversationRepositoryTest {
      * — its return value is discarded at both call sites — which is exactly the shape a reader
      * deletes as dead code.
      *
-     * <p>
-     * The two sides fail differently and both are silent. On the write side, a bogus source is
+     * <p>The two sides fail differently and both are silent. On the write side, a bogus source is
      * persisted happily and the row is then invisible to every source-scoped read forever: the
      * desktop client's {@code listByUserAndSource(userId, "desktop", ...)} simply does not return
      * it, so a conversation exists, is owned, is billed for, and cannot be listed. On the read
@@ -103,18 +105,16 @@ public class ConversationRepositoryTest {
      * conversations" rather than "that is not a valid source", which is the single most misleading
      * answer a sync client can be given, because it looks exactly like a fresh install.
      *
-     * <p>
-     * Case is part of the contract and is easy to get wrong in the direction that looks friendlier:
-     * {@code fromValue} compares with {@code equals}, and the column stores the lowercase form, so
-     * "validate leniently, query strictly" here would mean accepting {@code "WEB"}, writing
-     * {@code "WEB"}, and then never matching {@code source = 'web'} again — the same silent-empty
-     * shape documented for the MCP collection/kind lookups.
+     * <p>Case is part of the contract and is easy to get wrong in the direction that looks
+     * friendlier: {@code fromValue} compares with {@code equals}, and the column stores the
+     * lowercase form, so "validate leniently, query strictly" here would mean accepting {@code
+     * "WEB"}, writing {@code "WEB"}, and then never matching {@code source = 'web'} again — the
+     * same silent-empty shape documented for the MCP collection/kind lookups.
      *
-     * <p>
-     * {@code testCreate_invalidSourceThrowsException} above covers ONE value on ONE of the two
-     * entry points and asserts nothing about whether the repository reached SQL first;
-     * {@code listByUserAndSource} — the read path, added later — has no coverage at all, and no
-     * test anywhere in the codebase references {@code ConversationSource}.
+     * <p>{@code testCreate_invalidSourceThrowsException} above covers ONE value on ONE of the two
+     * entry points and asserts nothing about whether the repository reached SQL first; {@code
+     * listByUserAndSource} — the read path, added later — has no coverage at all, and no test
+     * anywhere in the codebase references {@code ConversationSource}.
      */
     @Test
     public void anUnknownConversationSourceIsRejectedBeforeItReachesSql() {
@@ -126,22 +126,26 @@ public class ConversationRepositoryTest {
         JdbcClient untouched = mock(JdbcClient.class);
         ConversationRepository guarded = new ConversationRepository(untouched, objectMapper);
 
-        for (String rejected : new String[] {"mobile", "cli", "WEB", "Desktop", " web",
-            "web'; DROP TABLE conversations; --"}) {
+        for (String rejected :
+                new String[] {
+                    "mobile", "cli", "WEB", "Desktop", " web", "web'; DROP TABLE conversations; --"
+                }) {
             assertThatThrownBy(() -> guarded.create(id, userId, "t", Map.of(), rejected))
-                .as("create must refuse source '%s'", rejected)
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Invalid conversation source");
+                    .as("create must refuse source '%s'", rejected)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Invalid conversation source");
             assertThatThrownBy(() -> guarded.listByUserAndSource(userId, rejected, 10, 0))
-                .as("listByUserAndSource must refuse source '%s'", rejected)
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Invalid conversation source");
+                    .as("listByUserAndSource must refuse source '%s'", rejected)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Invalid conversation source");
         }
 
         assertThatThrownBy(() -> guarded.create(id, userId, "t", Map.of(), null))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("cannot be null");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cannot be null");
         assertThatThrownBy(() -> guarded.listByUserAndSource(userId, null, 10, 0))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("cannot be null");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cannot be null");
 
         // Rejected BEFORE any SQL is built or bound — not by the database, which has no constraint
         // to reject it with.
@@ -162,8 +166,15 @@ public class ConversationRepositoryTest {
     @Test
     public void testFindById() {
         UUID id = UUID.randomUUID();
-        Conversation mockConv = new Conversation(id, null, "Title", Collections.emptyMap(), null,
-            null, Collections.emptyList());
+        Conversation mockConv =
+                new Conversation(
+                        id,
+                        null,
+                        "Title",
+                        Collections.emptyMap(),
+                        null,
+                        null,
+                        Collections.emptyList());
         when(querySpec.optional()).thenReturn(Optional.of(mockConv));
 
         Optional<Conversation> result = conversationRepository.findById(id);
@@ -217,8 +228,10 @@ public class ConversationRepositoryTest {
 
         conversationRepository.listAll(userId, 10, 0, null);
 
-        verify(jdbcClient).sql(contains(
-            "SELECT id, user_id, title, settings::text AS settings_text, created_at, updated_at, tags, source, area"));
+        verify(jdbcClient)
+                .sql(
+                        contains(
+                                "SELECT id, user_id, title, settings::text AS settings_text, created_at, updated_at, tags, source, area"));
         verify(jdbcClient).sql(not(contains("AND area IS NULL")));
         verify(jdbcClient).sql(not(contains("LOWER(area) IN")));
         verify(statementSpec).param("userId", userId);
@@ -235,8 +248,10 @@ public class ConversationRepositoryTest {
 
         conversationRepository.listAll(userId, 10, 0, allowedAreas);
 
-        verify(jdbcClient).sql(contains(
-            "AND ((user_id = :userId AND area IS NULL) OR (area IS NOT NULL AND LOWER(area) IN (:allowedAreasLower)))"));
+        verify(jdbcClient)
+                .sql(
+                        contains(
+                                "AND ((user_id = :userId AND area IS NULL) OR (area IS NOT NULL AND LOWER(area) IN (:allowedAreasLower)))"));
         verify(statementSpec).param("userId", userId);
         verify(statementSpec).param("limit", 10);
         verify(statementSpec).param("offset", 0);
@@ -270,7 +285,7 @@ public class ConversationRepositoryTest {
         conversationRepository.listByUserAndSource(userId, "desktop", 10, 0, allowedAreas);
 
         verify(jdbcClient)
-            .sql(contains("AND (area IS NULL OR LOWER(area) IN (:allowedAreasLower))"));
+                .sql(contains("AND (area IS NULL OR LOWER(area) IN (:allowedAreasLower))"));
         verify(statementSpec).param("userId", userId);
         verify(statementSpec).param("source", "desktop");
         verify(statementSpec).param("limit", 10);

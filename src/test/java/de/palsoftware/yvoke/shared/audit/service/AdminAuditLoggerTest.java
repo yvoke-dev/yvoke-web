@@ -30,13 +30,15 @@ class AdminAuditLoggerTest {
         AdminAuditLogger logger = new AdminAuditLogger(repo, userService);
 
         when(userService.getCurrentUser())
-            .thenReturn(Optional.of(new User(UUID.randomUUID(), "oid-admin-1", "a@b", "A", null)));
+                .thenReturn(
+                        Optional.of(new User(UUID.randomUUID(), "oid-admin-1", "a@b", "A", null)));
         logger.log("SAVE_AREA", "OIM", Map.of("prototype", false));
         verify(repo).log("oid-admin-1", "SAVE_AREA", "OIM", Map.of("prototype", false));
 
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("area-admin-sub", "x", "ROLE_ADMIN"));
+                .setAuthentication(
+                        new TestingAuthenticationToken("area-admin-sub", "x", "ROLE_ADMIN"));
         logger.log("DELETE_AREA", "OIM", Map.of());
         verify(repo).log("area-admin-sub", "DELETE_AREA", "OIM", Map.of());
     }
@@ -47,8 +49,8 @@ class AdminAuditLoggerTest {
         UserService userService = mock(UserService.class);
 
         assertThatThrownBy(() -> new AdminAuditLogger(null, userService))
-            .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> new AdminAuditLogger(repo, null))
-            .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(NullPointerException.class);
     }
 }

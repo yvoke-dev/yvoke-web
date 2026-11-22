@@ -40,11 +40,12 @@ public class ConfluenceConverter {
     private final int parseTimeoutSeconds;
 
     @Autowired
-    public ConfluenceConverter(ConfluenceClientService confluenceClient,
-        @Value("${app.confluence.attachment-parse-timeout-seconds}") int parseTimeoutSeconds) {
+    public ConfluenceConverter(
+            ConfluenceClientService confluenceClient,
+            @Value("${app.confluence.attachment-parse-timeout-seconds}") int parseTimeoutSeconds) {
         this.confluenceClient = confluenceClient;
         this.parseTimeoutSeconds =
-            parseTimeoutSeconds > 0 ? parseTimeoutSeconds : DEFAULT_PARSE_TIMEOUT_SECONDS;
+                parseTimeoutSeconds > 0 ? parseTimeoutSeconds : DEFAULT_PARSE_TIMEOUT_SECONDS;
         this.tika = new Tika();
         this.tika.setMaxStringLength(MAX_EXTRACTED_CHARS);
         // SETEXT_HEADINGS defaults to TRUE, which renders H1/H2 as underlines ("Overview\n=====")
@@ -65,15 +66,17 @@ public class ConfluenceConverter {
     /**
      * Converts one page's storage-format XHTML to markdown.
      *
-     * <p>
-     * The instance is passed in rather than looked up: mentions and attachments are resolved with
-     * live calls, and they must go to the site the page came from. {@code processAttachments} comes
-     * from the JOB's snapshot of the connector settings, not from the instance's current row, so a
-     * setting flipped mid-drain cannot change what a queued page produces.
+     * <p>The instance is passed in rather than looked up: mentions and attachments are resolved
+     * with live calls, and they must go to the site the page came from. {@code processAttachments}
+     * comes from the JOB's snapshot of the connector settings, not from the instance's current row,
+     * so a setting flipped mid-drain cannot change what a queued page produces.
      */
     @SuppressWarnings("unchecked")
-    public String convertToMarkdown(ConfluenceInstance instance, boolean processAttachments,
-        String pageId, String xhtmlBody) {
+    public String convertToMarkdown(
+            ConfluenceInstance instance,
+            boolean processAttachments,
+            String pageId,
+            String xhtmlBody) {
         // 1. Pre-process XHTML with JSoup
         Document doc = Jsoup.parseBodyFragment(xhtmlBody);
 
@@ -99,8 +102,10 @@ public class ConfluenceConverter {
                     pre.appendChild(code);
                     macro.replaceWith(pre);
                 }
-            } else if ("info".equals(name) || "note".equals(name) || "warning".equals(name)
-                || "panel".equals(name)) {
+            } else if ("info".equals(name)
+                    || "note".equals(name)
+                    || "warning".equals(name)
+                    || "panel".equals(name)) {
                 Element richTextBody = macro.selectFirst("ac|rich-text-body");
                 if (richTextBody != null) {
                     Element blockquote = new Element("blockquote");
@@ -142,15 +147,16 @@ public class ConfluenceConverter {
             // that is a property of the file, not of the transport, and it is recorded in the
             // corpus so it is visible rather than silent.
             List<Map<String, Object>> attachments =
-                confluenceClient.getPageAttachments(instance, pageId);
+                    confluenceClient.getPageAttachments(instance, pageId);
             for (Map<String, Object> attachment : attachments) {
                 String title = (String) attachment.get("title");
                 Map<String, Object> metadata = (Map<String, Object>) attachment.get("metadata");
                 Map<String, Object> extensions = (Map<String, Object>) attachment.get("extensions");
 
-                String mediaType = metadata != null && metadata.get("mediaType") != null
-                    ? (String) metadata.get("mediaType")
-                    : "";
+                String mediaType =
+                        metadata != null && metadata.get("mediaType") != null
+                                ? (String) metadata.get("mediaType")
+                                : "";
 
                 long fileSize = 0;
                 if (extensions != null && extensions.get("fileSize") != null) {
@@ -159,25 +165,30 @@ public class ConfluenceConverter {
 
                 if (fileSize > MAX_ATTACHMENT_BYTES) {
                     log.info(
-                        "Skipping attachment '{}' because it exceeds the 50MB size limit ({} bytes)",
-                        title, fileSize);
+                            "Skipping attachment '{}' because it exceeds the 50MB size limit ({} bytes)",
+                            title,
+                            fileSize);
                     continue;
                 }
 
                 if (mediaType != null) {
                     if (mediaType.startsWith("video/") || mediaType.startsWith("audio/")) {
-                        attachmentsMd.append("\n\n*Skipped multimedia attachment: ").append(title)
-                            .append("*\n");
+                        attachmentsMd
+                                .append("\n\n*Skipped multimedia attachment: ")
+                                .append(title)
+                                .append("*\n");
                         continue;
                     }
                     if (mediaType.startsWith("image/")) {
                         continue;
                     }
                     if (mediaType.equals("application/gliffy+json")
-                        || mediaType.equals("application/zip")
-                        || mediaType.equals("application/x-tar")) {
-                        attachmentsMd.append("\n\n*Skipped unsupported binary: ").append(title)
-                            .append("*\n");
+                            || mediaType.equals("application/zip")
+                            || mediaType.equals("application/x-tar")) {
+                        attachmentsMd
+                                .append("\n\n*Skipped unsupported binary: ")
+                                .append(title)
+                                .append("*\n");
                         continue;
                     }
                 }
@@ -190,21 +201,26 @@ public class ConfluenceConverter {
                         fileData = confluenceClient.downloadAttachment(instance, downloadUrl);
                     } catch (AttachmentTooLargeException e) {
                         log.warn(
-                            "Skipping attachment '{}' because download exceeded size limit: {}",
-                            title, e.getMessage());
+                                "Skipping attachment '{}' because download exceeded size limit: {}",
+                                title,
+                                e.getMessage());
                         continue;
                     }
                     try {
                         String extractedText = parseWithTimeout(fileData);
                         if (extractedText != null && !extractedText.trim().isEmpty()) {
-                            attachmentsMd.append("\n\n### Attachment: ").append(title)
-                                .append("\n\n");
+                            attachmentsMd
+                                    .append("\n\n### Attachment: ")
+                                    .append(title)
+                                    .append("\n\n");
                             attachmentsMd.append(extractedText.trim());
                         }
                     } catch (Exception e) {
                         log.warn("Failed to extract text from attachment: {}", title, e);
-                        attachmentsMd.append("\n\n*Failed to extract text from attachment: ")
-                            .append(title).append("*\n");
+                        attachmentsMd
+                                .append("\n\n*Failed to extract text from attachment: ")
+                                .append(title)
+                                .append("*\n");
                     }
                 }
             }
@@ -219,17 +235,18 @@ public class ConfluenceConverter {
 
     String parseWithTimeout(byte[] fileData) throws Exception {
         try (ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<String> future = exec.submit(() -> {
-                try (InputStream is = new ByteArrayInputStream(fileData)) {
-                    return tika.parseToString(is);
-                }
-            });
+            Future<String> future =
+                    exec.submit(() -> {
+                        try (InputStream is = new ByteArrayInputStream(fileData)) {
+                            return tika.parseToString(is);
+                        }
+                    });
             try {
                 return future.get(parseTimeoutSeconds, TimeUnit.SECONDS);
             } catch (TimeoutException e) {
                 future.cancel(true);
                 throw new TimeoutException(
-                    "Tika attachment parsing timed out after " + parseTimeoutSeconds + "s");
+                        "Tika attachment parsing timed out after " + parseTimeoutSeconds + "s");
             } catch (ExecutionException e) {
                 if (e.getCause() instanceof Exception cause) {
                     throw cause;

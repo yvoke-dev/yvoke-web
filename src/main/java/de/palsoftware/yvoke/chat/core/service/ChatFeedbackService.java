@@ -19,8 +19,10 @@ public class ChatFeedbackService {
     private final MessageRepository messageRepository;
     private final ChatConversationService chatConversationService;
 
-    public ChatFeedbackService(FeedbackRepository feedbackRepository,
-        MessageRepository messageRepository, ChatConversationService chatConversationService) {
+    public ChatFeedbackService(
+            FeedbackRepository feedbackRepository,
+            MessageRepository messageRepository,
+            ChatConversationService chatConversationService) {
         this.feedbackRepository = feedbackRepository;
         this.messageRepository = messageRepository;
         this.chatConversationService = chatConversationService;
@@ -29,13 +31,11 @@ public class ChatFeedbackService {
     /**
      * Records a rating, keeping any comment already stored.
      *
-     * <p>
-     * Exists so the rating buttons don't have to round-trip the user's comment back to the server
-     * to avoid erasing it — it used to ride in the request URL, which put free text into access
-     * logs.
+     * <p>Exists so the rating buttons don't have to round-trip the user's comment back to the
+     * server to avoid erasing it — it used to ride in the request URL, which put free text into
+     * access logs.
      *
-     * <p>
-     * A bare first rating (no row yet, so no comment to preserve) is stored with a null comment
+     * <p>A bare first rating (no row yet, so no comment to preserve) is stored with a null comment
      * rather than discarded. It used to return empty here and the caller rendered the vote as
      * transient UI state, which meant the user clicked the thumb, watched it light up, and lost it
      * on the next page load — an interface showing a vote it had not saved. It also made the
@@ -45,13 +45,12 @@ public class ChatFeedbackService {
      * comment-in-the-URL problem above is unrelated: it concerned free text reaching access logs,
      * not whether a bare rating is persisted.
      *
-     * <p>
-     * Authorizes as a write, so an admin cannot re-rate another user's answer.
+     * <p>Authorizes as a write, so an admin cannot re-rate another user's answer.
      */
     public Optional<Feedback> submitRatingPreservingComment(UUID messageId, int rating) {
         resolveOwnedMessage(messageId, false);
         String existingComment =
-            feedbackRepository.findByMessageId(messageId).map(Feedback::comment).orElse(null);
+                feedbackRepository.findByMessageId(messageId).map(Feedback::comment).orElse(null);
         feedbackRepository.upsert(messageId, rating, existingComment);
         return feedbackRepository.findByMessageId(messageId);
     }
@@ -60,8 +59,10 @@ public class ChatFeedbackService {
 
     public void submitFeedback(UUID messageId, int rating, String comment) {
         if (comment != null && comment.length() > MAX_COMMENT_CHARS) {
-            throw new IllegalArgumentException("Feedback comment exceeds maximum allowed length of "
-                + MAX_COMMENT_CHARS + " characters.");
+            throw new IllegalArgumentException(
+                    "Feedback comment exceeds maximum allowed length of "
+                            + MAX_COMMENT_CHARS
+                            + " characters.");
         }
         resolveOwnedMessage(messageId, false);
         feedbackRepository.upsert(messageId, rating, comment);
@@ -78,9 +79,8 @@ public class ChatFeedbackService {
     /**
      * Every feedback row for a conversation, keyed by message id, in a single query.
      *
-     * <p>
-     * Private feedback comments are returned only to the conversation owner or an authorized admin;
-     * non-owner viewers of a {@code public}-tagged conversation receive an empty map.
+     * <p>Private feedback comments are returned only to the conversation owner or an authorized
+     * admin; non-owner viewers of a {@code public}-tagged conversation receive an empty map.
      */
     public Map<UUID, Feedback> getFeedbackByConversation(UUID conversationId) {
         chatConversationService.checkChatEnabled();
@@ -88,20 +88,22 @@ public class ChatFeedbackService {
             return Map.of();
         }
         return feedbackRepository.findByConversationId(conversationId).stream()
-            .collect(Collectors.toMap(Feedback::messageId, Function.identity()));
+                .collect(Collectors.toMap(Feedback::messageId, Function.identity()));
     }
 
     /**
-     * {@code readOnlyAllowed=false} for writes, so the carve-outs in
-     * {@code verifyConversationOwnership} (ROLE_ADMIN, "public"-tagged conversations) grant reads
-     * only — an admin may view another user's thread but not rate it, matching every other chat
-     * write.
+     * {@code readOnlyAllowed=false} for writes, so the carve-outs in {@code
+     * verifyConversationOwnership} (ROLE_ADMIN, "public"-tagged conversations) grant reads only —
+     * an admin may view another user's thread but not rate it, matching every other chat write.
      */
     private Message resolveOwnedMessage(UUID messageId, boolean readOnlyAllowed) {
         chatConversationService.checkChatEnabled();
-        Message message = messageRepository.findById(messageId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Message not found: " + messageId));
+        Message message =
+                messageRepository
+                        .findById(messageId)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Message not found: " + messageId));
         chatConversationService.verifyOwnership(message.conversationId(), readOnlyAllowed);
         return message;
     }

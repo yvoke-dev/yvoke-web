@@ -25,8 +25,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
-@SpringJUnitConfig(classes = {SystemPromptService.class, CacheConfig.class,
-    SystemPromptServiceCacheTest.TestConfig.class})
+@SpringJUnitConfig(
+        classes = {
+            SystemPromptService.class,
+            CacheConfig.class,
+            SystemPromptServiceCacheTest.TestConfig.class
+        })
 class SystemPromptServiceCacheTest {
 
     private static final String AREA = "OIM";
@@ -43,19 +47,16 @@ class SystemPromptServiceCacheTest {
         AreaService areaService() {
             AreaService mock = mock(AreaService.class);
             when(mock.requireArea(any()))
-                .thenAnswer(inv -> inv.getArgument(0) != null ? inv.getArgument(0) : "OIM");
+                    .thenAnswer(inv -> inv.getArgument(0) != null ? inv.getArgument(0) : "OIM");
             return mock;
         }
     }
 
-    @Autowired
-    private SystemPromptService systemPromptService;
+    @Autowired private SystemPromptService systemPromptService;
 
-    @Autowired
-    private SystemPromptRepository systemPromptRepository;
+    @Autowired private SystemPromptRepository systemPromptRepository;
 
-    @Autowired
-    private CacheManager cacheManager;
+    @Autowired private CacheManager cacheManager;
 
     @BeforeEach
     void clearCache() {
@@ -70,7 +71,7 @@ class SystemPromptServiceCacheTest {
     @Test
     void getPromptNormalizesWhitespaceKeyAndHitsCache() {
         SystemPrompt prompt =
-            new SystemPrompt("test-prompt", SystemPromptType.KG, "System body", "Description");
+                new SystemPrompt("test-prompt", SystemPromptType.KG, "System body", "Description");
         when(systemPromptRepository.findByName("test-prompt")).thenReturn(Optional.of(prompt));
 
         // Untrimmed call: fetches from repository and caches under normalized key
@@ -87,7 +88,7 @@ class SystemPromptServiceCacheTest {
     @Test
     void deletePromptWithUntrimmedNameEvictsTrimmedCacheEntry() {
         SystemPrompt prompt =
-            new SystemPrompt("test-prompt", SystemPromptType.KG, "System body", "Description");
+                new SystemPrompt("test-prompt", SystemPromptType.KG, "System body", "Description");
         when(systemPromptRepository.findByName("test-prompt")).thenReturn(Optional.of(prompt));
 
         // Populate cache via trimmed call
@@ -108,7 +109,7 @@ class SystemPromptServiceCacheTest {
     @Test
     void deletePromptWithTrimmedNameEvictsUntrimmedCachedEntry() {
         SystemPrompt prompt =
-            new SystemPrompt("test-prompt", SystemPromptType.KG, "System body", "Description");
+                new SystemPrompt("test-prompt", SystemPromptType.KG, "System body", "Description");
         when(systemPromptRepository.findByName("test-prompt")).thenReturn(Optional.of(prompt));
 
         // Populate cache via untrimmed call
@@ -129,9 +130,9 @@ class SystemPromptServiceCacheTest {
     @Test
     void savePromptWithUntrimmedNameEvictsTrimmedCacheEntry() {
         SystemPrompt oldPrompt =
-            new SystemPrompt("test-prompt", SystemPromptType.KG, "Body V1", "Desc");
+                new SystemPrompt("test-prompt", SystemPromptType.KG, "Body V1", "Desc");
         SystemPrompt newPrompt =
-            new SystemPrompt("test-prompt", SystemPromptType.KG, "Body V2", "Desc");
+                new SystemPrompt("test-prompt", SystemPromptType.KG, "Body V2", "Desc");
         when(systemPromptRepository.findByName("test-prompt")).thenReturn(Optional.of(oldPrompt));
 
         // Populate cache
@@ -139,8 +140,8 @@ class SystemPromptServiceCacheTest {
         verify(systemPromptRepository, times(1)).findByName("test-prompt");
 
         // Save with untrimmed name
-        systemPromptService.savePrompt("  test-prompt  ", SystemPromptType.KG, "Body V2", "Desc",
-            AREA);
+        systemPromptService.savePrompt(
+                "  test-prompt  ", SystemPromptType.KG, "Body V2", "Desc", AREA);
 
         // Subsequent getPrompt must MISS cache
         when(systemPromptRepository.findByName("test-prompt")).thenReturn(Optional.of(newPrompt));
@@ -157,20 +158,24 @@ class SystemPromptServiceCacheTest {
         assertDoesNotThrow(() -> assertTrue(systemPromptService.getPrompt("   ").isEmpty()));
         assertDoesNotThrow(() -> assertTrue(systemPromptService.getPrompt("\t\n\r").isEmpty()));
 
-        assertThrows(IllegalArgumentException.class,
-            () -> systemPromptService.savePrompt(null, SystemPromptType.KG, "B", "D", AREA));
-        assertThrows(IllegalArgumentException.class,
-            () -> systemPromptService.savePrompt("", SystemPromptType.KG, "B", "D", AREA));
-        assertThrows(IllegalArgumentException.class,
-            () -> systemPromptService.savePrompt("   ", SystemPromptType.KG, "B", "D", AREA));
-        assertThrows(IllegalArgumentException.class,
-            () -> systemPromptService.savePrompt("\t\n", SystemPromptType.KG, "B", "D", AREA));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> systemPromptService.savePrompt(null, SystemPromptType.KG, "B", "D", AREA));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> systemPromptService.savePrompt("", SystemPromptType.KG, "B", "D", AREA));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> systemPromptService.savePrompt("   ", SystemPromptType.KG, "B", "D", AREA));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> systemPromptService.savePrompt("\t\n", SystemPromptType.KG, "B", "D", AREA));
 
         assertThrows(IllegalArgumentException.class, () -> systemPromptService.deletePrompt(null));
         assertThrows(IllegalArgumentException.class, () -> systemPromptService.deletePrompt(""));
         assertThrows(IllegalArgumentException.class, () -> systemPromptService.deletePrompt("   "));
-        assertThrows(IllegalArgumentException.class,
-            () -> systemPromptService.deletePrompt("\t\n"));
+        assertThrows(
+                IllegalArgumentException.class, () -> systemPromptService.deletePrompt("\t\n"));
 
         verifyNoInteractions(systemPromptRepository);
     }
@@ -178,7 +183,7 @@ class SystemPromptServiceCacheTest {
     @Test
     void getPromptWithTabAndNewlineNormalizesAndHitsCache() {
         SystemPrompt prompt =
-            new SystemPrompt("special-prompt", SystemPromptType.KG, "Body", "Desc");
+                new SystemPrompt("special-prompt", SystemPromptType.KG, "Body", "Desc");
         when(systemPromptRepository.findByName("special-prompt")).thenReturn(Optional.of(prompt));
 
         Optional<SystemPrompt> first = systemPromptService.getPrompt("\t\nspecial-prompt\r\n");
@@ -193,9 +198,9 @@ class SystemPromptServiceCacheTest {
     @Test
     void getPromptWithInternalSpacesPreservesInternalWhitespace() {
         SystemPrompt prompt =
-            new SystemPrompt("prompt with spaces", SystemPromptType.KG, "Body", "Desc");
+                new SystemPrompt("prompt with spaces", SystemPromptType.KG, "Body", "Desc");
         when(systemPromptRepository.findByName("prompt with spaces"))
-            .thenReturn(Optional.of(prompt));
+                .thenReturn(Optional.of(prompt));
 
         Optional<SystemPrompt> first = systemPromptService.getPrompt("   prompt with spaces   ");
         assertTrue(first.isPresent());
@@ -216,8 +221,10 @@ class SystemPromptServiceCacheTest {
 
         systemPromptService.savePrompt("\t prompt-evict \n", SystemPromptType.KG, "B2", "D2", AREA);
 
-        when(systemPromptRepository.findByName("prompt-evict")).thenReturn(
-            Optional.of(new SystemPrompt("prompt-evict", SystemPromptType.KG, "B2", "D2")));
+        when(systemPromptRepository.findByName("prompt-evict"))
+                .thenReturn(
+                        Optional.of(
+                                new SystemPrompt("prompt-evict", SystemPromptType.KG, "B2", "D2")));
         systemPromptService.getPrompt("prompt-evict");
         verify(systemPromptRepository, times(2)).findByName("prompt-evict");
     }
@@ -242,7 +249,7 @@ class SystemPromptServiceCacheTest {
     void concurrentSystemPromptGetAndSaveStressTest() throws Exception {
         final String promptName = "stress-prompt";
         final SystemPrompt prompt =
-            new SystemPrompt(promptName, SystemPromptType.KG, "Body", "Desc");
+                new SystemPrompt(promptName, SystemPromptType.KG, "Body", "Desc");
         when(systemPromptRepository.findByName(promptName)).thenReturn(Optional.of(prompt));
 
         int threadCount = 20;
@@ -255,25 +262,31 @@ class SystemPromptServiceCacheTest {
 
         for (int i = 0; i < threadCount; i++) {
             final int threadId = i;
-            futures.add(pool.submit(() -> {
-                try {
-                    startLatch.await();
-                    for (int j = 0; j < iterationsPerThread; j++) {
-                        if (threadId % 3 == 0) {
-                            systemPromptService.savePrompt(promptName, SystemPromptType.KG,
-                                "Body " + j, "Desc " + j, AREA);
-                            saveSuccesses.incrementAndGet();
-                        } else {
-                            Optional<SystemPrompt> res = systemPromptService.getPrompt(promptName);
-                            if (res.isPresent()) {
-                                getSuccesses.incrementAndGet();
+            futures.add(
+                    pool.submit(() -> {
+                        try {
+                            startLatch.await();
+                            for (int j = 0; j < iterationsPerThread; j++) {
+                                if (threadId % 3 == 0) {
+                                    systemPromptService.savePrompt(
+                                            promptName,
+                                            SystemPromptType.KG,
+                                            "Body " + j,
+                                            "Desc " + j,
+                                            AREA);
+                                    saveSuccesses.incrementAndGet();
+                                } else {
+                                    Optional<SystemPrompt> res =
+                                            systemPromptService.getPrompt(promptName);
+                                    if (res.isPresent()) {
+                                        getSuccesses.incrementAndGet();
+                                    }
+                                }
                             }
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
                         }
-                    }
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }));
+                    }));
         }
 
         startLatch.countDown();
@@ -289,8 +302,16 @@ class SystemPromptServiceCacheTest {
 
     @Test
     void requirePromptBypassesCacheAndReadsFreshRepositoryState() {
-        SystemPrompt cached = new SystemPrompt("prompt-1", SystemPromptType.SUMMARIZE, "Body",
-            "Desc", Instant.now(), Instant.now(), false, "OldArea");
+        SystemPrompt cached =
+                new SystemPrompt(
+                        "prompt-1",
+                        SystemPromptType.SUMMARIZE,
+                        "Body",
+                        "Desc",
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "OldArea");
         when(systemPromptRepository.findByName("prompt-1")).thenReturn(Optional.of(cached));
 
         // Populate cache via getPrompt
@@ -300,8 +321,16 @@ class SystemPromptServiceCacheTest {
 
         // Now repository state changes (e.g. area rename via CASCADE in DB without service
         // eviction)
-        SystemPrompt updated = new SystemPrompt("prompt-1", SystemPromptType.SUMMARIZE, "Body",
-            "Desc", Instant.now(), Instant.now(), false, "NewArea");
+        SystemPrompt updated =
+                new SystemPrompt(
+                        "prompt-1",
+                        SystemPromptType.SUMMARIZE,
+                        "Body",
+                        "Desc",
+                        Instant.now(),
+                        Instant.now(),
+                        false,
+                        "NewArea");
         when(systemPromptRepository.findByName("prompt-1")).thenReturn(Optional.of(updated));
 
         // getPrompt still returns cached old area
@@ -309,7 +338,7 @@ class SystemPromptServiceCacheTest {
 
         // requirePrompt must bypass cache and see NewArea directly
         SystemPrompt required =
-            systemPromptService.requirePrompt("prompt-1", SystemPromptType.SUMMARIZE);
+                systemPromptService.requirePrompt("prompt-1", SystemPromptType.SUMMARIZE);
         assertEquals("NewArea", required.area());
     }
 }

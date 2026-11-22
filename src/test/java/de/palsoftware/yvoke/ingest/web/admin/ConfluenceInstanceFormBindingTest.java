@@ -9,16 +9,15 @@ import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.ServletRequestDataBinder;
 
 /**
- * Constructor binding of the connectors form, driven through a real
- * {@link ServletRequestDataBinder} — the layer {@code ConfluenceConnectorControllerTest} skips by
- * calling the controller method directly with a hand-built {@code BindingResult}.
+ * Constructor binding of the connectors form, driven through a real {@link
+ * ServletRequestDataBinder} — the layer {@code ConfluenceConnectorControllerTest} skips by calling
+ * the controller method directly with a hand-built {@code BindingResult}.
  *
- * <p>
- * This is where the form's "Save Instance" button used to die. An unchecked HTML checkbox submits
- * NO parameter at all, and a record component declared as a primitive {@code boolean} cannot be
- * constructed from a missing value: the binder records a type-mismatch error instead of defaulting
- * to false. The form opens with "Process attachments" unchecked, so the very first save of a new
- * instance failed 100% of the time — and because the binding result already held an error,
+ * <p>This is where the form's "Save Instance" button used to die. An unchecked HTML checkbox
+ * submits NO parameter at all, and a record component declared as a primitive {@code boolean}
+ * cannot be constructed from a missing value: the binder records a type-mismatch error instead of
+ * defaulting to false. The form opens with "Process attachments" unchecked, so the very first save
+ * of a new instance failed 100% of the time — and because the binding result already held an error,
  * {@code ModelAttributeMethodProcessor} skipped {@code @Valid} entirely, making every constraint on
  * the DTO dead code on that path.
  */
@@ -27,7 +26,7 @@ class ConfluenceInstanceFormBindingTest {
     /** Exactly what the browser posts, minus the two checkboxes. */
     private static MockHttpServletRequest browserPost() {
         MockHttpServletRequest request =
-            new MockHttpServletRequest("POST", "/admin/connectors/confluence");
+                new MockHttpServletRequest("POST", "/admin/connectors/confluence");
         request.addParameter("id", "");
         request.addParameter("name", "iCC Wiki");
         request.addParameter("slug", "icc-wiki");
@@ -69,11 +68,11 @@ class ConfluenceInstanceFormBindingTest {
     }
 
     /**
-     * Spring's checkbox field marker (the hidden {@code _<field>} input Thymeleaf emits for
-     * {@code th:field}, added by hand here because this form binds by name) is honoured by
-     * constructor binding too — {@code WebDataBinder.resolvePrefixValue} maps it to
-     * {@code getEmptyValue(Boolean.class)}, i.e. FALSE. The template sends both markers, so this
-     * pins that the HTML-side contract still resolves.
+     * Spring's checkbox field marker (the hidden {@code _<field>} input Thymeleaf emits for {@code
+     * th:field}, added by hand here because this form binds by name) is honoured by constructor
+     * binding too — {@code WebDataBinder.resolvePrefixValue} maps it to {@code
+     * getEmptyValue(Boolean.class)}, i.e. FALSE. The template sends both markers, so this pins that
+     * the HTML-side contract still resolves.
      */
     @Test
     void theHiddenFieldMarkerAlsoResolvesAnUncheckedBoxToFalse() {

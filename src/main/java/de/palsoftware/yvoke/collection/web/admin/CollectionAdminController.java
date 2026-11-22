@@ -26,7 +26,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-
 @Controller
 @RequestMapping("/admin")
 public class CollectionAdminController {
@@ -38,8 +37,11 @@ public class CollectionAdminController {
     private final AreaService areaService;
     private final AdminAuditLogger auditLogger;
 
-    public CollectionAdminController(CollectionService collectionService, TagService tagService,
-        AreaService areaService, AdminAuditLogger auditLogger) {
+    public CollectionAdminController(
+            CollectionService collectionService,
+            TagService tagService,
+            AreaService areaService,
+            AdminAuditLogger auditLogger) {
         this.areaService = areaService;
         this.collectionService = collectionService;
         this.tagService = tagService;
@@ -52,81 +54,113 @@ public class CollectionAdminController {
         List<Collection> collections = collectionService.listForAdminUser();
         model.addAttribute("collections", collections);
         List<String> allTags =
-            AreaAccessContext.allowedAdminAreasLower().isEmpty() ? collectionService.listAllTags()
-                : collections.stream().filter(c -> c.tags() != null).flatMap(c -> c.tags().stream())
-                    .filter(t -> t != null && !t.isBlank()).distinct().sorted().toList();
+                AreaAccessContext.allowedAdminAreasLower().isEmpty()
+                        ? collectionService.listAllTags()
+                        : collections.stream()
+                                .filter(c -> c.tags() != null)
+                                .flatMap(c -> c.tags().stream())
+                                .filter(t -> t != null && !t.isBlank())
+                                .distinct()
+                                .sorted()
+                                .toList();
         model.addAttribute("allTags", allTags);
-        model.addAttribute("areas",
-            areaService.listAdministeredForCurrentUser().stream().map(Area::name).toList());
+        model.addAttribute(
+                "areas",
+                areaService.listAdministeredForCurrentUser().stream().map(Area::name).toList());
         return "admin/collections";
     }
 
     @PostMapping("/collections")
-    public String createCollection(@RequestParam String name,
-        @RequestParam(required = false) String description, @RequestParam String area,
-        RedirectAttributes redirectAttributes) {
+    public String createCollection(
+            @RequestParam String name,
+            @RequestParam(required = false) String description,
+            @RequestParam String area,
+            RedirectAttributes redirectAttributes) {
         if (!AreaAccessContext.canAdministerArea(area)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Not authorized to create collection in area: " + area);
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Not authorized to create collection in area: " + area);
         }
         if (collectionService.findByName(name).isPresent()) {
             throw new IllegalArgumentException("Collection '" + name.trim() + "' already exists.");
         }
         collectionService.createCollection(name, description, area);
         auditLogger.log("CREATE_COLLECTION", name.trim(), Map.of("area", area.trim()));
-        redirectAttributes.addFlashAttribute("success",
-            "Collection '" + name.trim() + "' created successfully.");
+        redirectAttributes.addFlashAttribute(
+                "success", "Collection '" + name.trim() + "' created successfully.");
         return "redirect:/admin/collections";
     }
 
     @PostMapping("/collections/area")
-    public String moveCollection(@RequestParam String name, @RequestParam String area,
-        RedirectAttributes redirectAttributes) {
-        Collection current = collectionService.findByName(name).orElseThrow(
-            () -> new IllegalArgumentException("Collection '" + name + "' does not exist."));
+    public String moveCollection(
+            @RequestParam String name,
+            @RequestParam String area,
+            RedirectAttributes redirectAttributes) {
+        Collection current =
+                collectionService
+                        .findByName(name)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Collection '" + name + "' does not exist."));
         if (!AreaAccessContext.canAdministerArea(current.area())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Not authorized to administer source area: " + current.area());
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Not authorized to administer source area: " + current.area());
         }
         if (!AreaAccessContext.canAdministerArea(area)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Not authorized to administer target area: " + area);
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Not authorized to administer target area: " + area);
         }
         String movedTo = collectionService.moveCollection(name, area);
-        auditLogger.log("MOVE_COLLECTION", current.name() != null ? current.name() : name,
-            Map.of("fromArea", current.area() != null ? current.area() : "", "toArea",
-                movedTo != null ? movedTo : (area != null ? area : "")));
-        redirectAttributes.addFlashAttribute("success",
-            "Collection '" + name + "' moved to area '" + movedTo + "'.");
+        auditLogger.log(
+                "MOVE_COLLECTION",
+                current.name() != null ? current.name() : name,
+                Map.of(
+                        "fromArea",
+                        current.area() != null ? current.area() : "",
+                        "toArea",
+                        movedTo != null ? movedTo : (area != null ? area : "")));
+        redirectAttributes.addFlashAttribute(
+                "success", "Collection '" + name + "' moved to area '" + movedTo + "'.");
         return "redirect:/admin/collections";
     }
 
     /**
-     * The tag {@code <select>} options for one collection, rendered as the calling page's
-     * {@code tag-container} fragment.
+     * The tag {@code <select>} options for one collection, rendered as the calling page's {@code
+     * tag-container} fragment.
      *
-     * <p>
-     * On a GET, htmx sends the TRIGGERING element's own name and value and nothing else, and the
-     * three pages that use this endpoint cannot agree on one name: {@code /admin/ingest} and
-     * {@code /admin/search} own a select named {@code collection}, while the connectors form must
-     * name its select {@code targetCollection} so it binds to {@code ConfluenceInstanceForm}. Both
-     * names are accepted rather than making the connectors page compute the parameter in JavaScript
-     * — reading only {@code collection} left that page's tag container permanently empty, which
-     * made every sync of a tagged collection fail on a blank tag and made editing an instance wipe
-     * its stored tag.
+     * <p>On a GET, htmx sends the TRIGGERING element's own name and value and nothing else, and the
+     * three pages that use this endpoint cannot agree on one name: {@code /admin/ingest} and {@code
+     * /admin/search} own a select named {@code collection}, while the connectors form must name its
+     * select {@code targetCollection} so it binds to {@code ConfluenceInstanceForm}. Both names are
+     * accepted rather than making the connectors page compute the parameter in JavaScript — reading
+     * only {@code collection} left that page's tag container permanently empty, which made every
+     * sync of a tagged collection fail on a blank tag and made editing an instance wipe its stored
+     * tag.
      */
-    @GetMapping({"/collections/{name}/version-options", "/collections/version-options",
-        "/collections/{name}/tag-options", "/collections/tag-options"})
-    public String getVersionOptions(@PathVariable(required = false) String name,
-        @RequestParam(value = "collection", required = false) String collectionName,
-        @RequestParam(value = "targetCollection", required = false) String targetCollectionName,
-        @RequestHeader(value = "HX-Current-URL", required = false) String currentUrl, Model model) {
+    @GetMapping({
+        "/collections/{name}/version-options",
+        "/collections/version-options",
+        "/collections/{name}/tag-options",
+        "/collections/tag-options"
+    })
+    public String getVersionOptions(
+            @PathVariable(required = false) String name,
+            @RequestParam(value = "collection", required = false) String collectionName,
+            @RequestParam(value = "targetCollection", required = false) String targetCollectionName,
+            @RequestHeader(value = "HX-Current-URL", required = false) String currentUrl,
+            Model model) {
         String targetName =
-            name != null ? name : (collectionName != null ? collectionName : targetCollectionName);
-        Optional<Collection> colOpt = targetName != null
-            ? collectionService.getCollection(targetName)
-                .filter(c -> c.area() == null || AreaAccessContext.canAdministerArea(c.area()))
-            : Optional.empty();
+                name != null
+                        ? name
+                        : (collectionName != null ? collectionName : targetCollectionName);
+        Optional<Collection> colOpt =
+                targetName != null
+                        ? collectionService
+                                .getCollection(targetName)
+                                .filter(c ->
+                                        c.area() == null
+                                                || AreaAccessContext.canAdministerArea(c.area()))
+                        : Optional.empty();
         List<String> versions = colOpt.map(Collection::tags).orElse(List.of());
         model.addAttribute("versions", versions);
         model.addAttribute("tags", versions);
@@ -141,14 +175,19 @@ public class CollectionAdminController {
     }
 
     @PostMapping("/collections/add-tag")
-    public String addCollectionTag(@RequestParam UUID collectionId, @RequestParam String tag,
-        RedirectAttributes redirectAttributes) {
-        Collection col = collectionService.findByIdForAdmin(collectionId).orElseThrow(
-            () -> new IllegalArgumentException("Collection not found: " + collectionId));
+    public String addCollectionTag(
+            @RequestParam UUID collectionId,
+            @RequestParam String tag,
+            RedirectAttributes redirectAttributes) {
+        Collection col =
+                collectionService
+                        .findByIdForAdmin(collectionId)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Collection not found: " + collectionId));
         tagService.addTagToCollection(col.id(), tag);
         auditLogger.log("ADD_COLLECTION_TAG", col.name(), Map.of("tag", tag.trim()));
         redirectAttributes.addFlashAttribute("success", "Tag added successfully.");
         return "redirect:/admin/collections";
     }
-
 }

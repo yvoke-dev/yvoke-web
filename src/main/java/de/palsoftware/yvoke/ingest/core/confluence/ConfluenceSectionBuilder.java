@@ -12,24 +12,22 @@ import java.util.regex.Pattern;
 /**
  * Builds the chunk sections for one Confluence page.
  *
- * <p>
- * {@link MarkdownTree} is shared with the manual/hierarchical/custom ingest paths and is
+ * <p>{@link MarkdownTree} is shared with the manual/hierarchical/custom ingest paths and is
  * deliberately left alone; it assumes a document that starts with an H1 title and whose content
  * lives under headings. A Confluence page satisfies neither: the title is page <em>metadata</em>
  * (never part of the converted body storage), so three shapes lost all their content —
  *
  * <ol>
- * <li>a body with no ATX heading at all ({@code parse} returns no sections),
- * <li>a body whose only heading is a leading H1 (consumed as the document title),
- * <li>prose before the first heading (section bodies start after their heading).
+ *   <li>a body with no ATX heading at all ({@code parse} returns no sections),
+ *   <li>a body whose only heading is a leading H1 (consumed as the document title),
+ *   <li>prose before the first heading (section bodies start after their heading).
  * </ol>
  *
- * <p>
- * This builder re-roots the page under a synthetic H1 carrying the page title, keeps the
- * pre-heading preamble as that title section's body, and then runs the ordinary
- * {@link MarkdownTree#buildOrderedSections(ParsedMarkdown)} pipeline (TOC filtering, empty-
- * placeholder dropping and oversized-section splitting) so the Confluence path gets the same
- * bounded chunks as every other path.
+ * <p>This builder re-roots the page under a synthetic H1 carrying the page title, keeps the
+ * pre-heading preamble as that title section's body, and then runs the ordinary {@link
+ * MarkdownTree#buildOrderedSections(ParsedMarkdown)} pipeline (TOC filtering, empty-placeholder
+ * dropping and oversized-section splitting) so the Confluence path gets the same bounded chunks as
+ * every other path.
  */
 public final class ConfluenceSectionBuilder {
 
@@ -52,8 +50,13 @@ public final class ConfluenceSectionBuilder {
         return build(pageTitle, markdown, null, null, null, null);
     }
 
-    public static List<Section> build(String pageTitle, String markdown, @Nullable String sourceUrl,
-        @Nullable String author, @Nullable String lastUpdated, @Nullable Integer version) {
+    public static List<Section> build(
+            String pageTitle,
+            String markdown,
+            @Nullable String sourceUrl,
+            @Nullable String author,
+            @Nullable String lastUpdated,
+            @Nullable Integer version) {
         String title = normalizeTitle(pageTitle);
         String body = stripLeadingDuplicateTitle(markdown == null ? "" : markdown, title);
 
@@ -62,7 +65,7 @@ public final class ConfluenceSectionBuilder {
         // Splitting of oversized sections is handled uniformly during section packing.
         ParsedMarkdown parsed = MarkdownTree.parse("# " + title + "\n\n" + body);
         List<Section> nested =
-            MarkdownTree.dropEmptyPlaceholders(MarkdownTree.filterSections(parsed.sections()));
+                MarkdownTree.dropEmptyPlaceholders(MarkdownTree.filterSections(parsed.sections()));
 
         List<Section> raw = new ArrayList<>();
         String preamble = preamble(body);
@@ -76,16 +79,21 @@ public final class ConfluenceSectionBuilder {
             List<String> headingPath = new ArrayList<>(section.headingPath().size() + 1);
             headingPath.add(title);
             headingPath.addAll(section.headingPath());
-            raw.add(new Section(section.depth(), section.title(), List.copyOf(headingPath),
-                section.body()));
+            raw.add(
+                    new Section(
+                            section.depth(),
+                            section.title(),
+                            List.copyOf(headingPath),
+                            section.body()));
         }
         // The header is prepended to every finished body below, so it has to come OUT of the
         // allowance rather than sit on top of it — otherwise every chunk on a page that has
         // metadata overruns the cap, by an amount that varies with the page URL and the author's
         // name, so the real ceiling moves per page with nothing measuring it.
         String header = formatMetadataHeader(sourceUrl, author, lastUpdated, version);
-        int budget = MarkdownTree.CHUNK_BODY_MAX_CHARS
-            - (header.isEmpty() ? 0 : header.length() + SEPARATOR_LENGTH);
+        int budget =
+                MarkdownTree.CHUNK_BODY_MAX_CHARS
+                        - (header.isEmpty() ? 0 : header.length() + SEPARATOR_LENGTH);
         List<Section> packed = packSections(title, raw, budget);
         if (header.isEmpty() || packed.isEmpty()) {
             return packed;
@@ -93,13 +101,16 @@ public final class ConfluenceSectionBuilder {
         List<Section> withHeaders = new ArrayList<>(packed.size());
         for (Section s : packed) {
             withHeaders.add(
-                new Section(s.depth(), s.title(), s.headingPath(), header + "\n\n" + s.body()));
+                    new Section(s.depth(), s.title(), s.headingPath(), header + "\n\n" + s.body()));
         }
         return List.copyOf(withHeaders);
     }
 
-    private static String formatMetadataHeader(@Nullable String sourceUrl, @Nullable String author,
-        @Nullable String lastUpdated, @Nullable Integer version) {
+    private static String formatMetadataHeader(
+            @Nullable String sourceUrl,
+            @Nullable String author,
+            @Nullable String lastUpdated,
+            @Nullable Integer version) {
         List<String> lines = new ArrayList<>();
         if (sourceUrl != null && !sourceUrl.isBlank()) {
             lines.add("🔗 Confluence Page: [View in Confluence](" + sourceUrl.strip() + ")");
@@ -107,14 +118,18 @@ public final class ConfluenceSectionBuilder {
         boolean hasAuthor = author != null && !author.isBlank();
         boolean hasDate = lastUpdated != null && !lastUpdated.isBlank();
         if (hasAuthor && hasDate) {
-            String datePart = "📅 Last Updated: " + lastUpdated.strip()
-                + (version != null ? " (v" + version + ")" : "");
+            String datePart =
+                    "📅 Last Updated: "
+                            + lastUpdated.strip()
+                            + (version != null ? " (v" + version + ")" : "");
             lines.add("👤 Author: " + author.strip() + " | " + datePart);
         } else if (hasAuthor) {
             lines.add("👤 Author: " + author.strip());
         } else if (hasDate) {
-            lines.add("📅 Last Updated: " + lastUpdated.strip()
-                + (version != null ? " (v" + version + ")" : ""));
+            lines.add(
+                    "📅 Last Updated: "
+                            + lastUpdated.strip()
+                            + (version != null ? " (v" + version + ")" : ""));
         }
         return String.join("\n", lines);
     }
@@ -122,8 +137,8 @@ public final class ConfluenceSectionBuilder {
     /**
      * Packs consecutive sections up to {@code maxChars} to avoid micro-chunk fragmentation while
      * preserving markdown headings in the body. Oversized sections (> maxChars) flush the
-     * accumulated buffer and are split into parts via
-     * {@link MarkdownTree#splitOversizedSection(Section)}.
+     * accumulated buffer and are split into parts via {@link
+     * MarkdownTree#splitOversizedSection(Section)}.
      */
     static List<Section> packSections(String pageTitle, List<Section> rawSections, int maxChars) {
         if (rawSections == null || rawSections.isEmpty()) {
@@ -172,8 +187,8 @@ public final class ConfluenceSectionBuilder {
         return List.copyOf(out);
     }
 
-    private static Section createCompositeSection(String pageTitle, List<Section> group,
-        List<Section> rawSections) {
+    private static Section createCompositeSection(
+            String pageTitle, List<Section> group, List<Section> rawSections) {
         if (group.size() == 1) {
             return group.get(0);
         }
@@ -226,21 +241,19 @@ public final class ConfluenceSectionBuilder {
     /**
      * The depth of the ancestor sitting at {@code ancestorPath}.
      *
-     * <p>
-     * Matched on the whole PATH, never on the name alone. A heading's identity on this corpus is
+     * <p>Matched on the whole PATH, never on the name alone. A heading's identity on this corpus is
      * its path — "Overview", "Notes" and "Configuration" repeat all over a space — so scanning for
      * the first section with a matching title returns whichever same-named heading comes first in
      * document order, and the composite is then rendered at that heading's level and stores its
      * depth in {@code chunks.depth}, which is what the document hierarchy reads.
      *
-     * <p>
-     * The fallback is still the path length, because the ancestor genuinely can be absent: a
+     * <p>The fallback is still the path length, because the ancestor genuinely can be absent: a
      * body-less heading is removed by {@code dropEmptyPlaceholders} before packing. It is only a
      * guess — markdown permits skipped levels ({@code ## A} then {@code #### B}), so path length
      * and depth are different numbers and only the real section knows which.
      */
-    private static int lookupDepth(List<String> ancestorPath, List<Section> rawSections,
-        int fallbackDepth) {
+    private static int lookupDepth(
+            List<String> ancestorPath, List<Section> rawSections, int fallbackDepth) {
         for (Section s : rawSections) {
             List<String> fullPath = new ArrayList<>(s.headingPath().size() + 1);
             fullPath.addAll(s.headingPath());
@@ -254,7 +267,7 @@ public final class ConfluenceSectionBuilder {
 
     private static String formatSectionForComposite(Section s, String pageTitle) {
         if (s.depth() == TITLE_DEPTH
-            && (s.title().equals(pageTitle) || s.title().equals(normalizeTitle(pageTitle)))) {
+                && (s.title().equals(pageTitle) || s.title().equals(normalizeTitle(pageTitle)))) {
             return s.body().stripTrailing();
         }
         return "#".repeat(s.depth()) + " " + s.title() + "\n\n" + s.body().stripTrailing();

@@ -34,18 +34,16 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-    properties = {"app.security.mock=true", "app.chat.playbook-validation-enabled=false"})
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = {"app.security.mock=true", "app.chat.playbook-validation-enabled=false"})
 public class PlaybookValidationDisabledIT {
 
-    @Autowired
-    private WebApplicationContext context;
+    @Autowired private WebApplicationContext context;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private ChatConversationService chatConversationService;
+    @Autowired private ChatConversationService chatConversationService;
 
     @MockitoBean(name = "llmProviderClient")
     private LlmClient llmClient;
@@ -90,11 +88,11 @@ public class PlaybookValidationDisabledIT {
         SecurityContextHolder.setContext(secContext);
     }
 
-    private static OidcLoginRequestPostProcessor testUserLogin(String oid, String email,
-        String name) {
+    private static OidcLoginRequestPostProcessor testUserLogin(
+            String oid, String email, String name) {
         return oidcLogin()
-            .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
-            .authorities(new SimpleGrantedAuthority("ROLE_USER"));
+                .idToken(token -> token.claim("oid", oid).claim("name", name).claim("email", email))
+                .authorities(new SimpleGrantedAuthority("ROLE_USER"));
     }
 
     /**
@@ -104,10 +102,9 @@ public class PlaybookValidationDisabledIT {
      * off the endpoint must degrade to a constant {@code {true, "", null}} that cannot fail for any
      * reason at all.
      *
-     * <p>
-     * {@code verifyOwnership} throws {@code ResponseStatusException(404)} for an id it cannot find,
-     * and it is called OUTSIDE the controller's try/catch, so it is not caught by the "return the
-     * optimistic fallback" handler at the bottom of the method: sinking the flag check below it
+     * <p>{@code verifyOwnership} throws {@code ResponseStatusException(404)} for an id it cannot
+     * find, and it is called OUTSIDE the controller's try/catch, so it is not caught by the "return
+     * the optimistic fallback" handler at the bottom of the method: sinking the flag check below it
      * turns the disabled path into one that issues a DB read and can answer 404 or 403. The
      * composer then shows a preflight error for a feature the operator switched off. Moving the
      * check is a natural-looking tidy-up — the ownership call reads like a precondition that ought
@@ -117,7 +114,7 @@ public class PlaybookValidationDisabledIT {
      */
     @Test
     public void whenValidationIsDisabledABogusConversationIdStillReturnsTwoHundred()
-        throws Exception {
+            throws Exception {
         String userBOid = "user-b-validate-disabled-oid";
         userRepository.upsert(userBOid, "user-b-disabled@local", "User B");
         setSecurityContext(userBOid, "user-b-disabled@local", "User B");
@@ -125,13 +122,16 @@ public class PlaybookValidationDisabledIT {
         var login = testUserLogin(userBOid, "user-b-disabled@local", "User B");
 
         // A conversation id that exists nowhere: reaching the ownership lookup at all is a 404.
-        mockMvc
-            .perform(post("/chat/" + UUID.randomUUID() + "/validate-playbook").with(login)
-                .with(csrf()).param("content", "How do I query database?")
-                .param("promptName", "correct-playbook"))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.plausible").value(true))
-            .andExpect(jsonPath("$.reason").value(""))
-            .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
+        mockMvc.perform(
+                        post("/chat/" + UUID.randomUUID() + "/validate-playbook")
+                                .with(login)
+                                .with(csrf())
+                                .param("content", "How do I query database?")
+                                .param("promptName", "correct-playbook"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.plausible").value(true))
+                .andExpect(jsonPath("$.reason").value(""))
+                .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
 
         verifyNoInteractions(llmClient);
     }
@@ -147,13 +147,16 @@ public class PlaybookValidationDisabledIT {
 
         var login = testUserLogin(userAOid, "user-a-disabled@local", "User A");
 
-        mockMvc
-            .perform(post("/chat/" + conv.id() + "/validate-playbook").with(login).with(csrf())
-                .param("content", "How do I query database?")
-                .param("promptName", "correct-playbook"))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.plausible").value(true))
-            .andExpect(jsonPath("$.reason").value(""))
-            .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
+        mockMvc.perform(
+                        post("/chat/" + conv.id() + "/validate-playbook")
+                                .with(login)
+                                .with(csrf())
+                                .param("content", "How do I query database?")
+                                .param("promptName", "correct-playbook"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.plausible").value(true))
+                .andExpect(jsonPath("$.reason").value(""))
+                .andExpect(jsonPath("$.suggestedPlaybookName").isEmpty());
 
         verifyNoInteractions(llmClient);
     }

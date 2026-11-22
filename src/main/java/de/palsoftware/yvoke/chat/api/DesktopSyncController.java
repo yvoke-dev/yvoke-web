@@ -48,10 +48,13 @@ public class DesktopSyncController {
     private final AreaService areaService;
 
     @Autowired
-    public DesktopSyncController(DesktopSyncService syncService, PlaybookService playbookService,
-        OrchestratorProperties orchestratorProperties,
-        OrchestratorProfileService orchestratorProfileService,
-        DesktopOrchestratorRunService orchestratorRunService, AreaService areaService) {
+    public DesktopSyncController(
+            DesktopSyncService syncService,
+            PlaybookService playbookService,
+            OrchestratorProperties orchestratorProperties,
+            OrchestratorProfileService orchestratorProfileService,
+            DesktopOrchestratorRunService orchestratorRunService,
+            AreaService areaService) {
         this.syncService = Objects.requireNonNull(syncService);
         this.playbookService = Objects.requireNonNull(playbookService);
         this.orchestratorProperties = Objects.requireNonNull(orchestratorProperties);
@@ -67,17 +70,22 @@ public class DesktopSyncController {
 
     @GetMapping("/areas/{area}/package")
     public AreaPackageDto getAreaPackage(@PathVariable String area) {
-        return areaService.findByNameForUser(area)
-            .flatMap(a -> areaService.findAreaWithMembers(a.name())).map(AreaPackageDto::from)
-            .orElseThrow(
-                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Area not found: " + area));
+        return areaService
+                .findByNameForUser(area)
+                .flatMap(a -> areaService.findAreaWithMembers(a.name()))
+                .map(AreaPackageDto::from)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND, "Area not found: " + area));
     }
 
     @GetMapping("/playbooks")
     public List<PlaybookDto> listPlaybooks() {
-        return AreaAccessContext
-            .filterByUserArea(playbookService.listSpecializedPlaybooks(), Playbook::area).stream()
-            .map(PlaybookDto::from).toList();
+        return AreaAccessContext.filterByUserArea(
+                        playbookService.listSpecializedPlaybooks(), Playbook::area)
+                .stream()
+                .map(PlaybookDto::from)
+                .toList();
     }
 
     /**
@@ -90,7 +98,9 @@ public class DesktopSyncController {
         List<OrchestratorProfile> dbProfiles = orchestratorProfileService.listAllProfiles();
         if (!dbProfiles.isEmpty()) {
             return AreaAccessContext.filterByUserArea(dbProfiles, OrchestratorProfile::area)
-                .stream().map(OrchestratorProfileDto::fromDbProfile).toList();
+                    .stream()
+                    .map(OrchestratorProfileDto::fromDbProfile)
+                    .toList();
         }
         List<OrchestratorProperties.Profile> profiles = orchestratorProperties.profiles();
         if (profiles == null) {
@@ -105,8 +115,8 @@ public class DesktopSyncController {
      * it.
      */
     @PostMapping("/orchestrator/runs")
-    public Map<String, UUID> recordOrchestratorRun(User user,
-        @Valid @RequestBody OrchestratorRunRequest request) {
+    public Map<String, UUID> recordOrchestratorRun(
+            User user, @Valid @RequestBody OrchestratorRunRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request body is required");
         }
@@ -114,18 +124,20 @@ public class DesktopSyncController {
     }
 
     @GetMapping("/conversations")
-    public List<ConversationDto> listConversations(User user,
-        @RequestParam(name = "limit", defaultValue = "100") int limit,
-        @RequestParam(name = "offset", defaultValue = "0") int offset) {
+    public List<ConversationDto> listConversations(
+            User user,
+            @RequestParam(name = "limit", defaultValue = "100") int limit,
+            @RequestParam(name = "offset", defaultValue = "0") int offset) {
         int clampedLimit = PagingParams.clampLimit(limit, 100, 500);
         int clampedOffset = PagingParams.clampOffset(offset);
         return syncService.listConversations(user, clampedLimit, clampedOffset).stream()
-            .map(ConversationDto::from).toList();
+                .map(ConversationDto::from)
+                .toList();
     }
 
     @PostMapping("/conversations")
-    public ResponseEntity<ConversationDto> createConversation(User user,
-        @Valid @RequestBody(required = false) CreateConversationRequest request) {
+    public ResponseEntity<ConversationDto> createConversation(
+            User user, @Valid @RequestBody(required = false) CreateConversationRequest request) {
         String title = request != null ? request.title() : null;
         Map<String, Object> settings = request != null ? request.settings() : null;
         Conversation conversation = syncService.createConversation(user, title, settings);
@@ -133,8 +145,10 @@ public class DesktopSyncController {
     }
 
     @PatchMapping("/conversations/{id}")
-    public ResponseEntity<Void> updateConversation(User user, @PathVariable UUID id,
-        @Valid @RequestBody UpdateConversationRequest request) {
+    public ResponseEntity<Void> updateConversation(
+            User user,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateConversationRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request body is required");
         }
@@ -149,9 +163,11 @@ public class DesktopSyncController {
     }
 
     @GetMapping("/conversations/{id}/messages")
-    public List<MessageDto> getMessages(User user, @PathVariable UUID id,
-        @RequestParam(name = "limit", defaultValue = "500") int limit,
-        @RequestParam(name = "offset", defaultValue = "0") int offset) {
+    public List<MessageDto> getMessages(
+            User user,
+            @PathVariable UUID id,
+            @RequestParam(name = "limit", defaultValue = "500") int limit,
+            @RequestParam(name = "offset", defaultValue = "0") int offset) {
         int clampedLimit = PagingParams.clampLimit(limit, 500, 500);
         int clampedOffset = PagingParams.clampOffset(offset);
         List<Message> messages = syncService.getMessages(id, user, clampedLimit, clampedOffset);
@@ -160,27 +176,36 @@ public class DesktopSyncController {
     }
 
     @PostMapping("/conversations/{id}/messages")
-    public Map<String, List<UUID>> appendMessages(User user, @PathVariable UUID id,
-        @Valid @RequestBody AppendMessagesRequest request) {
+    public Map<String, List<UUID>> appendMessages(
+            User user, @PathVariable UUID id, @Valid @RequestBody AppendMessagesRequest request) {
         if (request == null || request.messages() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "messages are required");
         }
-        List<NewMessage> newMessages = request.messages().stream()
-            .map(m -> new NewMessage(m.role(), m.content(), m.promptTokens(), m.completionTokens(),
-                m.totalTokens(), m.cachedTokens(), m.thoughtTokens(), m.playbook(),
-                m.playbookVersion()))
-            .toList();
+        List<NewMessage> newMessages =
+                request.messages().stream()
+                        .map(m ->
+                                new NewMessage(
+                                        m.role(),
+                                        m.content(),
+                                        m.promptTokens(),
+                                        m.completionTokens(),
+                                        m.totalTokens(),
+                                        m.cachedTokens(),
+                                        m.thoughtTokens(),
+                                        m.playbook(),
+                                        m.playbookVersion()))
+                        .toList();
         return Map.of("ids", syncService.appendMessages(id, user, newMessages));
     }
 
     @PutMapping("/messages/{messageId}/feedback")
-    public FeedbackDto submitFeedback(User user, @PathVariable UUID messageId,
-        @Valid @RequestBody FeedbackRequest request) {
+    public FeedbackDto submitFeedback(
+            User user, @PathVariable UUID messageId, @Valid @RequestBody FeedbackRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request body is required");
         }
         Feedback feedback =
-            syncService.submitFeedback(messageId, user, request.rating(), request.comment());
+                syncService.submitFeedback(messageId, user, request.rating(), request.comment());
         return new FeedbackDto(feedback.messageId(), feedback.rating(), feedback.comment());
     }
 }

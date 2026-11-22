@@ -12,8 +12,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Pins the classification of the Cloudflare AI Gateway response headers.
  *
- * <p>
- * This class decides whether a call is billed, from a header an upstream proxy controls, so the
+ * <p>This class decides whether a call is billed, from a header an upstream proxy controls, so the
  * whole surface is deliberately fail-closed: only the exact token {@code HIT} may zero a charge.
  */
 class LlmGatewayInfoTest {
@@ -35,11 +34,11 @@ class LlmGatewayInfoTest {
     }
 
     /**
-     * The SDK copies header names verbatim, and they arrive lowercase over HTTP/2 — but
-     * {@code com.sun.net.httpserver.Headers}, which every mock-server test in this repo uses,
-     * rewrites {@code set("cf-aig-cache-status", …)} to {@code Cf-aig-cache-status}. An exact-case
-     * lookup is therefore green in production and red in tests, which invites "fixing" the test.
-     * Lookup must be case-insensitive on the header NAME.
+     * The SDK copies header names verbatim, and they arrive lowercase over HTTP/2 — but {@code
+     * com.sun.net.httpserver.Headers}, which every mock-server test in this repo uses, rewrites
+     * {@code set("cf-aig-cache-status", …)} to {@code Cf-aig-cache-status}. An exact-case lookup is
+     * therefore green in production and red in tests, which invites "fixing" the test. Lookup must
+     * be case-insensitive on the header NAME.
      */
     @Test
     void testHeaderNameLookupIsCaseInsensitive() {
@@ -69,8 +68,10 @@ class LlmGatewayInfoTest {
         for (String value : new String[] {"STALE", "BYPASS", "REVALIDATED", "hit-ish", "1", "-"}) {
             LlmGatewayInfo info = LlmGatewayInfo.fromHeaders(Map.of("cf-aig-cache-status", value));
 
-            assertEquals(GatewayCacheStatus.UNRECOGNIZED, info.cacheStatus(),
-                "value '" + value + "' must not classify");
+            assertEquals(
+                    GatewayCacheStatus.UNRECOGNIZED,
+                    info.cacheStatus(),
+                    "value '" + value + "' must not classify");
             assertFalse(info.replayed(), "value '" + value + "' must never zero a charge");
         }
     }
@@ -88,16 +89,22 @@ class LlmGatewayInfoTest {
     void testLogIdIsTrimmedAndTruncated() {
         String overlong = "x".repeat(200);
 
-        LlmGatewayInfo info = LlmGatewayInfo.fromHeaders(
-            Map.of("cf-aig-cache-status", "MISS", "cf-aig-log-id", "  " + overlong + "  "));
+        LlmGatewayInfo info =
+                LlmGatewayInfo.fromHeaders(
+                        Map.of(
+                                "cf-aig-cache-status",
+                                "MISS",
+                                "cf-aig-log-id",
+                                "  " + overlong + "  "));
 
         assertEquals(64, info.logId().length());
     }
 
     @Test
     void testBlankLogIdBecomesNull() {
-        LlmGatewayInfo info = LlmGatewayInfo
-            .fromHeaders(Map.of("cf-aig-cache-status", "MISS", "cf-aig-log-id", "   "));
+        LlmGatewayInfo info =
+                LlmGatewayInfo.fromHeaders(
+                        Map.of("cf-aig-cache-status", "MISS", "cf-aig-log-id", "   "));
 
         assertNull(info.logId());
     }

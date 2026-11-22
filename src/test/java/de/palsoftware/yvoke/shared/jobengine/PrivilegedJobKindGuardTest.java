@@ -15,9 +15,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The connector kinds run with the STORED Confluence admin credentials, so every untrusted HTTP
- * entry point that can name a job kind must go through this guard. It is deliberately NOT an
- * {@code EnqueueValidator}: the crawl fans out one job per page from a worker thread that has no
- * {@code SecurityContext}, and those internal enqueues are trusted.
+ * entry point that can name a job kind must go through this guard. It is deliberately NOT an {@code
+ * EnqueueValidator}: the crawl fans out one job per page from a worker thread that has no {@code
+ * SecurityContext}, and those internal enqueues are trusted.
  */
 class PrivilegedJobKindGuardTest {
 
@@ -28,15 +28,19 @@ class PrivilegedJobKindGuardTest {
 
     private static void authenticateWith(String... roles) {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("principal", "n/a",
-                Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "principal",
+                                "n/a",
+                                Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
     }
 
     private static void assertForbidden(String kind) {
         assertThatThrownBy(() -> PrivilegedJobKindGuard.requireAdminForPrivilegedKind(kind))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN));
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.FORBIDDEN));
     }
 
     @Test
@@ -73,9 +77,10 @@ class PrivilegedJobKindGuardTest {
     void adminIsAllowed() {
         authenticateWith("ROLE_ADMIN");
 
-        assertThatCode(
-            () -> PrivilegedJobKindGuard.requireAdminForPrivilegedKind("confluence-page-import"))
-            .doesNotThrowAnyException();
+        assertThatCode(() ->
+                        PrivilegedJobKindGuard.requireAdminForPrivilegedKind(
+                                "confluence-page-import"))
+                .doesNotThrowAnyException();
     }
 
     @Test
@@ -83,8 +88,8 @@ class PrivilegedJobKindGuardTest {
         authenticateWith("ROLE_USER");
 
         assertThatCode(() -> PrivilegedJobKindGuard.requireAdminForPrivilegedKind("standard"))
-            .doesNotThrowAnyException();
+                .doesNotThrowAnyException();
         assertThatCode(() -> PrivilegedJobKindGuard.requireAdminForPrivilegedKind(null))
-            .doesNotThrowAnyException();
+                .doesNotThrowAnyException();
     }
 }

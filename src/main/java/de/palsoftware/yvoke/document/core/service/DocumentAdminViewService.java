@@ -45,9 +45,11 @@ public class DocumentAdminViewService {
     private final ChunkSurfacingMessageLookup chunkSurfacingMessageLookup;
     private final ObjectMapper objectMapper;
 
-    public DocumentAdminViewService(DocumentRepository documentRepository,
-        ChunkRepository chunkRepository, ChunkSurfacingMessageLookup chunkSurfacingMessageLookup,
-        ObjectMapper objectMapper) {
+    public DocumentAdminViewService(
+            DocumentRepository documentRepository,
+            ChunkRepository chunkRepository,
+            ChunkSurfacingMessageLookup chunkSurfacingMessageLookup,
+            ObjectMapper objectMapper) {
         this.documentRepository = documentRepository;
         this.chunkRepository = chunkRepository;
         this.chunkSurfacingMessageLookup = chunkSurfacingMessageLookup;
@@ -55,33 +57,63 @@ public class DocumentAdminViewService {
     }
 
     @Transactional(readOnly = true)
-    public List<DocumentSummary> listDocuments(@Nullable String collection, int limit, int offset,
-        @Nullable String kind, @Nullable String tag, @Nullable String searchId,
-        @Nullable String searchTitle) {
+    public List<DocumentSummary> listDocuments(
+            @Nullable String collection,
+            int limit,
+            int offset,
+            @Nullable String kind,
+            @Nullable String tag,
+            @Nullable String searchId,
+            @Nullable String searchTitle) {
         return listDocuments(collection, limit, offset, kind, tag, searchId, searchTitle, null);
     }
 
     @Transactional(readOnly = true)
-    public List<DocumentSummary> listDocuments(@Nullable String collection, int limit, int offset,
-        @Nullable String kind, @Nullable String tag, @Nullable String searchId,
-        @Nullable String searchTitle, @Nullable Set<String> allowedAreasLower) {
-        return documentRepository.listDocuments(collection, limit, offset, kind, tag, searchId,
-            searchTitle, null, allowedAreasLower).stream().map(DocumentAdminViewService::toSummary)
-            .toList();
+    public List<DocumentSummary> listDocuments(
+            @Nullable String collection,
+            int limit,
+            int offset,
+            @Nullable String kind,
+            @Nullable String tag,
+            @Nullable String searchId,
+            @Nullable String searchTitle,
+            @Nullable Set<String> allowedAreasLower) {
+        return documentRepository
+                .listDocuments(
+                        collection,
+                        limit,
+                        offset,
+                        kind,
+                        tag,
+                        searchId,
+                        searchTitle,
+                        null,
+                        allowedAreasLower)
+                .stream()
+                .map(DocumentAdminViewService::toSummary)
+                .toList();
     }
 
     @Transactional(readOnly = true)
-    public long countDocuments(@Nullable String collection, @Nullable String kind,
-        @Nullable String tag, @Nullable String searchId, @Nullable String searchTitle) {
+    public long countDocuments(
+            @Nullable String collection,
+            @Nullable String kind,
+            @Nullable String tag,
+            @Nullable String searchId,
+            @Nullable String searchTitle) {
         return countDocuments(collection, kind, tag, searchId, searchTitle, null);
     }
 
     @Transactional(readOnly = true)
-    public long countDocuments(@Nullable String collection, @Nullable String kind,
-        @Nullable String tag, @Nullable String searchId, @Nullable String searchTitle,
-        @Nullable Set<String> allowedAreasLower) {
-        return documentRepository.countDocuments(collection, kind, tag, searchId, searchTitle, null,
-            allowedAreasLower);
+    public long countDocuments(
+            @Nullable String collection,
+            @Nullable String kind,
+            @Nullable String tag,
+            @Nullable String searchId,
+            @Nullable String searchTitle,
+            @Nullable Set<String> allowedAreasLower) {
+        return documentRepository.countDocuments(
+                collection, kind, tag, searchId, searchTitle, null, allowedAreasLower);
     }
 
     public List<String> distinctKinds() {
@@ -98,20 +130,23 @@ public class DocumentAdminViewService {
         List<ChunkRow> chunks = chunkRepository.findChunksByDocumentId(document.id(), null);
         List<Map<String, Object>> sectionSummaries = sectionSummaries(document, chunks);
         List<ChunkSummary> chunkViews =
-            chunks.stream().map(DocumentAdminViewService::toChunkSummary).toList();
-        return Optional.of(new DocumentDetailPage(toDetail(document), chunks.size(),
-            sectionSummaries, chunkViews));
+                chunks.stream().map(DocumentAdminViewService::toChunkSummary).toList();
+        return Optional.of(
+                new DocumentDetailPage(
+                        toDetail(document), chunks.size(), sectionSummaries, chunkViews));
     }
 
     @Transactional(readOnly = true)
     public Optional<ChunkDetailPage> chunkDetailPage(String idPrefix) {
         Set<String> allowedAreasLower = AreaAccessContext.allowedAdminAreasLower().orElse(null);
-        return chunkRepository.findByIdPrefix(idPrefix, allowedAreasLower).map(chunk -> {
-            boolean hasEmbedding = chunkRepository.chunkHasEmbedding(chunk.id());
-            List<Map<String, Object>> surfaced =
-                chunkSurfacingMessageLookup.findMessagesSurfacingChunk(chunk.id());
-            return new ChunkDetailPage(toChunkDetail(chunk), hasEmbedding, surfaced);
-        });
+        return chunkRepository
+                .findByIdPrefix(idPrefix, allowedAreasLower)
+                .map(chunk -> {
+                    boolean hasEmbedding = chunkRepository.chunkHasEmbedding(chunk.id());
+                    List<Map<String, Object>> surfaced =
+                            chunkSurfacingMessageLookup.findMessagesSurfacingChunk(chunk.id());
+                    return new ChunkDetailPage(toChunkDetail(chunk), hasEmbedding, surfaced);
+                });
     }
 
     /**
@@ -119,21 +154,20 @@ public class DocumentAdminViewService {
      * chunk sequence (ported verbatim from the controller). Returns an empty list when the document
      * has no summaries, or on any failure.
      *
-     * <p>
-     * Deliberately NOT gated on {@code document.kind()}. That test — hierarchical or confluence,
-     * everything else an unconditional empty list — was a correct proxy only while
-     * {@code SectionSummarizer} ran in the hierarchical ingest alone. Standard documents can now
-     * carry summaries (ingested with the opt-in setting, or copied from a hierarchical twin), and
-     * the proxy hid every one of them: a document with hundreds of rows in
-     * {@code section_summaries} rendered no panel at all, with nothing to indicate why. Asking the
-     * table is one indexed lookup by document id and cannot go stale the same way.
+     * <p>Deliberately NOT gated on {@code document.kind()}. That test — hierarchical or confluence,
+     * everything else an unconditional empty list — was a correct proxy only while {@code
+     * SectionSummarizer} ran in the hierarchical ingest alone. Standard documents can now carry
+     * summaries (ingested with the opt-in setting, or copied from a hierarchical twin), and the
+     * proxy hid every one of them: a document with hundreds of rows in {@code section_summaries}
+     * rendered no panel at all, with nothing to indicate why. Asking the table is one indexed
+     * lookup by document id and cannot go stale the same way.
      */
     @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> sectionSummaries(DocumentRow document,
-        List<ChunkRow> chunks) {
+    private List<Map<String, Object>> sectionSummaries(
+            DocumentRow document, List<ChunkRow> chunks) {
         try {
             List<Map<String, Object>> fetched =
-                documentRepository.findSectionSummaries(document.id());
+                    documentRepository.findSectionSummaries(document.id());
 
             Map<List<String>, Integer> pathSortOrders = new HashMap<>();
             for (ChunkRow chunk : chunks) {
@@ -143,12 +177,12 @@ public class DocumentAdminViewService {
                 }
                 int so = chunk.sortOrder() != null ? chunk.sortOrder() : Integer.MAX_VALUE;
                 List<String> fullNormalized =
-                    full.stream().map(HierarchyUtils::normalizeSegment).toList();
+                        full.stream().map(HierarchyUtils::normalizeSegment).toList();
                 for (int i = 1; i <= fullNormalized.size(); i++) {
                     List<String> subPath = fullNormalized.subList(0, i);
                     pathSortOrders.putIfAbsent(subPath, so);
-                    pathSortOrders.compute(subPath,
-                        (k, current) -> current == null ? so : Math.min(current, so));
+                    pathSortOrders.compute(
+                            subPath, (k, current) -> current == null ? so : Math.min(current, so));
                 }
             }
 
@@ -170,24 +204,48 @@ public class DocumentAdminViewService {
     }
 
     private static DocumentSummary toSummary(DocumentDetails d) {
-        return new DocumentSummary(d.id(), d.title(), d.collection(), d.kind(), d.chunkCount(),
-            d.ingestionStatus(), d.tags(), d.kgProcessed(), d.kgFailedChunks());
+        return new DocumentSummary(
+                d.id(),
+                d.title(),
+                d.collection(),
+                d.kind(),
+                d.chunkCount(),
+                d.ingestionStatus(),
+                d.tags(),
+                d.kgProcessed(),
+                d.kgFailedChunks());
     }
 
     private DocumentDetail toDetail(DocumentRow d) {
-        return new DocumentDetail(d.id(), d.title(), d.collection(), d.kind(), d.tags(),
-            d.ingestionStatus(), d.createdAt(), prettyPrintJson(d.metadata()));
+        return new DocumentDetail(
+                d.id(),
+                d.title(),
+                d.collection(),
+                d.kind(),
+                d.tags(),
+                d.ingestionStatus(),
+                d.createdAt(),
+                prettyPrintJson(d.metadata()));
     }
 
     private static ChunkSummary toChunkSummary(ChunkRow c) {
-        return new ChunkSummary(c.id(), c.sortOrder(), c.heading(), c.headingPath(), c.text(),
-            c.score());
+        return new ChunkSummary(
+                c.id(), c.sortOrder(), c.heading(), c.headingPath(), c.text(), c.score());
     }
 
     private ChunkDetail toChunkDetail(ChunkRow c) {
-        return new ChunkDetail(c.id(), c.documentId(), c.collection(), c.tag(), c.kind(),
-            c.heading(), c.sortOrder(), c.depth(), c.headingPath(), c.text(),
-            prettyPrintJson(c.metadata()));
+        return new ChunkDetail(
+                c.id(),
+                c.documentId(),
+                c.collection(),
+                c.tag(),
+                c.kind(),
+                c.heading(),
+                c.sortOrder(),
+                c.depth(),
+                c.headingPath(),
+                c.text(),
+                prettyPrintJson(c.metadata()));
     }
 
     private String prettyPrintJson(@Nullable Object obj) {

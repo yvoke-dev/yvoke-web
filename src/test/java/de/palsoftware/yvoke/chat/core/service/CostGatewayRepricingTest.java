@@ -20,8 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 /**
  * Pins that the read path prices a gateway-replayed call at zero.
  *
- * <p>
- * This is not redundant with {@code LlmCallLoggingServiceTest}. The dashboard never reads the
+ * <p>This is not redundant with {@code LlmCallLoggingServiceTest}. The dashboard never reads the
  * persisted {@code total_cost} — it re-derives cost from the stored token counts at <i>current</i>
  * rates — so the write path and the read path are two independent cost implementations. Teaching
  * only the writer that a replay is free left the dashboard still charging for it, with the ledger
@@ -33,11 +32,9 @@ class CostGatewayRepricingTest {
 
     private static final String MODEL = "gemini-3.6-flash";
 
-    @Mock
-    private ModelPricingRepository pricingRepository;
+    @Mock private ModelPricingRepository pricingRepository;
 
-    @Mock
-    private CostQueryRepository costQueryRepository;
+    @Mock private CostQueryRepository costQueryRepository;
 
     private CostCalculationService service;
 
@@ -70,7 +67,7 @@ class CostGatewayRepricingTest {
     @Test
     void testReplayedGroupContributesNoCost() {
         when(costQueryRepository.globalModelTokenRows(null, null))
-            .thenReturn(List.of(tokenRow("REPLAYED")));
+                .thenReturn(List.of(tokenRow("REPLAYED")));
 
         CostReport report = service.calculateGlobalCost(null, null);
 
@@ -81,7 +78,7 @@ class CostGatewayRepricingTest {
     @Test
     void testReplayedGroupStillContributesTokens() {
         when(costQueryRepository.globalModelTokenRows(null, null))
-            .thenReturn(List.of(tokenRow("REPLAYED")));
+                .thenReturn(List.of(tokenRow("REPLAYED")));
 
         CostReport report = service.calculateGlobalCost(null, null);
 
@@ -92,37 +89,37 @@ class CostGatewayRepricingTest {
     @Test
     void testForwardedGroupIsPricedNormally() {
         when(costQueryRepository.globalModelTokenRows(null, null))
-            .thenReturn(List.of(tokenRow("FORWARDED")));
+                .thenReturn(List.of(tokenRow("FORWARDED")));
 
         assertThat(service.calculateGlobalCost(null, null).estimatedCostUsd())
-            .isEqualByComparingTo(ONE_UNIT_COST);
+                .isEqualByComparingTo(ONE_UNIT_COST);
     }
 
     /** Fail-closed: a status the app could not classify must still be billed. */
     @Test
     void testUnrecognizedGroupIsPricedNormally() {
         when(costQueryRepository.globalModelTokenRows(null, null))
-            .thenReturn(List.of(tokenRow("UNRECOGNIZED")));
+                .thenReturn(List.of(tokenRow("UNRECOGNIZED")));
 
         assertThat(service.calculateGlobalCost(null, null).estimatedCostUsd())
-            .isEqualByComparingTo(ONE_UNIT_COST);
+                .isEqualByComparingTo(ONE_UNIT_COST);
     }
 
     /** No gateway in the path — the overwhelming majority of historical rows. */
     @Test
     void testNullStatusIsPricedNormally() {
         when(costQueryRepository.globalModelTokenRows(null, null))
-            .thenReturn(List.of(tokenRow(null)));
+                .thenReturn(List.of(tokenRow(null)));
 
         assertThat(service.calculateGlobalCost(null, null).estimatedCostUsd())
-            .isEqualByComparingTo(ONE_UNIT_COST);
+                .isEqualByComparingTo(ONE_UNIT_COST);
     }
 
     /** The realistic shape: the same model split into a replayed group and a forwarded one. */
     @Test
     void testMixedGroupsChargeOnlyTheForwardedHalf() {
         when(costQueryRepository.globalModelTokenRows(null, null))
-            .thenReturn(List.of(tokenRow("REPLAYED"), tokenRow("FORWARDED")));
+                .thenReturn(List.of(tokenRow("REPLAYED"), tokenRow("FORWARDED")));
 
         CostReport report = service.calculateGlobalCost(null, null);
 
@@ -138,7 +135,7 @@ class CostGatewayRepricingTest {
     @Test
     void testABreakdownIsEmittedOncePerModelNotOncePerCacheStatus() {
         when(costQueryRepository.globalModelTokenRows(null, null))
-            .thenReturn(List.of(tokenRow("REPLAYED"), tokenRow("FORWARDED")));
+                .thenReturn(List.of(tokenRow("REPLAYED"), tokenRow("FORWARDED")));
 
         CostReport report = service.calculateGlobalCost(null, null);
 
@@ -146,7 +143,7 @@ class CostGatewayRepricingTest {
         assertThat(report.breakdowns().get(0).modelName()).isEqualTo(MODEL);
         assertThat(report.breakdowns().get(0).promptTokens()).isEqualTo(2_000_000L);
         assertThat(report.breakdowns().get(0).estimatedCostUsd())
-            .isEqualByComparingTo(ONE_UNIT_COST);
+                .isEqualByComparingTo(ONE_UNIT_COST);
     }
 
     private static Map<String, Object> userRow(UUID userId, String gatewayStatus) {
@@ -179,7 +176,7 @@ class CostGatewayRepricingTest {
     void testTopUsersChargeOnlyTheForwardedHalf() {
         UUID userId = UUID.randomUUID();
         when(costQueryRepository.topUserTokenRows(null, null))
-            .thenReturn(List.of(userRow(userId, "REPLAYED"), userRow(userId, "FORWARDED")));
+                .thenReturn(List.of(userRow(userId, "REPLAYED"), userRow(userId, "FORWARDED")));
 
         List<CostCalculationService.UserCostRow> top = service.getTopUsersByCost(null, null, 10);
 

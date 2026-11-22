@@ -36,8 +36,8 @@ public class McpToolUtils {
      * leniently via {@link AreaService#findArea(String)} and compared strictly against the stored
      * area name, so an unknown area matches nothing.
      */
-    public static <T> Predicate<T> inArea(AreaService areaService, @Nullable String area,
-        Function<T, String> areaExtractor) {
+    public static <T> Predicate<T> inArea(
+            AreaService areaService, @Nullable String area, Function<T, String> areaExtractor) {
         if (area == null || area.isBlank()) {
             return item -> true;
         }
@@ -49,16 +49,15 @@ public class McpToolUtils {
      * Enforces that a tag-scoped collection is queried at exactly one tag. Returns {@code null}
      * when the call is acceptable, or the error string the tool should return verbatim.
      *
-     * <p>
-     * A tag means two different things in this corpus and omitting it is wrong in both: for product
-     * versions the same object exists once per release, so an untagged read returns each hit twice
-     * (or, for graph traversal, a picker with no edges); for dataset tags such as DB-History's
-     * {@code schema}/{@code content} it merges two incompatible row shapes into one result. Neither
-     * failure is visible in the output, which is why this is a hard error rather than a warning.
+     * <p>A tag means two different things in this corpus and omitting it is wrong in both: for
+     * product versions the same object exists once per release, so an untagged read returns each
+     * hit twice (or, for graph traversal, a picker with no edges); for dataset tags such as
+     * DB-History's {@code schema}/{@code content} it merges two incompatible row shapes into one
+     * result. Neither failure is visible in the output, which is why this is a hard error rather
+     * than a warning.
      *
-     * <p>
-     * The requirement is conditional on the collection rather than global, so a collection with no
-     * tags exempts itself — it is therefore deliberately NOT expressed in the tools' JSON input
+     * <p>The requirement is conditional on the collection rather than global, so a collection with
+     * no tags exempts itself — it is therefore deliberately NOT expressed in the tools' JSON input
      * schemas, which cannot say "required depending on another argument's value".
      */
     @Nullable
@@ -70,18 +69,19 @@ public class McpToolUtils {
         if (tag != null && !tag.isBlank()) {
             return null;
         }
-        return "Error: Collection '" + collection.name()
-            + "' is tag-scoped — the 'tag' parameter is required so results come from exactly one "
-            + "of them. Valid tags: " + String.join(", ", tags);
+        return "Error: Collection '"
+                + collection.name()
+                + "' is tag-scoped — the 'tag' parameter is required so results come from exactly one "
+                + "of them. Valid tags: "
+                + String.join(", ", tags);
     }
 
     /**
-     * Enforces version/tag scoping on omit-collection {@code search_corpus} and
-     * {@code list_documents} calls across an area's allowed collections.
+     * Enforces version/tag scoping on omit-collection {@code search_corpus} and {@code
+     * list_documents} calls across an area's allowed collections.
      *
-     * <p>
-     * Deliberately requires a supplied {@code tag} to exist in <em>all</em> tagged collections in
-     * the area: when a tag is valid for only one collection (e.g. {@code 9.3.1} in manuals while
+     * <p>Deliberately requires a supplied {@code tag} to exist in <em>all</em> tagged collections
+     * in the area: when a tag is valid for only one collection (e.g. {@code 9.3.1} in manuals while
      * schema only has {@code 10.0}), omitting {@code collection} would either silently drop the
      * other collection or mix versions, so the caller is prompted to name {@code collection}
      * explicitly.
@@ -89,7 +89,7 @@ public class McpToolUtils {
     @Nullable
     public static String requireAreaTag(List<Collection> allowed, @Nullable String rawTag) {
         List<Collection> taggedCols =
-            allowed.stream().filter(c -> c.tags() != null && !c.tags().isEmpty()).toList();
+                allowed.stream().filter(c -> c.tags() != null && !c.tags().isEmpty()).toList();
         if (taggedCols.isEmpty()) {
             return null;
         }
@@ -97,22 +97,30 @@ public class McpToolUtils {
         if (parsedTag == null) {
             if (allowed.size() == 1 && taggedCols.size() == 1) {
                 Collection single = taggedCols.get(0);
-                return "Error: Collection '" + single.name()
-                    + "' is version/tag-scoped. Please specify 'tag' (valid values: "
-                    + String.join(", ", single.tags())
-                    + ") so results come from a single version/dataset.";
+                return "Error: Collection '"
+                        + single.name()
+                        + "' is version/tag-scoped. Please specify 'tag' (valid values: "
+                        + String.join(", ", single.tags())
+                        + ") so results come from a single version/dataset.";
             }
-            String taggedSummary = taggedCols.stream()
-                .map(c -> c.name() + " (valid tags: " + String.join(", ", c.tags()) + ")")
-                .collect(Collectors.joining("; "));
-            return "Error: Area contains version/tag-scoped collections (" + taggedSummary
-                + "). Please specify 'collection' or 'tag' so results come from a single version/dataset.";
+            String taggedSummary =
+                    taggedCols.stream()
+                            .map(c ->
+                                    c.name() + " (valid tags: " + String.join(", ", c.tags()) + ")")
+                            .collect(Collectors.joining("; "));
+            return "Error: Area contains version/tag-scoped collections ("
+                    + taggedSummary
+                    + "). Please specify 'collection' or 'tag' so results come from a single version/dataset.";
         }
         for (Collection tc : taggedCols) {
             if (!tc.tags().contains(parsedTag)) {
-                return "Error: Tag '" + parsedTag + "' does not exist in collection '" + tc.name()
-                    + "' (valid tags: " + String.join(", ", tc.tags())
-                    + "). Please specify 'collection' or a 'tag' present in all tagged collections.";
+                return "Error: Tag '"
+                        + parsedTag
+                        + "' does not exist in collection '"
+                        + tc.name()
+                        + "' (valid tags: "
+                        + String.join(", ", tc.tags())
+                        + "). Please specify 'collection' or a 'tag' present in all tagged collections.";
             }
         }
         return null;
@@ -121,5 +129,4 @@ public class McpToolUtils {
     public static String formatTableRows(List<Map<String, String>> rows, List<String> cols) {
         return MarkdownTableFormatter.formatTableRows(rows, cols);
     }
-
 }

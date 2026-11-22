@@ -15,15 +15,13 @@ import java.util.regex.Pattern;
 /**
  * The one place the {@code search_corpus} result layout is written <b>and</b> read back.
  *
- * <p>
- * {@link #format} used to live in {@code McpToolUtils}. It moved here because the orchestrator now
- * has to parse its output — the reviewer's evidence is nothing but a concatenation of these
+ * <p>{@link #format} used to live in {@code McpToolUtils}. It moved here because the orchestrator
+ * now has to parse its output — the reviewer's evidence is nothing but a concatenation of these
  * renderings — and a format with a producer in one domain and a parser in another is a two-place
  * contract that only a human keeps in sync. Keeping both halves in one class makes the round trip
  * testable in a single assertion, which is the only thing that will ever notice them drifting.
  *
- * <p>
- * The parser is deliberately strict about the header and deliberately generous about everything
+ * <p>The parser is deliberately strict about the header and deliberately generous about everything
  * else: text with no recognisable header is <b>not</b> chunk output, and reporting that honestly
  * (zero blocks, everything as preamble) is what lets callers pass a {@code query_json_objects}
  * table or a tool error through untouched instead of mangling it.
@@ -35,31 +33,32 @@ public final class ChunkBlocks {
      * ingested markdown and routinely contain their own {@code ### Heading} lines, so a prefix
      * match shreds one chunk into several fragments — each then carrying the wrong id, or none.
      *
-     * <p>
-     * The double spaces are load-bearing (they are what {@link #format} writes), and both id groups
-     * accept the empty string because {@code format} emits a bare {@code id=} for a null id.
+     * <p>The double spaces are load-bearing (they are what {@link #format} writes), and both id
+     * groups accept the empty string because {@code format} emits a bare {@code id=} for a null id.
      */
-    private static final Pattern HEADER = Pattern
-        .compile("^### (?<kind>[^/\\n]*)/(?<title>[^\\n]*?)  \\(score=(?<score>-?\\d+\\.\\d{3})"
-            + "  id=(?<id>[0-9a-fA-F-]*)  doc_id=(?<doc>[0-9a-fA-F-]*)\\)$", Pattern.MULTILINE);
+    private static final Pattern HEADER =
+            Pattern.compile(
+                    "^### (?<kind>[^/\\n]*)/(?<title>[^\\n]*?)  \\(score=(?<score>-?\\d+\\.\\d{3})"
+                            + "  id=(?<id>[0-9a-fA-F-]*)  doc_id=(?<doc>[0-9a-fA-F-]*)\\)$",
+                    Pattern.MULTILINE);
 
     /**
      * The second block shape: what {@code get_section} writes above each passage it returns.
      *
-     * <p>
-     * A section read has no relevance score and {@link #HEADER} requires one, so the two producers
-     * cannot share a pattern. Both are recognised here rather than in two parsers, for the reason
-     * this class exists at all: a format and its parser that live apart drift, and CLAUDE.md § 6
-     * records that happening three times.
+     * <p>A section read has no relevance score and {@link #HEADER} requires one, so the two
+     * producers cannot share a pattern. Both are recognised here rather than in two parsers, for
+     * the reason this class exists at all: a format and its parser that live apart drift, and
+     * CLAUDE.md § 6 records that happening three times.
      *
-     * <p>
-     * It carries {@code doc_id} as well as {@code id} so an answer citing a section by its document
-     * still retains the passages. That matters while the specialist playbooks — which currently
-     * instruct exactly that — are being updated; without it, the transition would silently empty
-     * every section out of the reviewer's evidence.
+     * <p>It carries {@code doc_id} as well as {@code id} so an answer citing a section by its
+     * document still retains the passages. That matters while the specialist playbooks — which
+     * currently instruct exactly that — are being updated; without it, the transition would
+     * silently empty every section out of the reviewer's evidence.
      */
-    private static final Pattern SECTION_MARKER = Pattern.compile(
-        "^_\\(id=(?<id>[0-9a-fA-F-]*)  doc_id=(?<doc>[0-9a-fA-F-]*)\\)_$", Pattern.MULTILINE);
+    private static final Pattern SECTION_MARKER =
+            Pattern.compile(
+                    "^_\\(id=(?<id>[0-9a-fA-F-]*)  doc_id=(?<doc>[0-9a-fA-F-]*)\\)_$",
+                    Pattern.MULTILINE);
 
     /**
      * A trailing italic parenthetical on its own paragraph — what {@code search_corpus} appends to
@@ -67,9 +66,8 @@ public final class ChunkBlocks {
      * a caller that reduces that chunk to a reference would otherwise delete the only signal that
      * the search may not have returned everything.
      *
-     * <p>
-     * Producer-agnostic on purpose: keying on the notice's exact wording would be a second copy of
-     * a string only a human keeps aligned. The worst a generic match can do is relocate a chunk
+     * <p>Producer-agnostic on purpose: keying on the notice's exact wording would be a second copy
+     * of a string only a human keeps aligned. The worst a generic match can do is relocate a chunk
      * body's own trailing parenthetical to the end of the render — content preserved either way.
      */
     private static final Pattern TRAILING_NOTE = Pattern.compile("\\n\\n_\\([^\\n]*\\)_\\s*$");
@@ -77,13 +75,12 @@ public final class ChunkBlocks {
     /**
      * Stands in for the body of a chunk this conversation already received in full.
      *
-     * <p>
-     * Parentheses, never brackets: {@code CitationVerifier} only ever looks inside {@code [...]},
-     * so this cannot be mistaken for a citation, and — more to the point — cannot teach the model
-     * that bracketed non-citations are a thing it should emit.
+     * <p>Parentheses, never brackets: {@code CitationVerifier} only ever looks inside {@code
+     * [...]}, so this cannot be mistaken for a citation, and — more to the point — cannot teach the
+     * model that bracketed non-citations are a thing it should emit.
      */
     public static final String SHOWN_ABOVE =
-        "_(already shown above — full text is earlier in this conversation)_";
+            "_(already shown above — full text is earlier in this conversation)_";
 
     private ChunkBlocks() {}
 
@@ -94,8 +91,15 @@ public final class ChunkBlocks {
      * One {@code ###} chunk rendering. {@code raw} is the exact substring it occupied, so
      * re-emitting a block unchanged costs nothing and cannot drift from what was parsed.
      */
-    public record Block(String raw, String header, String kind, String title,
-        @Nullable UUID chunkId, @Nullable UUID documentId, String headingPath, String body) {
+    public record Block(
+            String raw,
+            String header,
+            String kind,
+            String title,
+            @Nullable UUID chunkId,
+            @Nullable UUID documentId,
+            String headingPath,
+            String body) {
 
         /** The same block with its body replaced — the inverse of parsing, minus the separator. */
         public String withBody(String replacement) {
@@ -134,8 +138,7 @@ public final class ChunkBlocks {
      * Renders search hits for the model, replacing the body of any chunk {@code seen} has already
      * given this conversation with {@link #SHOWN_ABOVE}.
      *
-     * <p>
-     * The ledger is a required argument and there is no single-argument overload, on purpose: an
+     * <p>The ledger is a required argument and there is no single-argument overload, on purpose: an
      * overload lets a future call site opt out of suppression with nothing in the diff to review. A
      * caller with no conversation says so explicitly with {@link SeenChunks#NONE}.
      */
@@ -165,8 +168,15 @@ public final class ChunkBlocks {
             }
 
             String docId = (c.documentId() != null) ? c.documentId().toString() : "";
-            lines.add(String.format(Locale.US, "### %s/%s  (score=%.3f  id=%s  doc_id=%s)", kind,
-                title, score, cid, docId));
+            lines.add(
+                    String.format(
+                            Locale.US,
+                            "### %s/%s  (score=%.3f  id=%s  doc_id=%s)",
+                            kind,
+                            title,
+                            score,
+                            cid,
+                            docId));
             if (!headPath.isEmpty()) {
                 lines.add("> " + headPath);
             }

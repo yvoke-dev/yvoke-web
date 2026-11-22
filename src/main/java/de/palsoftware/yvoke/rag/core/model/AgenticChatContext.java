@@ -17,24 +17,26 @@ public class AgenticChatContext implements SeenChunks {
     private final List<UUID> searchIds = new ArrayList<>();
 
     /**
-     * Chunks already rendered in full into this conversation. Deliberately NOT
-     * {@link #retrievedChunkIds}, which is a different thing that merely looks like the same thing:
-     * it is written by {@code SearchCorpusTool} <em>before</em> the result is rendered, so reading
-     * it back would report every chunk of the very first search as already shown and elide the
-     * whole result set — silently, since the output stays well-formed and every citation still
-     * resolves. It is also telemetry: it keeps duplicates on purpose, is persisted to
-     * {@code messages.retrieved_chunk_ids} and rendered per element in the admin log.
+     * Chunks already rendered in full into this conversation. Deliberately NOT {@link
+     * #retrievedChunkIds}, which is a different thing that merely looks like the same thing: it is
+     * written by {@code SearchCorpusTool} <em>before</em> the result is rendered, so reading it
+     * back would report every chunk of the very first search as already shown and elide the whole
+     * result set — silently, since the output stays well-formed and every citation still resolves.
+     * It is also telemetry: it keeps duplicates on purpose, is persisted to {@code
+     * messages.retrieved_chunk_ids} and rendered per element in the admin log.
      *
-     * <p>
-     * A plain {@link HashSet} because one context is touched by exactly one thread for its whole
+     * <p>A plain {@link HashSet} because one context is touched by exactly one thread for its whole
      * life — {@code executeToolCalls} is a sequential loop and a nested specialist runs on the same
      * thread. A concurrent set here would advertise sharing that must never happen.
      */
     private final Set<UUID> shownChunkIds = new HashSet<>();
 
     public AgenticChatContext(Set<String> allowedAreasLower) {
-        this.allowedAreasLower = Set.copyOf(Objects.requireNonNull(allowedAreasLower,
-            "allowedAreasLower must not be null; use AgenticChatContext.ALL_AREAS for unrestricted access"));
+        this.allowedAreasLower =
+                Set.copyOf(
+                        Objects.requireNonNull(
+                                allowedAreasLower,
+                                "allowedAreasLower must not be null; use AgenticChatContext.ALL_AREAS for unrestricted access"));
     }
 
     public Set<String> getAllowedAreasLower() {

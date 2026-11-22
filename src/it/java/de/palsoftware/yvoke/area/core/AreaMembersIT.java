@@ -25,26 +25,22 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * refreshes it: a column left out of an {@code ON CONFLICT} list is written once and then frozen,
  * so an item could never be moved to another area, with no error anywhere.
  */
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration"
+        })
 class AreaMembersIT {
 
     private static final String OTHER = "IT_AREA_MEMBERS";
 
-    @Autowired
-    private AreaRepository areaRepository;
-    @Autowired
-    private PlaybookRepository playbookRepository;
-    @Autowired
-    private SystemPromptRepository systemPromptRepository;
-    @Autowired
-    private CollectionRepository collectionRepository;
-    @Autowired
-    private OrchestratorProfileRepository profileRepository;
-    @Autowired
-    private PlaybookService playbookService;
-    @Autowired
-    private JdbcClient jdbcClient;
+    @Autowired private AreaRepository areaRepository;
+    @Autowired private PlaybookRepository playbookRepository;
+    @Autowired private SystemPromptRepository systemPromptRepository;
+    @Autowired private CollectionRepository collectionRepository;
+    @Autowired private OrchestratorProfileRepository profileRepository;
+    @Autowired private PlaybookService playbookService;
+    @Autowired private JdbcClient jdbcClient;
 
     @BeforeEach
     void createOtherArea() {
@@ -62,17 +58,23 @@ class AreaMembersIT {
 
     @Test
     void aPlaybooksAreaRoundTripsAndCanBeMoved() {
-        playbookRepository.upsert("it-members-pb", "PB", "", "text", List.of(), false, "specialist",
-            false, "OIM", 1);
-        assertThat(playbookRepository.findByName("it-members-pb")).get().extracting(Playbook::area)
-            .isEqualTo("OIM");
+        playbookRepository.upsert(
+                "it-members-pb", "PB", "", "text", List.of(), false, "specialist", false, "OIM", 1);
+        assertThat(playbookRepository.findByName("it-members-pb"))
+                .get()
+                .extracting(Playbook::area)
+                .isEqualTo("OIM");
 
-        playbookRepository.upsert("it-members-pb", "PB", "", "text", List.of(), false, "specialist",
-            false, OTHER, 1);
-        assertThat(playbookRepository.findByName("it-members-pb")).get().extracting(Playbook::area)
-            .isEqualTo(OTHER);
-        assertThat(playbookRepository.findAll()).filteredOn(p -> p.name().equals("it-members-pb"))
-            .extracting(Playbook::area).containsExactly(OTHER);
+        playbookRepository.upsert(
+                "it-members-pb", "PB", "", "text", List.of(), false, "specialist", false, OTHER, 1);
+        assertThat(playbookRepository.findByName("it-members-pb"))
+                .get()
+                .extracting(Playbook::area)
+                .isEqualTo(OTHER);
+        assertThat(playbookRepository.findAll())
+                .filteredOn(p -> p.name().equals("it-members-pb"))
+                .extracting(Playbook::area)
+                .containsExactly(OTHER);
     }
 
     @Test
@@ -80,14 +82,18 @@ class AreaMembersIT {
         systemPromptRepository.upsert("it-members-sp", SystemPromptType.KG, "text", null, "OIM");
         systemPromptRepository.upsert("it-members-sp", SystemPromptType.KG, "text", null, OTHER);
 
-        assertThat(systemPromptRepository.findByName("it-members-sp")).get()
-            .extracting(SystemPrompt::area).isEqualTo(OTHER);
+        assertThat(systemPromptRepository.findByName("it-members-sp"))
+                .get()
+                .extracting(SystemPrompt::area)
+                .isEqualTo(OTHER);
         assertThat(systemPromptRepository.findAll())
-            .filteredOn(p -> p.name().equals("it-members-sp")).extracting(SystemPrompt::area)
-            .containsExactly(OTHER);
+                .filteredOn(p -> p.name().equals("it-members-sp"))
+                .extracting(SystemPrompt::area)
+                .containsExactly(OTHER);
         assertThat(systemPromptRepository.findByType(SystemPromptType.KG))
-            .filteredOn(p -> p.name().equals("it-members-sp")).extracting(SystemPrompt::area)
-            .containsExactly(OTHER);
+                .filteredOn(p -> p.name().equals("it-members-sp"))
+                .extracting(SystemPrompt::area)
+                .containsExactly(OTHER);
     }
 
     @Test
@@ -97,13 +103,18 @@ class AreaMembersIT {
 
         collectionRepository.updateArea(created.id(), OTHER);
 
-        assertThat(collectionRepository.findByName("it-members-col")).get()
-            .extracting(Collection::area).isEqualTo(OTHER);
-        assertThat(collectionRepository.findById(created.id())).get().extracting(Collection::area)
-            .isEqualTo(OTHER);
+        assertThat(collectionRepository.findByName("it-members-col"))
+                .get()
+                .extracting(Collection::area)
+                .isEqualTo(OTHER);
+        assertThat(collectionRepository.findById(created.id()))
+                .get()
+                .extracting(Collection::area)
+                .isEqualTo(OTHER);
         assertThat(collectionRepository.findAll())
-            .filteredOn(c -> c.name().equals("it-members-col")).extracting(Collection::area)
-            .containsExactly(OTHER);
+                .filteredOn(c -> c.name().equals("it-members-col"))
+                .extracting(Collection::area)
+                .containsExactly(OTHER);
     }
 
     @Test
@@ -111,15 +122,34 @@ class AreaMembersIT {
         profileRepository.upsert(profile("OIM"));
         profileRepository.upsert(profile(OTHER));
 
-        assertThat(profileRepository.findByName("it-members-prof")).get()
-            .extracting(OrchestratorProfile::area).isEqualTo(OTHER);
-        assertThat(profileRepository.findAll()).filteredOn(p -> p.name().equals("it-members-prof"))
-            .extracting(OrchestratorProfile::area).containsExactly(OTHER);
+        assertThat(profileRepository.findByName("it-members-prof"))
+                .get()
+                .extracting(OrchestratorProfile::area)
+                .isEqualTo(OTHER);
+        assertThat(profileRepository.findAll())
+                .filteredOn(p -> p.name().equals("it-members-prof"))
+                .extracting(OrchestratorProfile::area)
+                .containsExactly(OTHER);
     }
 
     private static OrchestratorProfile profile(String area) {
-        return new OrchestratorProfile("it-members-prof", 2, 8, "orch", "rev", List.of(), null,
-            null, null, null, null, null, false, null, null, area);
+        return new OrchestratorProfile(
+                "it-members-prof",
+                2,
+                8,
+                "orch",
+                "rev",
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                null,
+                null,
+                area);
     }
 
     /**
@@ -130,18 +160,23 @@ class AreaMembersIT {
     @Test
     void membersAreListedPerAreaWithIngestionPromptsAndPickablePlaybooks() {
         systemPromptRepository.upsert("it-members-kg", SystemPromptType.KG, "t", null, OTHER);
-        systemPromptRepository.upsert("it-members-sum", SystemPromptType.SUMMARIZE, "t", null,
-            OTHER);
+        systemPromptRepository.upsert(
+                "it-members-sum", SystemPromptType.SUMMARIZE, "t", null, OTHER);
         collectionRepository.create("it-members-col", "", OTHER);
-        playbookRepository.upsert("it-members-spec", "S", "", "t", List.of(), false, "specialist",
-            false, OTHER, 1);
-        playbookRepository.upsert("it-members-orch", "O", "", "t", List.of(), false, "Orchestrator",
-            false, OTHER, 1);
-        playbookRepository.upsert("it-members-rev", "R", "", "t", List.of(), false, "reviewer",
-            false, OTHER, 1);
-        jdbcClient.sql("""
-            INSERT INTO playbooks (name, title, template_text, target_agent, area)
-            VALUES ('it-members-none', 'N', 't', '', :area)""").param("area", OTHER).update();
+        playbookRepository.upsert(
+                "it-members-spec", "S", "", "t", List.of(), false, "specialist", false, OTHER, 1);
+        playbookRepository.upsert(
+                "it-members-orch", "O", "", "t", List.of(), false, "Orchestrator", false, OTHER, 1);
+        playbookRepository.upsert(
+                "it-members-rev", "R", "", "t", List.of(), false, "reviewer", false, OTHER, 1);
+        jdbcClient
+                .sql(
+                        """
+                        INSERT INTO playbooks (name, title, template_text, target_agent, area)
+                        VALUES ('it-members-none', 'N', 't', '', :area)\
+                        """)
+                .param("area", OTHER)
+                .update();
         profileRepository.upsert(profile(OTHER));
 
         AreaMembers members = areaRepository.findAllMembers().get(OTHER);
@@ -151,32 +186,53 @@ class AreaMembersIT {
         assertThat(members.playbooks()).containsExactly("it-members-none", "it-members-spec");
         assertThat(members.profiles()).containsExactly("it-members-prof");
         assertThat(
-            areaRepository.findAllMembers().getOrDefault("OIM", AreaMembers.NONE).playbooks())
-            .doesNotContain("it-members-spec");
+                        areaRepository
+                                .findAllMembers()
+                                .getOrDefault("OIM", AreaMembers.NONE)
+                                .playbooks())
+                .doesNotContain("it-members-spec");
     }
 
     /**
-     * The pickable-playbook rule exists twice: in SQL here and in Java in
-     * {@code PlaybookService.listSpecializedPlaybooks} ({@code area} may not depend on
-     * {@code rag}). This compares the two over every kind of role, so changing one without the
-     * other fails.
+     * The pickable-playbook rule exists twice: in SQL here and in Java in {@code
+     * PlaybookService.listSpecializedPlaybooks} ({@code area} may not depend on {@code rag}). This
+     * compares the two over every kind of role, so changing one without the other fails.
      */
     @Test
     void thePlaybookMembersMatchWhatListPlaybooksOffers() {
-        String[] roles = {"specialist", "Specialist", "orchestrator", "ORCHESTRATOR", "reviewer",
-            "Reviewer", "", "custom-role", " reviewer "};
+        String[] roles = {
+            "specialist",
+            "Specialist",
+            "orchestrator",
+            "ORCHESTRATOR",
+            "reviewer",
+            "Reviewer",
+            "",
+            "custom-role",
+            " reviewer "
+        };
         for (int i = 0; i < roles.length; i++) {
-            jdbcClient.sql("""
-                INSERT INTO playbooks (name, title, template_text, target_agent, area)
-                VALUES (:name, 'T', 't', :role, :area)""").param("name", "it-members-role-" + i)
-                .param("role", roles[i]).param("area", OTHER).update();
+            jdbcClient
+                    .sql(
+                            """
+                            INSERT INTO playbooks (name, title, template_text, target_agent, area)
+                            VALUES (:name, 'T', 't', :role, :area)\
+                            """)
+                    .param("name", "it-members-role-" + i)
+                    .param("role", roles[i])
+                    .param("area", OTHER)
+                    .update();
         }
 
-        List<String> offered = playbookService.listSpecializedPlaybooks().stream()
-            .filter(p -> OTHER.equals(p.area())).map(Playbook::name).toList();
+        List<String> offered =
+                playbookService.listSpecializedPlaybooks().stream()
+                        .filter(p -> OTHER.equals(p.area()))
+                        .map(Playbook::name)
+                        .toList();
 
         assertThat(areaRepository.findAllMembers().get(OTHER).playbooks())
-            .containsExactlyInAnyOrderElementsOf(offered).isNotEmpty();
+                .containsExactlyInAnyOrderElementsOf(offered)
+                .isNotEmpty();
         assertThat(offered).hasSizeBetween(1, roles.length - 1);
     }
 }

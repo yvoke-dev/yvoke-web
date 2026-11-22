@@ -20,8 +20,8 @@ public class ItTestJobHandler implements JobHandler {
 
     @Override
     public List<JobStep> steps() {
-        return List.of(JobStep.CHUNK, JobStep.EMBED, JobStep.INSERT, JobStep.EXTRACT,
-            JobStep.INJECT);
+        return List.of(
+                JobStep.CHUNK, JobStep.EMBED, JobStep.INSERT, JobStep.EXTRACT, JobStep.INJECT);
     }
 
     @Override

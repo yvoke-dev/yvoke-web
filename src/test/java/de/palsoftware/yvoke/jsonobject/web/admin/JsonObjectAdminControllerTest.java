@@ -44,12 +44,16 @@ public class JsonObjectAdminControllerTest {
         jsonObjectService = mock(JsonObjectService.class);
         collectionService = mock(CollectionService.class);
         objectMapper = new ObjectMapper();
-        controller = new JsonObjectAdminController(jsonObjectService, collectionService,
-            objectMapper, mock(AdminAuditLogger.class));
+        controller =
+                new JsonObjectAdminController(
+                        jsonObjectService,
+                        collectionService,
+                        objectMapper,
+                        mock(AdminAuditLogger.class));
         model = new ConcurrentModel();
 
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
     }
 
     @AfterEach
@@ -59,12 +63,13 @@ public class JsonObjectAdminControllerTest {
 
     @Test
     public void listObjects_superadmin_listsAdministeredCollections() {
-        Collection c1 = new Collection(UUID.randomUUID(), "C1", "desc", List.of(),
-            OffsetDateTime.now(), "Area1");
+        Collection c1 =
+                new Collection(
+                        UUID.randomUUID(), "C1", "desc", List.of(), OffsetDateTime.now(), "Area1");
         when(collectionService.listForAdminUser()).thenReturn(List.of(c1));
         when(collectionService.getCollection("C1")).thenReturn(Optional.of(c1));
         when(jsonObjectService.listObjects(eq(c1.id()), any(), anyInt(), anyInt()))
-            .thenReturn(Collections.emptyList());
+                .thenReturn(Collections.emptyList());
         when(jsonObjectService.countObjects(eq(c1.id()), any())).thenReturn(0L);
 
         String view = controller.listObjects(null, null, null, null, null, 0, 20, model);
@@ -75,20 +80,31 @@ public class JsonObjectAdminControllerTest {
 
     @Test
     public void listObjects_areaAdmin_unauthorizedCollection_throws404() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of(),
-            OffsetDateTime.now(), "Finance");
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
-        assertThrows(ResponseStatusException.class,
-            () -> controller.listObjects("Finance", null, null, null, null, 0, 20, model));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.listObjects("Finance", null, null, null, null, 0, 20, model));
     }
 
     @Test
     public void listObjects_areaAdmin_noAdministeredCollections_returnsEmpty() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
         when(collectionService.listForAdminUser()).thenReturn(Collections.emptyList());
 
         String view = controller.listObjects(null, null, null, null, null, 0, 20, model);
@@ -99,32 +115,50 @@ public class JsonObjectAdminControllerTest {
 
     @Test
     public void listObjects_selectedObject_unauthorizedCollection_throws404() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
         UUID objId = UUID.randomUUID();
         UUID finColId = UUID.randomUUID();
-        Collection oimCol = new Collection(UUID.randomUUID(), "OIM", "desc", List.of(),
-            OffsetDateTime.now(), "OIM");
+        Collection oimCol =
+                new Collection(
+                        UUID.randomUUID(), "OIM", "desc", List.of(), OffsetDateTime.now(), "OIM");
         when(collectionService.listForAdminUser()).thenReturn(List.of(oimCol));
         when(collectionService.getCollection("OIM")).thenReturn(Optional.of(oimCol));
         when(jsonObjectService.listObjects(eq(oimCol.id()), any(), anyInt(), anyInt()))
-            .thenReturn(Collections.emptyList());
+                .thenReturn(Collections.emptyList());
 
-        JsonObject obj = new JsonObject(objId, finColId, "Finance", Map.of("foo", "bar"),
-            "file.json", OffsetDateTime.now());
+        JsonObject obj =
+                new JsonObject(
+                        objId,
+                        finColId,
+                        "Finance",
+                        Map.of("foo", "bar"),
+                        "file.json",
+                        OffsetDateTime.now());
         when(jsonObjectService.getObject(objId)).thenReturn(Optional.of(obj));
         when(collectionService.findByIdForAdmin(finColId)).thenReturn(Optional.empty());
 
-        assertThrows(ResponseStatusException.class,
-            () -> controller.listObjects("OIM", null, null, objId, null, 0, 20, model));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> controller.listObjects("OIM", null, null, objId, null, 0, 20, model));
     }
 
     @Test
     public void getDistinctValues_unauthorizedCollection_returnsEmptyList() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of(),
-            OffsetDateTime.now(), "Finance");
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
         List<String> result = controller.getDistinctValues("Finance", "field");
@@ -134,11 +168,13 @@ public class JsonObjectAdminControllerTest {
 
     @Test
     public void getDistinctValues_authorizedCollection_returnsValues() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
         UUID id = UUID.randomUUID();
         Collection oimCol =
-            new Collection(id, "OIM", "desc", List.of(), OffsetDateTime.now(), "OIM");
+                new Collection(id, "OIM", "desc", List.of(), OffsetDateTime.now(), "OIM");
         when(collectionService.getCollection("OIM")).thenReturn(Optional.of(oimCol));
         when(jsonObjectService.getDistinctValues(id, "field")).thenReturn(List.of("val1", "val2"));
 
@@ -149,10 +185,18 @@ public class JsonObjectAdminControllerTest {
 
     @Test
     public void editSchema_unauthorizedCollection_redirectsWithError() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of(),
-            OffsetDateTime.now(), "Finance");
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
         RedirectAttributes redirect = new RedirectAttributesModelMap();
@@ -164,10 +208,18 @@ public class JsonObjectAdminControllerTest {
 
     @Test
     public void rebuildSchema_unauthorizedCollection_redirectsWithError() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance", "desc", List.of(),
-            OffsetDateTime.now(), "Finance");
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "area_admin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance")).thenReturn(Optional.of(finCol));
 
         RedirectAttributes redirect = new RedirectAttributesModelMap();
@@ -179,33 +231,39 @@ public class JsonObjectAdminControllerTest {
 
     @Test
     public void editAndRebuildSchemaEncodeRedirectQueryParametersViaRedirectAttributes()
-        throws Exception {
+            throws Exception {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
         UUID colId = UUID.randomUUID();
         Collection col =
-            new Collection(colId, "OIM & DB #1", "desc", List.of(), OffsetDateTime.now(), "OIM");
+                new Collection(
+                        colId, "OIM & DB #1", "desc", List.of(), OffsetDateTime.now(), "OIM");
         when(collectionService.getCollection("OIM & DB #1")).thenReturn(Optional.of(col));
         when(jsonObjectService.rebuildSchema(colId, "9.3&evil=1")).thenReturn(true);
 
         RedirectAttributes editRedirect = new RedirectAttributesModelMap();
-        String editView = controller.editSchema("OIM & DB #1", "9.3&evil=1",
-            "{\"type\":\"object\"}", editRedirect);
+        String editView =
+                controller.editSchema(
+                        "OIM & DB #1", "9.3&evil=1", "{\"type\":\"object\"}", editRedirect);
         assertThat(editView).isEqualTo("redirect:/admin/json-objects");
-        assertThat(editRedirect.asMap()).containsEntry("collection", "OIM & DB #1")
-            .containsEntry("tag", "9.3&evil=1");
+        assertThat(editRedirect.asMap())
+                .containsEntry("collection", "OIM & DB #1")
+                .containsEntry("tag", "9.3&evil=1");
 
         RedirectAttributes rebuildRedirect = new RedirectAttributesModelMap();
         String rebuildView = controller.rebuildSchema("OIM & DB #1", "9.3&evil=1", rebuildRedirect);
         assertThat(rebuildView).isEqualTo("redirect:/admin/json-objects");
-        assertThat(rebuildRedirect.asMap()).containsEntry("collection", "OIM & DB #1")
-            .containsEntry("tag", "9.3&evil=1");
+        assertThat(rebuildRedirect.asMap())
+                .containsEntry("collection", "OIM & DB #1")
+                .containsEntry("tag", "9.3&evil=1");
     }
 
     @Test
     public void constructorRejectsNullAuditLogger() {
-        assertThrows(NullPointerException.class,
-            () -> new JsonObjectAdminController(jsonObjectService, collectionService, objectMapper,
-                null));
+        assertThrows(
+                NullPointerException.class,
+                () ->
+                        new JsonObjectAdminController(
+                                jsonObjectService, collectionService, objectMapper, null));
     }
 }

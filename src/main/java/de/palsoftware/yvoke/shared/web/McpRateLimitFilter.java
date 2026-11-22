@@ -15,11 +15,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /**
  * Per-principal token-bucket rate limiter for {@code /mcp} and {@code /mcp/**}.
  *
- * <p>
- * Implemented as a Servlet filter (not a Spring MVC {@code HandlerInterceptor}) because Spring AI's
- * Streamable HTTP MCP endpoint is served through a WebMvc.fn {@code RouterFunction} rather than a
- * {@code @Controller}. Wired into the MCP {@code SecurityFilterChain} after authentication so the
- * bucket is keyed on the authenticated Entra principal ({@code auth.getName()}).
+ * <p>Implemented as a Servlet filter (not a Spring MVC {@code HandlerInterceptor}) because Spring
+ * AI's Streamable HTTP MCP endpoint is served through a WebMvc.fn {@code RouterFunction} rather
+ * than a {@code @Controller}. Wired into the MCP {@code SecurityFilterChain} after authentication
+ * so the bucket is keyed on the authenticated Entra principal ({@code auth.getName()}).
  */
 public class McpRateLimitFilter extends OncePerRequestFilter {
 
@@ -32,8 +31,9 @@ public class McpRateLimitFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-        FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(
+            HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
         String principal = resolvePrincipal(request);
         if (!rateLimiter.tryAcquire(principal)) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
@@ -41,7 +41,7 @@ public class McpRateLimitFilter extends OncePerRequestFilter {
             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
             response.setHeader("Retry-After", String.valueOf(refillPeriodSeconds));
             response.getWriter()
-                .write("{\"error\":\"MCP rate limit exceeded. Please retry later.\"}");
+                    .write("{\"error\":\"MCP rate limit exceeded. Please retry later.\"}");
             return;
         }
         filterChain.doFilter(request, response);
@@ -49,8 +49,10 @@ public class McpRateLimitFilter extends OncePerRequestFilter {
 
     private static String resolvePrincipal(HttpServletRequest request) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.isAuthenticated() && auth.getName() != null
-            && !"anonymousUser".equals(auth.getName())) {
+        if (auth != null
+                && auth.isAuthenticated()
+                && auth.getName() != null
+                && !"anonymousUser".equals(auth.getName())) {
             return "mcp:user:" + auth.getName();
         }
         return "mcp:ip:" + request.getRemoteAddr();

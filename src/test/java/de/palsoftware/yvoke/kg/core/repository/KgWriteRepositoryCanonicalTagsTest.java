@@ -27,13 +27,13 @@ class KgWriteRepositoryCanonicalTagsTest {
     @Test
     void orderIsNormalised() {
         assertThat(KgWriteRepository.canonicalTags(List.of("10.0", "9.3.1")))
-            .isEqualTo(KgWriteRepository.canonicalTags(List.of("9.3.1", "10.0")));
+                .isEqualTo(KgWriteRepository.canonicalTags(List.of("9.3.1", "10.0")));
     }
 
     @Test
     void duplicatesCollapse() {
         assertThat(KgWriteRepository.canonicalTags(List.of("9.3.1", "9.3.1")))
-            .containsExactly("9.3.1");
+                .containsExactly("9.3.1");
     }
 
     @Test
@@ -44,13 +44,13 @@ class KgWriteRepositoryCanonicalTagsTest {
     @Test
     void trimmingCanRevealADuplicate() {
         assertThat(KgWriteRepository.canonicalTags(Arrays.asList("9.3.1", " 9.3.1")))
-            .containsExactly("9.3.1");
+                .containsExactly("9.3.1");
     }
 
     @Test
     void blankAndNullEntriesAreDropped() {
         assertThat(KgWriteRepository.canonicalTags(Arrays.asList("9.3.1", "", "   ", null)))
-            .containsExactly("9.3.1");
+                .containsExactly("9.3.1");
     }
 
     @Test
@@ -58,6 +58,6 @@ class KgWriteRepositoryCanonicalTagsTest {
         // A job may legitimately carry more than one tag; that combination is its own scope, not
         // two separate ones.
         assertThat(KgWriteRepository.canonicalTags(List.of("10.0", "9.3.1")))
-            .containsExactly("10.0", "9.3.1");
+                .containsExactly("10.0", "9.3.1");
     }
 }

@@ -46,11 +46,10 @@ class TagServiceTest {
     }
 
     /**
-     * The tag slice no longer answers "which tags exist" — that vocabulary is derived from
-     * {@code collections.tags} by {@code CollectionService.listAllTags()}.
+     * The tag slice no longer answers "which tags exist" — that vocabulary is derived from {@code
+     * collections.tags} by {@code CollectionService.listAllTags()}.
      *
-     * <p>
-     * It used to come from a {@code tags} registry table whose only writer was this slice's
+     * <p>It used to come from a {@code tags} registry table whose only writer was this slice's
      * {@code getOrCreateTag}, so it recorded a tag exactly when it arrived through an admin form or
      * the ingest enqueue and missed every other writer — most visibly the corpus import, which sets
      * {@code collections.tags} directly. Reintroducing a lookup here would reintroduce the drift.
@@ -58,23 +57,27 @@ class TagServiceTest {
     @Test
     void theServiceExposesNoTagVocabularyLookup() {
         assertThat(TagService.class.getMethods())
-            .noneMatch(m -> m.getName().toLowerCase().contains("findall"));
+                .noneMatch(m -> m.getName().toLowerCase().contains("findall"));
         assertThat(TagRepository.class.getMethods())
-            .noneMatch(m -> m.getName().toLowerCase().contains("findall"));
+                .noneMatch(m -> m.getName().toLowerCase().contains("findall"));
     }
 
     @Test
     void writeMethodsCarryTheTransactionBoundary() throws Exception {
         // The array-append must be atomic with its guard; the tx lives on the service, not the
         // repository.
-        for (String name : List.of("addTagToCollection", "addTagToDocument",
-            "removeTagFromDocument")) {
+        for (String name :
+                List.of("addTagToCollection", "addTagToDocument", "removeTagFromDocument")) {
             Method m = TagService.class.getMethod(name, UUID.class, String.class);
             assertThat(m.isAnnotationPresent(Transactional.class))
-                .as("%s must be @Transactional", name).isTrue();
+                    .as("%s must be @Transactional", name)
+                    .isTrue();
         }
         // The repository must NOT carry its own @Transactional any more.
-        assertThat(TagRepository.class.getMethod("addTagToCollection", UUID.class, String.class)
-            .isAnnotationPresent(Transactional.class)).isFalse();
+        assertThat(
+                        TagRepository.class
+                                .getMethod("addTagToCollection", UUID.class, String.class)
+                                .isAnnotationPresent(Transactional.class))
+                .isFalse();
     }
 }

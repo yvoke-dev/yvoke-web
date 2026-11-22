@@ -33,18 +33,17 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Cooperative cancellation for the JSON import, which had none: the whole import is a single
- * {@code @Transactional} bulk write preceded by a parse that is minutes long for a large
- * {@code .jsonl}, so a stop issued during that parse used to be ignored and the objects were
- * written anyway. There are no batches to check between (unlike the Confluence crawl), so the
- * checkpoint is the one that matters — immediately before the write.
+ * {@code @Transactional} bulk write preceded by a parse that is minutes long for a large {@code
+ * .jsonl}, so a stop issued during that parse used to be ignored and the objects were written
+ * anyway. There are no batches to check between (unlike the Confluence crawl), so the checkpoint is
+ * the one that matters — immediately before the write.
  */
 class JsonImportJobHandlerTest {
 
     private static final UUID JOB_ID = UUID.randomUUID();
     private static final UUID COLLECTION_ID = UUID.randomUUID();
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     private JsonObjectService jsonObjectService;
     private JobRepository jobRepository;
@@ -55,18 +54,38 @@ class JsonImportJobHandlerTest {
     void setUp() throws Exception {
         jsonObjectService = mock(JsonObjectService.class);
         jobRepository = mock(JobRepository.class);
-        handler = new JsonImportJobHandler(jsonObjectService, new ObjectMapper(), jobRepository,
-            new UploadPathGuard(tempDir.toString()));
+        handler =
+                new JsonImportJobHandler(
+                        jsonObjectService,
+                        new ObjectMapper(),
+                        jobRepository,
+                        new UploadPathGuard(tempDir.toString()));
         jsonFile = tempDir.resolve("objects.json");
-        Files.writeString(jsonFile, "[{\"name\":\"Alice\"},{\"name\":\"Bob\"}]",
-            StandardCharsets.UTF_8);
+        Files.writeString(
+                jsonFile, "[{\"name\":\"Alice\"},{\"name\":\"Bob\"}]", StandardCharsets.UTF_8);
     }
 
     private JobContext contextFor(JobStatus liveStatus) {
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = new IngestionJob(JOB_ID, "json-import", jsonFile.toString(),
-            List.of("1.0"), COLLECTION_ID, "OIM", null, null, 0, 0, null, null,
-            OffsetDateTime.now(), null, null, Map.of(), null);
+        IngestionJob job =
+                new IngestionJob(
+                        JOB_ID,
+                        "json-import",
+                        jsonFile.toString(),
+                        List.of("1.0"),
+                        COLLECTION_ID,
+                        "OIM",
+                        null,
+                        null,
+                        0,
+                        0,
+                        null,
+                        null,
+                        OffsetDateTime.now(),
+                        null,
+                        null,
+                        Map.of(),
+                        null);
         when(ctx.job()).thenReturn(job);
         when(jobRepository.findStatusById(JOB_ID)).thenReturn(Optional.ofNullable(liveStatus));
         return ctx;
@@ -86,34 +105,50 @@ class JsonImportJobHandlerTest {
         Files.writeString(outside, "[{\"secret\":\"value\"}]", StandardCharsets.UTF_8);
 
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = new IngestionJob(JOB_ID, "json-import", outside.toString(),
-            List.of("1.0"), COLLECTION_ID, "OIM", null, null, 0, 0, null, null,
-            OffsetDateTime.now(), null, null, Map.of(), null);
+        IngestionJob job =
+                new IngestionJob(
+                        JOB_ID,
+                        "json-import",
+                        outside.toString(),
+                        List.of("1.0"),
+                        COLLECTION_ID,
+                        "OIM",
+                        null,
+                        null,
+                        0,
+                        0,
+                        null,
+                        null,
+                        OffsetDateTime.now(),
+                        null,
+                        null,
+                        Map.of(),
+                        null);
         when(ctx.job()).thenReturn(job);
 
-        assertThatThrownBy(() -> handler.run(ctx)).isInstanceOf(SecurityException.class)
-            .hasMessageContaining("outside the permitted upload directory");
+        assertThatThrownBy(() -> handler.run(ctx))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("outside the permitted upload directory");
 
-        verify(jsonObjectService, never()).importObjects(any(), anyString(), anyList(), anyString(),
-            anyList(), any());
+        verify(jsonObjectService, never())
+                .importObjects(any(), anyString(), anyList(), anyString(), anyList(), any());
     }
 
     /**
      * A file that parses as neither a JSON array nor a single JSON object must FAIL the job, not
      * import zero rows. The difference is everything the operator has to go on: swallowing the
-     * parse error finishes the job GREEN with {@code jsonObjects: 0}, and because
-     * {@link JsonObjectService#importObjects} returns immediately for an empty list, nothing is
-     * written, nothing is logged as wrong, and the collection is left in exactly the state it would
-     * be in if the corpus had never been imported — indistinguishable from "not ingested yet", with
-     * a success badge on top of it. The thrown message is also the ONLY place the Jackson diagnosis
+     * parse error finishes the job GREEN with {@code jsonObjects: 0}, and because {@link
+     * JsonObjectService#importObjects} returns immediately for an empty list, nothing is written,
+     * nothing is logged as wrong, and the collection is left in exactly the state it would be in if
+     * the corpus had never been imported — indistinguishable from "not ingested yet", with a
+     * success badge on top of it. The thrown message is also the ONLY place the Jackson diagnosis
      * (which token, at which line/column) ever reaches a human: {@code JobService} turns the
      * exception into the job's {@code error} column, which is what the admin job-detail page shows.
      *
-     * <p>
-     * No other test in this file reaches the fallback at all — they all stage a well-formed array —
-     * so the inner {@code catch}, the one branch that decides fail-versus-silently-empty, has never
-     * executed here. That is the same shape as the {@code jsonUniqueField} form-binding gap: one
-     * unexercised branch between a producer and a consumer that only a human keeps honest.
+     * <p>No other test in this file reaches the fallback at all — they all stage a well-formed
+     * array — so the inner {@code catch}, the one branch that decides fail-versus-silently-empty,
+     * has never executed here. That is the same shape as the {@code jsonUniqueField} form-binding
+     * gap: one unexercised branch between a producer and a consumer that only a human keeps honest.
      */
     @Test
     void aFileThatIsNeitherAnArrayNorAnObjectFailsInsteadOfImportingNothing() throws Exception {
@@ -121,12 +156,13 @@ class JsonImportJobHandlerTest {
         Files.writeString(jsonFile, "not json at all", StandardCharsets.UTF_8);
         JobContext ctx = contextFor(JobStatus.RUNNING);
 
-        assertThatThrownBy(() -> handler.run(ctx)).isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining(
-                "File must contain a JSON array of objects or a single JSON object");
+        assertThatThrownBy(() -> handler.run(ctx))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(
+                        "File must contain a JSON array of objects or a single JSON object");
 
-        verify(jsonObjectService, never()).importObjects(any(), anyString(), anyList(), anyString(),
-            anyList(), any());
+        verify(jsonObjectService, never())
+                .importObjects(any(), anyString(), anyList(), anyString(), anyList(), any());
     }
 
     /**
@@ -135,42 +171,48 @@ class JsonImportJobHandlerTest {
      * produce {@code .JSONL}. The two branches are not interchangeable: the else-branch parses the
      * file as a single JSON value, and Jackson's {@code FAIL_ON_TRAILING_TOKENS} is OFF by default,
      * so a newline-delimited file falls back to the single-object read, silently consumes only the
-     * FIRST record and discards the rest. A 200,000-line import therefore lands one object,
-     * {@code JobCounts.jsonObjects} reports 1, and the job finishes green — a corpus that is
-     * 99.999% missing with no error anywhere and nothing to compare the count against.
+     * FIRST record and discards the rest. A 200,000-line import therefore lands one object, {@code
+     * JobCounts.jsonObjects} reports 1, and the job finishes green — a corpus that is 99.999%
+     * missing with no error anywhere and nothing to compare the count against.
      *
-     * <p>
-     * Dropping {@code toLowerCase()} looks like removing a redundant allocation, and nothing in the
-     * test suite covers it: this file's fixtures are all {@code objects.json}, so the
-     * {@code .jsonl} branch is entered by exactly one spelling of one filename and is otherwise
-     * never executed at all.
+     * <p>Dropping {@code toLowerCase()} looks like removing a redundant allocation, and nothing in
+     * the test suite covers it: this file's fixtures are all {@code objects.json}, so the {@code
+     * .jsonl} branch is entered by exactly one spelling of one filename and is otherwise never
+     * executed at all.
      */
     @Test
     void anUppercaseJsonlFileIsStillParsedLineByLine() throws Exception {
         jsonFile = tempDir.resolve("DATA.JSONL");
-        Files.writeString(jsonFile, "{\"name\":\"Alice\"}\n{\"name\":\"Bob\"}\n",
-            StandardCharsets.UTF_8);
+        Files.writeString(
+                jsonFile, "{\"name\":\"Alice\"}\n{\"name\":\"Bob\"}\n", StandardCharsets.UTF_8);
         JobContext ctx = contextFor(JobStatus.RUNNING);
 
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects())
-            .as("both lines must be parsed — the JSON branch would silently keep only the first")
-            .isEqualTo(2);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
-            List.of(Map.of("name", "Alice"), Map.of("name", "Bob")), "DATA.JSONL", List.of("1.0"),
-            null);
+                .as(
+                        "both lines must be parsed — the JSON branch would silently keep only the first")
+                .isEqualTo(2);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID,
+                        "OIM",
+                        List.of(Map.of("name", "Alice"), Map.of("name", "Bob")),
+                        "DATA.JSONL",
+                        List.of("1.0"),
+                        null);
     }
 
     @Test
     void cancelledImportWritesNothing() {
         JobContext ctx = contextFor(JobStatus.CANCELLED);
 
-        assertThatThrownBy(() -> handler.run(ctx)).isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("cancelled");
+        assertThatThrownBy(() -> handler.run(ctx))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cancelled");
 
-        verify(jsonObjectService, never()).importObjects(any(), anyString(), anyList(), anyString(),
-            anyList(), any());
+        verify(jsonObjectService, never())
+                .importObjects(any(), anyString(), anyList(), anyString(), anyList(), any());
     }
 
     /**
@@ -183,27 +225,31 @@ class JsonImportJobHandlerTest {
      * {@code jsonObjects: 1}. Nothing anywhere compares the file's line count to the imported
      * count, so the loss is invisible until an agent is told the data does not exist.
      *
-     * <p>
-     * The blank line is not padding either: real exports end with a trailing newline and are often
-     * concatenated with blank separators, and an unguarded {@code readValue("")} throws, which
-     * turns a cosmetic whitespace difference into a failed job. Both halves are asserted on the
-     * OUTCOME (the maps that actually reach the service and the reported count), not on the branch
-     * taken — asserting only that the filename was echoed would pass for either parser.
+     * <p>The blank line is not padding either: real exports end with a trailing newline and are
+     * often concatenated with blank separators, and an unguarded {@code readValue("")} throws,
+     * which turns a cosmetic whitespace difference into a failed job. Both halves are asserted on
+     * the OUTCOME (the maps that actually reach the service and the reported count), not on the
+     * branch taken — asserting only that the filename was echoed would pass for either parser.
      */
     @Test
     void aJsonlFileIsParsedLineByLineWithBlankLinesSkippedRegardlessOfSuffixCase()
-        throws Exception {
+            throws Exception {
         jsonFile = tempDir.resolve("objects.JSONL");
-        Files.writeString(jsonFile, "{\"name\":\"Alice\"}\n\n{\"name\":\"Bob\"}\n",
-            StandardCharsets.UTF_8);
+        Files.writeString(
+                jsonFile, "{\"name\":\"Alice\"}\n\n{\"name\":\"Bob\"}\n", StandardCharsets.UTF_8);
         JobContext ctx = contextFor(JobStatus.RUNNING);
 
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects()).isEqualTo(2);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
-            List.of(Map.of("name", "Alice"), Map.of("name", "Bob")), "objects.JSONL",
-            List.of("1.0"), null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID,
+                        "OIM",
+                        List.of(Map.of("name", "Alice"), Map.of("name", "Bob")),
+                        "objects.JSONL",
+                        List.of("1.0"),
+                        null);
     }
 
     /**
@@ -216,12 +262,11 @@ class JsonImportJobHandlerTest {
      * because a green job over an empty collection is indistinguishable from a corpus that was
      * never ingested.
      *
-     * <p>
-     * The two halves are asserted together on purpose — they are the two exits of the same
+     * <p>The two halves are asserted together on purpose — they are the two exits of the same
      * {@code try/catch}, and widening one at the cost of the other is exactly the refactor that
      * would slip through. The closing {@code times(1)} is the load-bearing assertion of the second
-     * half: it proves the scalar array reached the service ZERO times, which a bare
-     * {@code assertThatThrownBy} would not (the throw could have come after a write).
+     * half: it proves the scalar array reached the service ZERO times, which a bare {@code
+     * assertThatThrownBy} would not (the throw could have come after a write).
      */
     @Test
     void aSingleJsonObjectFileIsImportedAsOneRowAndAScalarArrayFailsTheJob() throws Exception {
@@ -231,20 +276,27 @@ class JsonImportJobHandlerTest {
         JobCounts counts = handler.run(contextFor(JobStatus.RUNNING));
 
         assertThat(counts.jsonObjects()).isEqualTo(1);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
-            List.of(Map.of("name", "Solo")), "single.json", List.of("1.0"), null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID,
+                        "OIM",
+                        List.of(Map.of("name", "Solo")),
+                        "single.json",
+                        List.of("1.0"),
+                        null);
 
         jsonFile = tempDir.resolve("scalars.json");
         Files.writeString(jsonFile, "[1, 2, 3]", StandardCharsets.UTF_8);
         JobContext scalars = contextFor(JobStatus.RUNNING);
 
-        assertThatThrownBy(() -> handler.run(scalars)).isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining(
-                "File must contain a JSON array of objects or a single JSON object");
+        assertThatThrownBy(() -> handler.run(scalars))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(
+                        "File must contain a JSON array of objects or a single JSON object");
 
         // Still exactly the ONE call from the single-object half: the scalar array wrote nothing.
-        verify(jsonObjectService, times(1)).importObjects(any(), anyString(), anyList(),
-            anyString(), anyList(), any());
+        verify(jsonObjectService, times(1))
+                .importObjects(any(), anyString(), anyList(), anyString(), anyList(), any());
     }
 
     @Test
@@ -254,9 +306,14 @@ class JsonImportJobHandlerTest {
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects()).isEqualTo(2);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
-            List.of(Map.of("name", "Alice"), Map.of("name", "Bob")), "objects.json", List.of("1.0"),
-            null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID,
+                        "OIM",
+                        List.of(Map.of("name", "Alice"), Map.of("name", "Bob")),
+                        "objects.json",
+                        List.of("1.0"),
+                        null);
     }
 
     /**
@@ -267,28 +324,37 @@ class JsonImportJobHandlerTest {
      */
     @Test
     void jsonlParsingUsesExplicitUtf8CharsetRatherThanPlatformDefault() throws Exception {
-        String source = Files.readString(
-            Path.of("src/main/java/de/palsoftware/yvoke/ingest/worker/JsonImportJobHandler.java"),
-            StandardCharsets.UTF_8);
-        assertThat(source).as(
-            "FileReader without explicit charset uses platform default encoding (mojibake risk); "
-                + "must use Files.newBufferedReader(..., StandardCharsets.UTF_8) or specify UTF-8 explicitly")
-            .doesNotContain("new FileReader(").contains("StandardCharsets.UTF_8");
+        String source =
+                Files.readString(
+                        Path.of(
+                                "src/main/java/de/palsoftware/yvoke/ingest/worker/JsonImportJobHandler.java"),
+                        StandardCharsets.UTF_8);
+        assertThat(source)
+                .as(
+                        "FileReader without explicit charset uses platform default encoding (mojibake risk); "
+                                + "must use Files.newBufferedReader(..., StandardCharsets.UTF_8) or specify UTF-8 explicitly")
+                .doesNotContain("new FileReader(")
+                .contains("StandardCharsets.UTF_8");
     }
 
     @Test
     void aJsonlFileWithMultibyteUtf8CharactersIsParsedCorrectly() throws Exception {
         jsonFile = tempDir.resolve("multibyte.jsonl");
-        Files.writeString(jsonFile, "{\"city\":\"München\",\"desc\":\"東京 🚀\"}\n",
-            StandardCharsets.UTF_8);
+        Files.writeString(
+                jsonFile, "{\"city\":\"München\",\"desc\":\"東京 🚀\"}\n", StandardCharsets.UTF_8);
         JobContext ctx = contextFor(JobStatus.RUNNING);
 
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects()).isEqualTo(1);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
-            List.of(Map.of("city", "München", "desc", "東京 🚀")), "multibyte.jsonl", List.of("1.0"),
-            null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID,
+                        "OIM",
+                        List.of(Map.of("city", "München", "desc", "東京 🚀")),
+                        "multibyte.jsonl",
+                        List.of("1.0"),
+                        null);
     }
 
     @Test
@@ -300,8 +366,9 @@ class JsonImportJobHandlerTest {
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects()).isEqualTo(0);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM", List.of(), "empty.jsonl",
-            List.of("1.0"), null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID, "OIM", List.of(), "empty.jsonl", List.of("1.0"), null);
     }
 
     @Test
@@ -313,8 +380,14 @@ class JsonImportJobHandlerTest {
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects()).isEqualTo(1);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
-            List.of(Map.of("name", "Single")), "single_no_nl.jsonl", List.of("1.0"), null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID,
+                        "OIM",
+                        List.of(Map.of("name", "Single")),
+                        "single_no_nl.jsonl",
+                        List.of("1.0"),
+                        null);
     }
 
     @Test
@@ -327,8 +400,14 @@ class JsonImportJobHandlerTest {
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects()).isEqualTo(1);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
-            List.of(Map.of("big", bigPayload)), "large_line.jsonl", List.of("1.0"), null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID,
+                        "OIM",
+                        List.of(Map.of("big", bigPayload)),
+                        "large_line.jsonl",
+                        List.of("1.0"),
+                        null);
     }
 
     @Test
@@ -341,23 +420,36 @@ class JsonImportJobHandlerTest {
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects()).isEqualTo(1);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM", List.of(Map.of("text", text)),
-            "multilingual.jsonl", List.of("1.0"), null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID,
+                        "OIM",
+                        List.of(Map.of("text", text)),
+                        "multilingual.jsonl",
+                        List.of("1.0"),
+                        null);
     }
 
     @Test
     void aJsonlFileWithBomIsParsedCorrectly() throws Exception {
         jsonFile = tempDir.resolve("with_bom.jsonl");
-        Files.writeString(jsonFile, "\uFEFF{\"name\":\"Alice\"}\n{\"name\":\"Bob\"}\n",
-            StandardCharsets.UTF_8);
+        Files.writeString(
+                jsonFile,
+                "\uFEFF{\"name\":\"Alice\"}\n{\"name\":\"Bob\"}\n",
+                StandardCharsets.UTF_8);
         JobContext ctx = contextFor(JobStatus.RUNNING);
 
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects()).isEqualTo(2);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
-            List.of(Map.of("name", "Alice"), Map.of("name", "Bob")), "with_bom.jsonl",
-            List.of("1.0"), null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID,
+                        "OIM",
+                        List.of(Map.of("name", "Alice"), Map.of("name", "Bob")),
+                        "with_bom.jsonl",
+                        List.of("1.0"),
+                        null);
     }
 
     @Test
@@ -369,8 +461,14 @@ class JsonImportJobHandlerTest {
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects()).isEqualTo(1);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
-            List.of(Map.of("name", "Solo")), "bom_own_line.jsonl", List.of("1.0"), null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID,
+                        "OIM",
+                        List.of(Map.of("name", "Solo")),
+                        "bom_own_line.jsonl",
+                        List.of("1.0"),
+                        null);
     }
 
     @Test
@@ -382,8 +480,9 @@ class JsonImportJobHandlerTest {
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects()).isEqualTo(0);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM", List.of(), "only_bom.jsonl",
-            List.of("1.0"), null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID, "OIM", List.of(), "only_bom.jsonl", List.of("1.0"), null);
     }
 
     @Test
@@ -400,7 +499,13 @@ class JsonImportJobHandlerTest {
         JobCounts counts = handler.run(ctx);
 
         assertThat(counts.jsonObjects()).isEqualTo(1);
-        verify(jsonObjectService).importObjects(COLLECTION_ID, "OIM",
-            List.of(Map.of("name", "BinaryBom")), "raw_bytes_bom.jsonl", List.of("1.0"), null);
+        verify(jsonObjectService)
+                .importObjects(
+                        COLLECTION_ID,
+                        "OIM",
+                        List.of(Map.of("name", "BinaryBom")),
+                        "raw_bytes_bom.jsonl",
+                        List.of("1.0"),
+                        null);
     }
 }

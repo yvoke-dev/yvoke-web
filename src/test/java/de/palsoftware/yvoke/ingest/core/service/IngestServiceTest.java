@@ -48,8 +48,7 @@ import org.springframework.web.server.ResponseStatusException;
  */
 public class IngestServiceTest {
 
-    @TempDir
-    Path uploadDir;
+    @TempDir Path uploadDir;
 
     private JobService jobService;
     private CollectionService collectionService;
@@ -64,8 +63,13 @@ public class IngestServiceTest {
         collectionService = mock(CollectionService.class);
         tagService = mock(TagService.class);
         documentRepository = mock(DocumentRepository.class);
-        ingestService = new IngestService(jobService, collectionService, tagService,
-            documentRepository, uploadDir.toString());
+        ingestService =
+                new IngestService(
+                        jobService,
+                        collectionService,
+                        tagService,
+                        documentRepository,
+                        uploadDir.toString());
     }
 
     @AfterEach
@@ -75,29 +79,31 @@ public class IngestServiceTest {
 
     private static void authenticateWith(String... roles) {
         SecurityContextHolder.getContext()
-            .setAuthentication(new UsernamePasswordAuthenticationToken("principal", "n/a",
-                Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                "principal",
+                                "n/a",
+                                Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
     }
 
     /**
      * {@code POST /api/ingest/v1/custom} deliberately does NOT pre-register its target, and the
      * rejection that follows must be a <b>400</b>.
      *
-     * <p>
-     * The two sibling entry points on this service ({@code uploadAndEnqueue} and {@code processKg})
-     * both create the collection and declare the tag before enqueueing. {@code enqueueCustom} does
-     * neither: it stages the zip and hands the request straight to {@code JobService.enqueue},
-     * where {@code CollectionTagEnqueueValidator} refuses an unknown collection (or a tag the
-     * collection does not declare) with an {@code IllegalArgumentException}. That asymmetry is
-     * intentional — a custom corpus targets a curated collection whose tag vocabulary an operator
-     * has already declared, and auto-creating one from a typo mints an empty collection that also
-     * carries a real {@code chunks} partition. Nothing observes the asymmetry today, so "make it
-     * consistent with the other two" is a one-line edit no test would notice.
+     * <p>The two sibling entry points on this service ({@code uploadAndEnqueue} and {@code
+     * processKg}) both create the collection and declare the tag before enqueueing. {@code
+     * enqueueCustom} does neither: it stages the zip and hands the request straight to {@code
+     * JobService.enqueue}, where {@code CollectionTagEnqueueValidator} refuses an unknown
+     * collection (or a tag the collection does not declare) with an {@code
+     * IllegalArgumentException}. That asymmetry is intentional — a custom corpus targets a curated
+     * collection whose tag vocabulary an operator has already declared, and auto-creating one from
+     * a typo mints an empty collection that also carries a real {@code chunks} partition. Nothing
+     * observes the asymmetry today, so "make it consistent with the other two" is a one-line edit
+     * no test would notice.
      *
-     * <p>
-     * The status code is the other half. The validator's rejection is a routine operator typo, and
-     * the {@code catch (IllegalArgumentException)} arm is the only thing that turns it into a 400
-     * naming the offending collection. Remove it and the exception escapes as an unhandled
+     * <p>The status code is the other half. The validator's rejection is a routine operator typo,
+     * and the {@code catch (IllegalArgumentException)} arm is the only thing that turns it into a
+     * 400 naming the offending collection. Remove it and the exception escapes as an unhandled
      * exception: an API client reads "500 Internal server error" — retry later — for a request that
      * can never succeed until it is corrected, and the message that names the bad collection is
      * replaced by the generic error text. Every existing test here stubs {@code jobService.enqueue}
@@ -106,20 +112,31 @@ public class IngestServiceTest {
     @Test
     public void anUnknownCollectionMakesCustomA400AndNothingIsPreRegistered() {
         MockMultipartFile zip =
-            new MockMultipartFile("file", "corpus.zip", "application/zip", "PK-payload".getBytes());
-        when(jobService.enqueue(any(EnqueueRequest.class))).thenThrow(
-            new IllegalArgumentException("Collection 'GHOST-COLLECTION' does not exist."));
+                new MockMultipartFile(
+                        "file", "corpus.zip", "application/zip", "PK-payload".getBytes());
+        when(jobService.enqueue(any(EnqueueRequest.class)))
+                .thenThrow(
+                        new IllegalArgumentException(
+                                "Collection 'GHOST-COLLECTION' does not exist."));
 
-        assertThatThrownBy(() -> ingestService.enqueueCustom(zip, "GHOST-COLLECTION", "9.3",
-            "**/*.md", "graph/entities.jsonl", "graph/relationships.jsonl", null))
-            .as("a validator rejection must reach the caller as a 400, not an unhandled 500")
-            .isInstanceOf(ResponseStatusException.class).satisfies(thrown -> {
-                ResponseStatusException rse = (ResponseStatusException) thrown;
-                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                assertThat(rse.getReason())
-                    .as("the operator has to be told WHICH collection was wrong")
-                    .contains("GHOST-COLLECTION");
-            });
+        assertThatThrownBy(() ->
+                        ingestService.enqueueCustom(
+                                zip,
+                                "GHOST-COLLECTION",
+                                "9.3",
+                                "**/*.md",
+                                "graph/entities.jsonl",
+                                "graph/relationships.jsonl",
+                                null))
+                .as("a validator rejection must reach the caller as a 400, not an unhandled 500")
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(thrown -> {
+                    ResponseStatusException rse = (ResponseStatusException) thrown;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(rse.getReason())
+                            .as("the operator has to be told WHICH collection was wrong")
+                            .contains("GHOST-COLLECTION");
+                });
 
         verify(collectionService, never()).createCollection(any(), any(), any());
         verify(tagService, never()).addTagToCollection(any(), any());
@@ -133,14 +150,22 @@ public class IngestServiceTest {
     public void enqueueCustomRejectsPathTraversalInFilename() throws Exception {
         ArgumentCaptor<EnqueueRequest> captor = ArgumentCaptor.forClass(EnqueueRequest.class);
         when(jobService.enqueue(captor.capture()))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         // Malicious multipart filename attempting to climb out of the staging temp dir.
-        MockMultipartFile file = new MockMultipartFile("file", "../evil-pwn.zip", "application/zip",
-            "zip bytes".getBytes());
+        MockMultipartFile file =
+                new MockMultipartFile(
+                        "file", "../evil-pwn.zip", "application/zip", "zip bytes".getBytes());
 
-        UUID jobId = ingestService.enqueueCustom(file, "OIM", "v1", "**/*.md",
-            "graph/entities.jsonl", "graph/relationships.jsonl", null);
+        UUID jobId =
+                ingestService.enqueueCustom(
+                        file,
+                        "OIM",
+                        "v1",
+                        "**/*.md",
+                        "graph/entities.jsonl",
+                        "graph/relationships.jsonl",
+                        null);
 
         assertThat(jobId).isNotNull();
 
@@ -154,21 +179,28 @@ public class IngestServiceTest {
     }
 
     /**
-     * The custom_* staging dir must live INSIDE the configured upload dir — the worker-side
-     * {@code UploadPathGuard} rejects any sourceRef outside {@code app.upload-dir}, so staging in
-     * the system temp dir makes every custom ingest fail at execution time.
+     * The custom_* staging dir must live INSIDE the configured upload dir — the worker-side {@code
+     * UploadPathGuard} rejects any sourceRef outside {@code app.upload-dir}, so staging in the
+     * system temp dir makes every custom ingest fail at execution time.
      */
     @Test
     public void enqueueCustomStagesZipInsideUploadDir() throws Exception {
         ArgumentCaptor<EnqueueRequest> captor = ArgumentCaptor.forClass(EnqueueRequest.class);
         when(jobService.enqueue(captor.capture()))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         MockMultipartFile file =
-            new MockMultipartFile("file", "corpus.zip", "application/zip", "zip bytes".getBytes());
+                new MockMultipartFile(
+                        "file", "corpus.zip", "application/zip", "zip bytes".getBytes());
 
-        ingestService.enqueueCustom(file, "OIM", "v1", "**/*.md", "graph/entities.jsonl",
-            "graph/relationships.jsonl", null);
+        ingestService.enqueueCustom(
+                file,
+                "OIM",
+                "v1",
+                "**/*.md",
+                "graph/entities.jsonl",
+                "graph/relationships.jsonl",
+                null);
 
         Path staged = Path.of(captor.getValue().sourceRef()).normalize();
         Path root = uploadDir.toAbsolutePath().normalize();
@@ -180,21 +212,19 @@ public class IngestServiceTest {
      * {@code sourceTag} DEFAULTS to the target tag when the caller omits it (null) or sends it
      * blank.
      *
-     * <p>
-     * {@code findIdByFile} matches on collection AND tag AND source_file, and the tag it is given
-     * is whatever this expression produced — so the default is what makes the common call shape
-     * work at all: "extract the graph for install-kit.md in OIM-Install", named once, for the
+     * <p>{@code findIdByFile} matches on collection AND tag AND source_file, and the tag it is
+     * given is whatever this expression produced — so the default is what makes the common call
+     * shape work at all: "extract the graph for install-kit.md in OIM-Install", named once, for the
      * version being processed. Drop it and the probe runs with a null tag, which matches no row in
      * a tag-scoped corpus (every document of both kit versions carries its version tag), so the
      * endpoint answers 404 "Document not found" for a document that is plainly there. The message
      * even names the tag it searched, which would then be {@code null} — an operator reading it has
      * no reason to suspect the API invented the scope rather than using theirs.
      *
-     * <p>
-     * Every existing test passes {@code sourceTag} explicitly
-     * ({@code processKgWithoutDocumentIdDemandsBothSourceFieldsAndReportsAMissingDocument} sends
-     * "9.3.1"), so the defaulting branch has never run. The assertion here is an outcome, not an
-     * argument: the ONLY stubbed probe is the one carrying the trimmed target tag, and every other
+     * <p>Every existing test passes {@code sourceTag} explicitly ({@code
+     * processKgWithoutDocumentIdDemandsBothSourceFieldsAndReportsAMissingDocument} sends "9.3.1"),
+     * so the defaulting branch has never run. The assertion here is an outcome, not an argument:
+     * the ONLY stubbed probe is the one carrying the trimmed target tag, and every other
      * combination returns {@code Optional.empty()} (Mockito's default for an Optional return), so a
      * lost default turns into the 404 and fails the test rather than being read back from a
      * matcher. Both spellings of "absent" are covered, because the guard is a two-part condition.
@@ -205,24 +235,36 @@ public class IngestServiceTest {
         UUID docId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
         when(collectionService.getCollection("OIM"))
-            .thenReturn(Optional.of(new Collection(colId, "OIM", "d", List.of(), null)));
+                .thenReturn(Optional.of(new Collection(colId, "OIM", "d", List.of(), null)));
         when(documentRepository.findIdByFile("OIM-Install", "10.0", "install-kit.md"))
-            .thenReturn(Optional.of(docId));
+                .thenReturn(Optional.of(docId));
         ArgumentCaptor<EnqueueRequest> captor = ArgumentCaptor.forClass(EnqueueRequest.class);
         when(jobService.enqueue(captor.capture())).thenReturn(EnqueueResult.created(jobId));
 
-        EnqueueResult omitted = ingestService.processKg(null, "  install-kit.md  ",
-            "  OIM-Install  ", null, " OIM ", " 10.0 ", null, null);
-        EnqueueResult blank = ingestService.processKg(null, "install-kit.md", "OIM-Install", "   ",
-            "OIM", "10.0", null, null);
+        EnqueueResult omitted =
+                ingestService.processKg(
+                        null,
+                        "  install-kit.md  ",
+                        "  OIM-Install  ",
+                        null,
+                        " OIM ",
+                        " 10.0 ",
+                        null,
+                        null);
+        EnqueueResult blank =
+                ingestService.processKg(
+                        null, "install-kit.md", "OIM-Install", "   ", "OIM", "10.0", null, null);
 
-        assertThat(omitted.jobId()).as("a null sourceTag must resolve the document, not 404")
-            .isEqualTo(jobId);
-        assertThat(blank.jobId()).as("a blank sourceTag is the same case as an absent one")
-            .isEqualTo(jobId);
-        assertThat(captor.getAllValues()).extracting(EnqueueRequest::sourceRef)
-            .as("the job must target the document the defaulted lookup found")
-            .containsExactly(docId.toString(), docId.toString());
+        assertThat(omitted.jobId())
+                .as("a null sourceTag must resolve the document, not 404")
+                .isEqualTo(jobId);
+        assertThat(blank.jobId())
+                .as("a blank sourceTag is the same case as an absent one")
+                .isEqualTo(jobId);
+        assertThat(captor.getAllValues())
+                .extracting(EnqueueRequest::sourceRef)
+                .as("the job must target the document the defaulted lookup found")
+                .containsExactly(docId.toString(), docId.toString());
     }
 
     /**
@@ -240,12 +282,12 @@ public class IngestServiceTest {
         // collection before the job row is written — enqueueing first would drop it.
         UUID colId = UUID.randomUUID();
         when(collectionService.getCollection("OIM"))
-            .thenReturn(Optional.of(new Collection(colId, "OIM", "d", List.of(), null)));
+                .thenReturn(Optional.of(new Collection(colId, "OIM", "d", List.of(), null)));
         when(jobService.enqueue(any(EnqueueRequest.class)))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         MockMultipartFile file =
-            new MockMultipartFile("file", "m.md", "text/markdown", "data".getBytes());
+                new MockMultipartFile("file", "m.md", "text/markdown", "data".getBytes());
 
         ingestService.uploadAndEnqueue(file, "OIM", " 10.0 ", "standard", null, null, null, null);
 
@@ -259,39 +301,47 @@ public class IngestServiceTest {
      * written, for the same reason the upload path must — and it is a second, independent copy of
      * that ordering.
      *
-     * <p>
-     * {@code CollectionTagEnqueueValidator} only validates and propagates a request's tag when the
-     * target collection ALREADY declares a non-empty tag set. Against a collection whose
-     * {@code tags} is {@code '{}'} it returns an EMPTY tag list and the requested tag is dropped —
-     * no exception, no warning. The kg-extract job then runs untagged, so its entities are written
-     * into the tag-blind scope: {@code KgWriteRepository} resolves identity by
-     * {@code (collection, kind, lower(name), tag set)}, and an untagged row is a different scope
-     * from every tagged one, so the extracted graph is invisible to every read path (they all
-     * filter {@code :tag = ANY(tags)}) while the job reports a perfectly normal entity count.
+     * <p>{@code CollectionTagEnqueueValidator} only validates and propagates a request's tag when
+     * the target collection ALREADY declares a non-empty tag set. Against a collection whose {@code
+     * tags} is {@code '{}'} it returns an EMPTY tag list and the requested tag is dropped — no
+     * exception, no warning. The kg-extract job then runs untagged, so its entities are written
+     * into the tag-blind scope: {@code KgWriteRepository} resolves identity by {@code (collection,
+     * kind, lower(name), tag set)}, and an untagged row is a different scope from every tagged one,
+     * so the extracted graph is invisible to every read path (they all filter {@code :tag =
+     * ANY(tags)}) while the job reports a perfectly normal entity count.
      *
-     * <p>
-     * This endpoint is the one that auto-creates its target collection when it does not exist —
+     * <p>This endpoint is the one that auto-creates its target collection when it does not exist —
      * i.e. it routinely runs against a collection with an EMPTY tag set, which is precisely the
      * case the validator silently drops. Reordering the two calls is the natural-looking cleanup
      * ("enqueue first, then bookkeeping"), and nothing about it fails: the API still answers 202
      * with a job id.
      *
-     * <p>
-     * {@code uploadDeclaresTheTagOnTheCollectionBeforeEnqueueing} pins the same rule on the upload
-     * path only; these are two separate methods with two separate call sequences, so that test
-     * cannot see a regression here.
+     * <p>{@code uploadDeclaresTheTagOnTheCollectionBeforeEnqueueing} pins the same rule on the
+     * upload path only; these are two separate methods with two separate call sequences, so that
+     * test cannot see a regression here.
      */
     @Test
     public void processKgDeclaresTheTagOnTheCollectionBeforeEnqueueing() {
         UUID colId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
-        when(documentRepository.findById(docId)).thenReturn(Optional.of(new DocumentRow(docId,
-            colId, "OIM", "markdown", "Title", null, "completed", List.of(), Instant.now())));
+        when(documentRepository.findById(docId))
+                .thenReturn(
+                        Optional.of(
+                                new DocumentRow(
+                                        docId,
+                                        colId,
+                                        "OIM",
+                                        "markdown",
+                                        "Title",
+                                        null,
+                                        "completed",
+                                        List.of(),
+                                        Instant.now())));
         when(collectionService.getCollection("OIM"))
-            .thenReturn(Optional.of(new Collection(colId, "OIM", "d", List.of(), null)));
+                .thenReturn(Optional.of(new Collection(colId, "OIM", "d", List.of(), null)));
         ArgumentCaptor<EnqueueRequest> captor = ArgumentCaptor.forClass(EnqueueRequest.class);
         when(jobService.enqueue(captor.capture()))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         ingestService.processKg(docId, null, null, null, " OIM ", " 10.0 ", null, null);
 
@@ -310,13 +360,15 @@ public class IngestServiceTest {
         ArgumentCaptor<EnqueueRequest> captor = ArgumentCaptor.forClass(EnqueueRequest.class);
         when(collectionService.getCollection("OIM")).thenReturn(Optional.empty());
         when(jobService.enqueue(captor.capture()))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         MockMultipartFile file =
-            new MockMultipartFile("file", "../../../evil.md", "text/markdown", "data".getBytes());
+                new MockMultipartFile(
+                        "file", "../../../evil.md", "text/markdown", "data".getBytes());
 
         UUID jobId =
-            ingestService.uploadAndEnqueue(file, "OIM", null, "standard", null, null, null, "OIM");
+                ingestService.uploadAndEnqueue(
+                        file, "OIM", null, "standard", null, null, null, "OIM");
 
         assertThat(jobId).isNotNull();
 
@@ -334,14 +386,17 @@ public class IngestServiceTest {
     public void uploadAndEnqueueRefusesToCreateACollectionWithoutAnArea() {
         when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
         MockMultipartFile file =
-            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+                new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
 
-        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "NEW", null, "standard", null,
-            null, null, "  ")).isInstanceOf(ResponseStatusException.class).satisfies(e -> {
-                ResponseStatusException rse = (ResponseStatusException) e;
-                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                assertThat(rse.getReason()).contains("'NEW'").contains("area");
-            });
+        assertThatThrownBy(() ->
+                        ingestService.uploadAndEnqueue(
+                                file, "NEW", null, "standard", null, null, null, "  "))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> {
+                    ResponseStatusException rse = (ResponseStatusException) e;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(rse.getReason()).contains("'NEW'").contains("area");
+                });
         verify(collectionService, never()).createCollection(any(), any(), any());
         verify(jobService, never()).enqueue(any());
     }
@@ -351,7 +406,7 @@ public class IngestServiceTest {
         when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
         when(jobService.enqueue(any())).thenReturn(EnqueueResult.created(UUID.randomUUID()));
         MockMultipartFile file =
-            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+                new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
 
         ingestService.uploadAndEnqueue(file, "NEW", null, "standard", null, null, null, "PingID");
 
@@ -363,16 +418,19 @@ public class IngestServiceTest {
     public void uploadAndEnqueueRefusesAnUnknownAreaForANewCollection() {
         when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
         when(collectionService.createCollection(eq("NEW"), any(), eq("NONEXISTENT")))
-            .thenThrow(new IllegalArgumentException("Area 'NONEXISTENT' does not exist."));
+                .thenThrow(new IllegalArgumentException("Area 'NONEXISTENT' does not exist."));
         MockMultipartFile file =
-            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+                new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
 
-        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "NEW", null, "standard", null,
-            null, null, "NONEXISTENT")).isInstanceOf(ResponseStatusException.class).satisfies(e -> {
-                ResponseStatusException rse = (ResponseStatusException) e;
-                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                assertThat(rse.getReason()).isEqualTo("Area 'NONEXISTENT' does not exist.");
-            });
+        assertThatThrownBy(() ->
+                        ingestService.uploadAndEnqueue(
+                                file, "NEW", null, "standard", null, null, null, "NONEXISTENT"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> {
+                    ResponseStatusException rse = (ResponseStatusException) e;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(rse.getReason()).isEqualTo("Area 'NONEXISTENT' does not exist.");
+                });
         verify(jobService, never()).enqueue(any());
     }
 
@@ -380,18 +438,31 @@ public class IngestServiceTest {
     public void processKgRefusesAnUnknownAreaForANewCollection() {
         UUID docId = UUID.randomUUID();
         when(documentRepository.findById(docId))
-            .thenReturn(Optional.of(new DocumentRow(docId, UUID.randomUUID(), "OIM", "markdown",
-                "Title", null, "completed", List.of(), Instant.now())));
+                .thenReturn(
+                        Optional.of(
+                                new DocumentRow(
+                                        docId,
+                                        UUID.randomUUID(),
+                                        "OIM",
+                                        "markdown",
+                                        "Title",
+                                        null,
+                                        "completed",
+                                        List.of(),
+                                        Instant.now())));
         when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
         when(collectionService.createCollection(eq("NEW"), any(), eq("NONEXISTENT")))
-            .thenThrow(new IllegalArgumentException("Area 'NONEXISTENT' does not exist."));
+                .thenThrow(new IllegalArgumentException("Area 'NONEXISTENT' does not exist."));
 
-        assertThatThrownBy(() -> ingestService.processKg(docId, null, null, null, "NEW", "10.0",
-            null, "NONEXISTENT")).isInstanceOf(ResponseStatusException.class).satisfies(e -> {
-                ResponseStatusException rse = (ResponseStatusException) e;
-                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                assertThat(rse.getReason()).isEqualTo("Area 'NONEXISTENT' does not exist.");
-            });
+        assertThatThrownBy(() ->
+                        ingestService.processKg(
+                                docId, null, null, null, "NEW", "10.0", null, "NONEXISTENT"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> {
+                    ResponseStatusException rse = (ResponseStatusException) e;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(rse.getReason()).isEqualTo("Area 'NONEXISTENT' does not exist.");
+                });
         verify(jobService, never()).enqueue(any());
     }
 
@@ -399,15 +470,26 @@ public class IngestServiceTest {
     public void processKgRefusesToCreateACollectionWithoutAnArea() {
         UUID docId = UUID.randomUUID();
         when(documentRepository.findById(docId))
-            .thenReturn(Optional.of(new DocumentRow(docId, UUID.randomUUID(), "OIM", "markdown",
-                "Title", null, "completed", List.of(), Instant.now())));
+                .thenReturn(
+                        Optional.of(
+                                new DocumentRow(
+                                        docId,
+                                        UUID.randomUUID(),
+                                        "OIM",
+                                        "markdown",
+                                        "Title",
+                                        null,
+                                        "completed",
+                                        List.of(),
+                                        Instant.now())));
         when(collectionService.getCollection("NEW")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(
-            () -> ingestService.processKg(docId, null, null, null, "NEW", "10.0", null, null))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() ->
+                        ingestService.processKg(docId, null, null, null, "NEW", "10.0", null, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.BAD_REQUEST));
         verify(collectionService, never()).createCollection(any(), any(), any());
     }
 
@@ -419,8 +501,7 @@ public class IngestServiceTest {
      * which field they forgot. A 500 also reads as "the server is broken", so the caller retries
      * the same malformed request rather than fixing it.
      *
-     * <p>
-     * The 404 text matters for a reason specific to this corpus: {@code findIdByFile} matches on
+     * <p>The 404 text matters for a reason specific to this corpus: {@code findIdByFile} matches on
      * collection AND tag AND source_file, and the source tag DEFAULTS to the target tag when none
      * is given — so "document not found" here is most often a tag-scoping mistake, the same file
      * existing under 9.3.1 while the request named 10.0. A bare "not found" sends the operator
@@ -431,49 +512,77 @@ public class IngestServiceTest {
     @Test
     public void processKgWithoutDocumentIdDemandsBothSourceFieldsAndReportsAMissingDocument() {
         // Half a key is not a key: neither field alone may be accepted.
-        assertThatThrownBy(() -> ingestService.processKg(null, "install-kit.md", null, null, "OIM",
-            "10.0", null, null)).isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST));
-        assertThatThrownBy(() -> ingestService.processKg(null, null, "OIM-Install", null, "OIM",
-            "10.0", null, null)).isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() ->
+                        ingestService.processKg(
+                                null, "install-kit.md", null, null, "OIM", "10.0", null, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() ->
+                        ingestService.processKg(
+                                null, null, "OIM-Install", null, "OIM", "10.0", null, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.BAD_REQUEST));
 
         when(documentRepository.findIdByFile("OIM-Install", "9.3.1", "install-kit.md"))
-            .thenReturn(Optional.empty());
+                .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> ingestService.processKg(null, "  install-kit.md  ",
-            "  OIM-Install  ", "  9.3.1  ", "OIM", "10.0", null, null))
-            .isInstanceOf(ResponseStatusException.class).satisfies(e -> {
-                ResponseStatusException ex = (ResponseStatusException) e;
-                assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-                assertThat(ex.getReason()).contains("install-kit.md").contains("OIM-Install")
-                    .contains("9.3.1");
-            });
+        assertThatThrownBy(() ->
+                        ingestService.processKg(
+                                null,
+                                "  install-kit.md  ",
+                                "  OIM-Install  ",
+                                "  9.3.1  ",
+                                "OIM",
+                                "10.0",
+                                null,
+                                null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> {
+                    ResponseStatusException ex = (ResponseStatusException) e;
+                    assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                    assertThat(ex.getReason())
+                            .contains("install-kit.md")
+                            .contains("OIM-Install")
+                            .contains("9.3.1");
+                });
 
         verify(jobService, never()).enqueue(any());
     }
 
     /**
      * SEC: {@code /api/ingest/v1/upload} takes the job kind straight from a request param, so it
-     * was a second door onto the connector kinds — a 1-byte file with
-     * {@code kind=confluence-import} enqueued a full space crawl running with the stored admin
-     * token. An allowlist of the kinds this endpoint actually serves is stronger than a denylist:
-     * any future privileged kind is rejected by default rather than by remembering to name it.
+     * was a second door onto the connector kinds — a 1-byte file with {@code
+     * kind=confluence-import} enqueued a full space crawl running with the stored admin token. An
+     * allowlist of the kinds this endpoint actually serves is stronger than a denylist: any future
+     * privileged kind is rejected by default rather than by remembering to name it.
      */
     @Test
     public void uploadAndEnqueueRejectsKindsOutsideItsAllowlist() {
         when(collectionService.getCollection("OIM")).thenReturn(Optional.empty());
         MockMultipartFile file =
-            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+                new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
 
-        for (String kind : new String[] {"confluence-import", "confluence-page-import", "custom",
-            "kg-extract", "manual", ""}) {
-            assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "OIM", null, kind, null,
-                null, null, "OIM")).as("kind=%s", kind).isInstanceOf(ResponseStatusException.class)
-                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                    .isEqualTo(HttpStatus.BAD_REQUEST));
+        for (String kind :
+                new String[] {
+                    "confluence-import",
+                    "confluence-page-import",
+                    "custom",
+                    "kg-extract",
+                    "manual",
+                    ""
+                }) {
+            assertThatThrownBy(() ->
+                            ingestService.uploadAndEnqueue(
+                                    file, "OIM", null, kind, null, null, null, "OIM"))
+                    .as("kind=%s", kind)
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e ->
+                            assertThat(((ResponseStatusException) e).getStatusCode())
+                                    .isEqualTo(HttpStatus.BAD_REQUEST));
         }
         verify(jobService, never()).enqueue(any());
     }
@@ -484,8 +593,7 @@ public class IngestServiceTest {
      * in {@code IngestApiControllerTest} posts real bytes — so the guard on BOTH upload entry
      * points ({@code /api/ingest/v1/upload} and {@code /api/ingest/v1/custom}) has never executed.
      *
-     * <p>
-     * Without it a zero-byte file is copied into {@code app.upload-dir} and enqueued, and the
+     * <p>Without it a zero-byte file is copied into {@code app.upload-dir} and enqueued, and the
      * failure moves to the worker: the job runs, the parser finds no documents (or throws on an
      * empty zip), and the operator is left with a job-detail page carrying an opaque handler error
      * and no hint that the upload itself was the problem — while the staged file stays on disk and
@@ -496,24 +604,36 @@ public class IngestServiceTest {
     @Test
     public void anEmptyUploadIs400AndNothingIsStagedOrEnqueued() throws Exception {
         MockMultipartFile empty =
-            new MockMultipartFile("file", "corpus.zip", "application/zip", new byte[0]);
+                new MockMultipartFile("file", "corpus.zip", "application/zip", new byte[0]);
 
-        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(empty, "OIM", "9.3", "standard",
-            null, null, null, null)).isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() ->
+                        ingestService.uploadAndEnqueue(
+                                empty, "OIM", "9.3", "standard", null, null, null, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.BAD_REQUEST));
 
-        assertThatThrownBy(() -> ingestService.enqueueCustom(empty, "OIM", "9.3", "**/*.md",
-            "graph/entities.jsonl", "graph/relationships.jsonl", null))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() ->
+                        ingestService.enqueueCustom(
+                                empty,
+                                "OIM",
+                                "9.3",
+                                "**/*.md",
+                                "graph/entities.jsonl",
+                                "graph/relationships.jsonl",
+                                null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.BAD_REQUEST));
 
         verify(jobService, never()).enqueue(any(EnqueueRequest.class));
         try (Stream<Path> staged = Files.list(uploadDir)) {
             assertThat(staged)
-                .as("rejected before the copy: no staged file and no custom_* staging directory")
-                .isEmpty();
+                    .as(
+                            "rejected before the copy: no staged file and no custom_* staging directory")
+                    .isEmpty();
         }
     }
 
@@ -522,34 +642,45 @@ public class IngestServiceTest {
         ArgumentCaptor<EnqueueRequest> captor = ArgumentCaptor.forClass(EnqueueRequest.class);
         when(collectionService.getCollection("OIM")).thenReturn(Optional.empty());
         when(jobService.enqueue(captor.capture()))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         for (String kind : new String[] {"standard", "hierarchical", "json-import"}) {
             MockMultipartFile file =
-                new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+                    new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
             assertThat(
-                ingestService.uploadAndEnqueue(file, "OIM", null, kind, null, null, null, "OIM"))
-                .isNotNull();
+                            ingestService.uploadAndEnqueue(
+                                    file, "OIM", null, kind, null, null, null, "OIM"))
+                    .isNotNull();
         }
 
-        assertThat(captor.getAllValues()).extracting(EnqueueRequest::kind)
-            .containsExactly("standard", "hierarchical", "json-import");
+        assertThat(captor.getAllValues())
+                .extracting(EnqueueRequest::kind)
+                .containsExactly("standard", "hierarchical", "json-import");
     }
 
     @Test
     public void uploadAndEnqueueExistingCollectionUnauthorizedAreaYields404() {
         authenticateWith("AREA_INGEST_OTHER");
-        Collection secCol = new Collection(UUID.randomUUID(), "sec-col", "desc", List.of(),
-            OffsetDateTime.now(), "sec");
+        Collection secCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "sec-col",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "sec");
         when(collectionService.getCollection("sec-col")).thenReturn(Optional.of(secCol));
 
         MockMultipartFile file =
-            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+                new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
 
-        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "sec-col", null, "standard",
-            null, null, null, null)).isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() ->
+                        ingestService.uploadAndEnqueue(
+                                file, "sec-col", null, "standard", null, null, null, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
         verify(jobService, never()).enqueue(any());
     }
 
@@ -559,30 +690,48 @@ public class IngestServiceTest {
         when(collectionService.getCollection("new-col")).thenReturn(Optional.empty());
 
         MockMultipartFile file =
-            new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
+                new MockMultipartFile("file", "x.md", "text/markdown", "d".getBytes());
 
-        assertThatThrownBy(() -> ingestService.uploadAndEnqueue(file, "new-col", null, "standard",
-            null, null, null, "sec")).isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN));
+        assertThatThrownBy(() ->
+                        ingestService.uploadAndEnqueue(
+                                file, "new-col", null, "standard", null, null, null, "sec"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.FORBIDDEN));
         verify(collectionService, never()).createCollection(any(), any(), any());
     }
 
     @Test
     public void enqueueCustomExistingCollectionUnauthorizedAreaYields404() {
         authenticateWith("AREA_INGEST_OTHER");
-        Collection secCol = new Collection(UUID.randomUUID(), "sec-col", "desc", List.of(),
-            OffsetDateTime.now(), "sec");
+        Collection secCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "sec-col",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "sec");
         when(collectionService.getCollection("sec-col")).thenReturn(Optional.of(secCol));
 
         MockMultipartFile zip =
-            new MockMultipartFile("file", "corpus.zip", "application/zip", "PK-payload".getBytes());
+                new MockMultipartFile(
+                        "file", "corpus.zip", "application/zip", "PK-payload".getBytes());
 
-        assertThatThrownBy(() -> ingestService.enqueueCustom(zip, "sec-col", "1.0", "**/*.md",
-            "entities.jsonl", "relationships.jsonl", null))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() ->
+                        ingestService.enqueueCustom(
+                                zip,
+                                "sec-col",
+                                "1.0",
+                                "**/*.md",
+                                "entities.jsonl",
+                                "relationships.jsonl",
+                                null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
         verify(jobService, never()).enqueue(any());
     }
 
@@ -592,22 +741,45 @@ public class IngestServiceTest {
         UUID sourceColId = UUID.randomUUID();
         UUID targetColId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
-        Collection secCol = new Collection(sourceColId, "sec-col", "desc", List.of("1.0"),
-            OffsetDateTime.now(), "sec");
-        Collection otherCol = new Collection(targetColId, "other-col", "desc", List.of("1.0"),
-            OffsetDateTime.now(), "other");
-        DocumentRow docRow = new DocumentRow(docId, sourceColId, "sec-col", "markdown", "Title",
-            null, "completed", List.of("1.0"), Instant.now());
+        Collection secCol =
+                new Collection(
+                        sourceColId,
+                        "sec-col",
+                        "desc",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "sec");
+        Collection otherCol =
+                new Collection(
+                        targetColId,
+                        "other-col",
+                        "desc",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "other");
+        DocumentRow docRow =
+                new DocumentRow(
+                        docId,
+                        sourceColId,
+                        "sec-col",
+                        "markdown",
+                        "Title",
+                        null,
+                        "completed",
+                        List.of("1.0"),
+                        Instant.now());
 
         when(documentRepository.findById(docId)).thenReturn(Optional.of(docRow));
         when(collectionService.findById(sourceColId)).thenReturn(Optional.of(secCol));
         when(collectionService.getCollection("other-col")).thenReturn(Optional.of(otherCol));
 
-        assertThatThrownBy(
-            () -> ingestService.processKg(docId, null, null, null, "other-col", "1.0", null, null))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() ->
+                        ingestService.processKg(
+                                docId, null, null, null, "other-col", "1.0", null, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e ->
+                        assertThat(((ResponseStatusException) e).getStatusCode())
+                                .isEqualTo(HttpStatus.NOT_FOUND));
         verify(jobService, never()).enqueue(any());
     }
 
@@ -617,19 +789,34 @@ public class IngestServiceTest {
         UUID sourceColId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
-        Collection secCol = new Collection(sourceColId, "sec-col", "desc", List.of("1.0"),
-            OffsetDateTime.now(), "sec");
-        DocumentRow docRow = new DocumentRow(docId, sourceColId, "sec-col", "markdown", "Title",
-            null, "completed", List.of("1.0"), Instant.now());
+        Collection secCol =
+                new Collection(
+                        sourceColId,
+                        "sec-col",
+                        "desc",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "sec");
+        DocumentRow docRow =
+                new DocumentRow(
+                        docId,
+                        sourceColId,
+                        "sec-col",
+                        "markdown",
+                        "Title",
+                        null,
+                        "completed",
+                        List.of("1.0"),
+                        Instant.now());
 
         when(documentRepository.findById(docId)).thenReturn(Optional.of(docRow));
         when(collectionService.findById(sourceColId)).thenReturn(Optional.of(secCol));
         when(collectionService.getCollection("sec-col")).thenReturn(Optional.of(secCol));
         when(jobService.enqueue(any(EnqueueRequest.class)))
-            .thenReturn(EnqueueResult.created(jobId));
+                .thenReturn(EnqueueResult.created(jobId));
 
         EnqueueResult res =
-            ingestService.processKg(docId, null, null, null, "sec-col", "1.0", null, null);
+                ingestService.processKg(docId, null, null, null, "sec-col", "1.0", null, null);
         assertThat(res.jobId()).isEqualTo(jobId);
     }
 
@@ -638,12 +825,15 @@ public class IngestServiceTest {
         UUID missingDocId = UUID.randomUUID();
         when(documentRepository.findById(missingDocId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> ingestService.processKg(missingDocId, null, null, null, "OIM",
-            "1.0", null, "OIM")).isInstanceOf(ResponseStatusException.class).satisfies(e -> {
-                ResponseStatusException rse = (ResponseStatusException) e;
-                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-                assertThat(rse.getReason()).contains(missingDocId.toString());
-            });
+        assertThatThrownBy(() ->
+                        ingestService.processKg(
+                                missingDocId, null, null, null, "OIM", "1.0", null, "OIM"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> {
+                    ResponseStatusException rse = (ResponseStatusException) e;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                    assertThat(rse.getReason()).contains(missingDocId.toString());
+                });
         verify(jobService, never()).enqueue(any());
     }
 
@@ -653,24 +843,46 @@ public class IngestServiceTest {
         UUID colId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
         Collection oimCol =
-            new Collection(colId, "oim-col", "desc", List.of("1.0"), OffsetDateTime.now(), "OIM");
+                new Collection(
+                        colId, "oim-col", "desc", List.of("1.0"), OffsetDateTime.now(), "OIM");
         when(collectionService.getCollection("oim-col")).thenReturn(Optional.of(oimCol));
-        when(collectionService.getCollection("new-oim-col")).thenReturn(Optional.empty())
-            .thenReturn(Optional.of(new Collection(UUID.randomUUID(), "new-oim-col", "desc",
-                List.of(), OffsetDateTime.now(), "OIM")));
+        when(collectionService.getCollection("new-oim-col"))
+                .thenReturn(Optional.empty())
+                .thenReturn(
+                        Optional.of(
+                                new Collection(
+                                        UUID.randomUUID(),
+                                        "new-oim-col",
+                                        "desc",
+                                        List.of(),
+                                        OffsetDateTime.now(),
+                                        "OIM")));
         when(jobService.enqueue(any(EnqueueRequest.class)))
-            .thenReturn(EnqueueResult.created(jobId));
+                .thenReturn(EnqueueResult.created(jobId));
 
         MockMultipartFile md =
-            new MockMultipartFile("file", "doc.md", "text/markdown", "content".getBytes());
-        assertThat(ingestService.uploadAndEnqueue(md, "oim-col", "1.0", "standard", null, null,
-            null, null)).isEqualTo(jobId);
-        assertThat(ingestService.uploadAndEnqueue(md, "new-oim-col", "1.0", "standard", null, null,
-            null, "OIM")).isEqualTo(jobId);
+                new MockMultipartFile("file", "doc.md", "text/markdown", "content".getBytes());
+        assertThat(
+                        ingestService.uploadAndEnqueue(
+                                md, "oim-col", "1.0", "standard", null, null, null, null))
+                .isEqualTo(jobId);
+        assertThat(
+                        ingestService.uploadAndEnqueue(
+                                md, "new-oim-col", "1.0", "standard", null, null, null, "OIM"))
+                .isEqualTo(jobId);
 
         MockMultipartFile zip =
-            new MockMultipartFile("file", "corpus.zip", "application/zip", "PK-payload".getBytes());
-        assertThat(ingestService.enqueueCustom(zip, "oim-col", "1.0", "**/*.md", "entities.jsonl",
-            "relationships.jsonl", null)).isEqualTo(jobId);
+                new MockMultipartFile(
+                        "file", "corpus.zip", "application/zip", "PK-payload".getBytes());
+        assertThat(
+                        ingestService.enqueueCustom(
+                                zip,
+                                "oim-col",
+                                "1.0",
+                                "**/*.md",
+                                "entities.jsonl",
+                                "relationships.jsonl",
+                                null))
+                .isEqualTo(jobId);
     }
 }

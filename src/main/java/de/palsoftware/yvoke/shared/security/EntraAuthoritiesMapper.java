@@ -1,7 +1,5 @@
 package de.palsoftware.yvoke.shared.security;
 
-
-
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -25,7 +23,7 @@ public class EntraAuthoritiesMapper implements GrantedAuthoritiesMapper {
 
     @Override
     public Collection<? extends GrantedAuthority> mapAuthorities(
-        Collection<? extends GrantedAuthority> authorities) {
+            Collection<? extends GrantedAuthority> authorities) {
         Set<GrantedAuthority> mappedAuthorities = new HashSet<>();
 
         // Keep standard OIDC client authorities (e.g. SCOPE_openid)
@@ -35,14 +33,16 @@ public class EntraAuthoritiesMapper implements GrantedAuthoritiesMapper {
             if (authority instanceof OidcUserAuthority oidcUserAuthority) {
                 Object rolesClaim = oidcUserAuthority.getIdToken().getClaim("roles");
                 if (rolesClaim instanceof List<?> rolesList) {
-                    mappedAuthorities.addAll(AreaAccessContext.mapRoleClaimsToAuthorities(rolesList,
-                        adminClaimValue, userClaimValue));
+                    mappedAuthorities.addAll(
+                            AreaAccessContext.mapRoleClaimsToAuthorities(
+                                    rolesList, adminClaimValue, userClaimValue));
                 } else if (oidcUserAuthority.getUserInfo() != null) {
                     // Check userinfo claims if not in ID Token
                     Object uiRoles = oidcUserAuthority.getUserInfo().getClaim("roles");
                     if (uiRoles instanceof List<?> rolesList) {
-                        mappedAuthorities.addAll(AreaAccessContext.mapRoleClaimsToAuthorities(
-                            rolesList, adminClaimValue, userClaimValue));
+                        mappedAuthorities.addAll(
+                                AreaAccessContext.mapRoleClaimsToAuthorities(
+                                        rolesList, adminClaimValue, userClaimValue));
                     }
                 }
             }

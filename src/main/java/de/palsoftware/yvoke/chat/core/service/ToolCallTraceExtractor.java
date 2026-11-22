@@ -43,8 +43,9 @@ public class ToolCallTraceExtractor {
                 // flush any pending tool calls from the previous turn before processing
                 seq = flushPending(records, pendingCalls, messageId, seq);
 
-                if ("assistant".equalsIgnoreCase(msg.role()) && msg.toolCalls() != null
-                    && !msg.toolCalls().isEmpty()) {
+                if ("assistant".equalsIgnoreCase(msg.role())
+                        && msg.toolCalls() != null
+                        && !msg.toolCalls().isEmpty()) {
                     for (LlmToolCall tc : msg.toolCalls()) {
                         if (tc != null) {
                             pendingCalls.add(new PendingToolCall(tc));
@@ -93,12 +94,15 @@ public class ToolCallTraceExtractor {
         }
     }
 
-    private int flushPending(List<ToolCallRecord> records, List<PendingToolCall> pendingCalls,
-        UUID messageId, int startSeq) {
+    private int flushPending(
+            List<ToolCallRecord> records,
+            List<PendingToolCall> pendingCalls,
+            UUID messageId,
+            int startSeq) {
         int seq = startSeq;
         for (PendingToolCall pending : pendingCalls) {
             String result =
-                pending.matchedResponse != null ? pending.matchedResponse.content() : null;
+                    pending.matchedResponse != null ? pending.matchedResponse.content() : null;
             boolean isError = pending.matchedResponse == null || pending.matchedResponse.isError();
 
             String callId = pending.toolCall.id();
@@ -110,8 +114,17 @@ public class ToolCallTraceExtractor {
                 toolName = "unknown";
             }
 
-            records.add(new ToolCallRecord(UUID.randomUUID(), messageId, seq++, callId, toolName,
-                pending.toolCall.arguments(), result, isError, Instant.now()));
+            records.add(
+                    new ToolCallRecord(
+                            UUID.randomUUID(),
+                            messageId,
+                            seq++,
+                            callId,
+                            toolName,
+                            pending.toolCall.arguments(),
+                            result,
+                            isError,
+                            Instant.now()));
         }
         pendingCalls.clear();
         return seq;

@@ -25,10 +25,10 @@ class McpToolsConfigTest {
         ToolCallbackProvider clientOnly = ToolCallbackProvider.from();
         when(ctx.getBean(ObjectMapper.class)).thenReturn(new ObjectMapper());
         when(ctx.getBean(SearchCorpusTool.class))
-            .thenThrow(new NoSuchBeanDefinitionException(SearchCorpusTool.class));
+                .thenThrow(new NoSuchBeanDefinitionException(SearchCorpusTool.class));
 
         assertThatThrownBy(() -> config.sharedToolCallbacks(ctx, 50, clientOnly))
-            .isInstanceOf(NoSuchBeanDefinitionException.class);
+                .isInstanceOf(NoSuchBeanDefinitionException.class);
     }
 
     @Test
@@ -36,8 +36,13 @@ class McpToolsConfigTest {
         McpToolsConfig config = new McpToolsConfig();
         ApplicationContext ctx = mock(ApplicationContext.class);
         ToolCallback conflicting = mock(ToolCallback.class);
-        when(conflicting.getToolDefinition()).thenReturn(ToolDefinition.builder()
-            .name("search_corpus").description("dup").inputSchema("{}").build());
+        when(conflicting.getToolDefinition())
+                .thenReturn(
+                        ToolDefinition.builder()
+                                .name("search_corpus")
+                                .description("dup")
+                                .inputSchema("{}")
+                                .build());
         ToolCallbackProvider clientOnly = ToolCallbackProvider.from(conflicting);
 
         when(ctx.getBean(ObjectMapper.class)).thenReturn(new ObjectMapper());
@@ -47,7 +52,7 @@ class McpToolsConfigTest {
         when(ctx.getBean(VerifyCitationsTool.class)).thenReturn(mock(VerifyCitationsTool.class));
 
         assertThatThrownBy(() -> config.sharedToolCallbacks(ctx, 50, clientOnly))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("Duplicate MCP tool name 'search_corpus'");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Duplicate MCP tool name 'search_corpus'");
     }
 }

@@ -14,9 +14,8 @@ import java.util.UUID;
 /**
  * Turns the specialists' raw tool output into what an agent is actually sent.
  *
- * <p>
- * Two consumers, two different needs. The <b>reviewer</b> is validating a finished draft, and it is
- * given exactly the sources that draft cites — nothing else, and no way to reach anything else.
+ * <p>Two consumers, two different needs. The <b>reviewer</b> is validating a finished draft, and it
+ * is given exactly the sources that draft cites — nothing else, and no way to reach anything else.
  * That is not only a saving: a citation is the claim "this source supports this statement", so
  * checking it against precisely that source is the only test of the claim. Given the whole evidence
  * base instead, a reviewer finds a fact cited to chunk A sitting in chunk B, and approves a
@@ -26,14 +25,12 @@ import java.util.UUID;
  * the from-scratch re-research this whole area exists to avoid. It therefore gets de-duplication
  * and nothing else.
  *
- * <p>
- * Evidence that is not chunk text is never reduced for either of them. It carries no chunk id, so
- * it can never be cited and could never be recovered — dropping a {@code query_json_objects}
+ * <p>Evidence that is not chunk text is never reduced for either of them. It carries no chunk id,
+ * so it can never be cited and could never be recovered — dropping a {@code query_json_objects}
  * projection would silently remove the only basis for the reviewer's version-history check, and
  * dropping a tool error would remove the only trace that a specialist's evidence has a hole.
  *
- * <p>
- * The cited set is derived inside {@link #citeScoped} rather than passed in, so cite-scoping can
+ * <p>The cited set is derived inside {@link #citeScoped} rather than passed in, so cite-scoping can
  * never leak into the reviser's path. A shown-ledger, by contrast, is now explicit — and the rule
  * governing it is that <b>a ledger must not outlive the message list it points into</b>. One set
  * shared by both consumers silently breaks: the reviewer and the reviser are rendered separately
@@ -50,16 +47,14 @@ final class EvidenceDigest {
     /**
      * What a resumed agent has already been handed, so a follow-up carries only what is new.
      *
-     * <p>
-     * Two kinds, because evidence comes in two kinds. Chunk text is identified by its id, which is
-     * stable however it is rendered. Everything else — a {@code query_json_objects} projection, a
-     * section body, a tool error — carries no id at all, so it is identified by its content;
+     * <p>Two kinds, because evidence comes in two kinds. Chunk text is identified by its id, which
+     * is stable however it is rendered. Everything else — a {@code query_json_objects} projection,
+     * a section body, a tool error — carries no id at all, so it is identified by its content;
      * without that half the version-history evidence the reviewer's check depends on would be
      * re-sent in full every round, which is both the largest block in the prompt and the one thing
      * that has to stay byte-identical for the prompt to cache.
      *
-     * <p>
-     * Both methods are check-and-mark in a single step on purpose. The answer to "send this?" IS
+     * <p>Both methods are check-and-mark in a single step on purpose. The answer to "send this?" IS
      * the record that it was sent, and splitting them lets a caller ask without recording
      * (repeating a body every round) or record without asking (eliding one nobody has seen).
      */
@@ -82,9 +77,7 @@ final class EvidenceDigest {
         }
     }
 
-    /**
-     * The reviser's view: one copy of each chunk body, everything else untouched.
-     */
+    /** The reviser's view: one copy of each chunk body, everything else untouched. */
     static String deduped(List<String> evidence) {
         return render(evidence, null, null);
     }
@@ -92,19 +85,18 @@ final class EvidenceDigest {
     /**
      * The reviewer's view: the text of every source {@code answer} cites, and nothing else.
      *
-     * <p>
-     * An answer with no resolvable citation falls back to {@link #deduped}. Scoping to an empty set
-     * would withhold the entire evidence base over a formatting slip — a draft that numbers its
+     * <p>An answer with no resolvable citation falls back to {@link #deduped}. Scoping to an empty
+     * set would withhold the entire evidence base over a formatting slip — a draft that numbers its
      * references but never writes the ids out — and leave the reviewer certain nothing was
      * supported, which is the worst possible reading of a purely cosmetic fault.
      *
      * @param sent what this reviewer has been handed in EARLIER messages of the conversation it is
-     *        resuming, or null when the render stands alone. Anything already sent is skipped — not
-     *        marked "shown above", because the follow-up is framed as the sources that are NEW —
-     *        and everything rendered here is recorded, in the same step that renders it. A revision
-     *        may cite a source the first draft did not, and that body has never been sent, so it
-     *        travels now; the ledger only ever grows, which is what makes the reviewer's prompt
-     *        append-only and therefore cacheable. Mutated by this call.
+     *     resuming, or null when the render stands alone. Anything already sent is skipped — not
+     *     marked "shown above", because the follow-up is framed as the sources that are NEW — and
+     *     everything rendered here is recorded, in the same step that renders it. A revision may
+     *     cite a source the first draft did not, and that body has never been sent, so it travels
+     *     now; the ledger only ever grows, which is what makes the reviewer's prompt append-only
+     *     and therefore cacheable. Mutated by this call.
      */
     static String citeScoped(List<String> evidence, String answer, SentLedger sent) {
         CitationVerifier.CitedIds cited = CitationVerifier.citedIds(answer);
@@ -113,14 +105,14 @@ final class EvidenceDigest {
 
     /**
      * @param cited when null, every chunk is kept (de-duplicated); otherwise chunks the answer does
-     *        not cite are dropped entirely. Dropped rather than summarised on purpose: a line
-     *        NAMING a source the reviewer cannot read invites approving a claim on the strength of
-     *        a plausible-looking title, which is a way to wave through exactly the fabrication the
-     *        reviewer exists to catch. A source the answer failed to cite is a citation defect, and
-     *        the review loop is what corrects it.
+     *     not cite are dropped entirely. Dropped rather than summarised on purpose: a line NAMING a
+     *     source the reviewer cannot read invites approving a claim on the strength of a
+     *     plausible-looking title, which is a way to wave through exactly the fabrication the
+     *     reviewer exists to catch. A source the answer failed to cite is a citation defect, and
+     *     the review loop is what corrects it.
      */
-    private static String render(List<String> evidence, CitationVerifier.CitedIds cited,
-        SentLedger sent) {
+    private static String render(
+            List<String> evidence, CitationVerifier.CitedIds cited, SentLedger sent) {
         if (evidence == null || evidence.isEmpty()) {
             return "";
         }
@@ -160,7 +152,7 @@ final class EvidenceDigest {
                 String indexed = (id != null) ? bodies.get(id) : block.body();
                 boolean haveText = indexed != null && !ChunkBlocks.SHOWN_ABOVE.equals(indexed);
                 boolean keep =
-                    cited == null || cited.covers(id) || cited.covers(block.documentId());
+                        cited == null || cited.covers(id) || cited.covers(block.documentId());
 
                 // A reference whose body is nowhere in this evidence cannot be honoured: emitting
                 // it would send an agent looking further up a prompt that does not contain the

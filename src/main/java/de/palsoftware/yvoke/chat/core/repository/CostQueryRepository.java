@@ -16,8 +16,8 @@ import org.springframework.stereotype.Repository;
  * conversations / models / sources / playbooks / MAS profiles), the per-model {@code calculate*}
  * token sums, the cost-explorer detail rows (RAW/MESSAGE per-call + CONVERSATION grouped), the
  * per-conversation message rows, the used-model usage counts, and the top-N token rows. Every
- * method returns untyped {@code List<Map<String,Object>>}/token rows; the service keeps the
- * {@link de.palsoftware.yvoke.chat.core.service.PricingCalculator} application and in-heap grouping
+ * method returns untyped {@code List<Map<String,Object>>}/token rows; the service keeps the {@link
+ * de.palsoftware.yvoke.chat.core.service.PricingCalculator} application and in-heap grouping
  * (tokens-in-SQL, cost-in-Java — SQL-side cost summation can't faithfully replicate the per-bucket
  * scale-8 rounding). Reads run within the caller's read-only transaction.
  */
@@ -32,56 +32,68 @@ public class CostQueryRepository {
 
     public List<Map<String, Object>> availableUsers() {
         return jdbcClient
-            .sql("SELECT id, display_name, email FROM users ORDER BY display_name ASC NULLS LAST")
-            .query().listOfRows();
+                .sql(
+                        "SELECT id, display_name, email FROM users ORDER BY display_name ASC NULLS LAST")
+                .query()
+                .listOfRows();
     }
 
     public List<String> availableMasProfiles() {
-        return jdbcClient.sql("""
-            SELECT DISTINCT ar.profile_name
-            FROM agent_runs ar
-            JOIN llm_call_logs l ON l.agent_run_id = ar.id
-            WHERE ar.profile_name IS NOT NULL AND ar.profile_name != ''
-            ORDER BY ar.profile_name ASC
-            """).query(String.class).list();
+        return jdbcClient
+                .sql(
+                        """
+                        SELECT DISTINCT ar.profile_name
+                        FROM agent_runs ar
+                        JOIN llm_call_logs l ON l.agent_run_id = ar.id
+                        WHERE ar.profile_name IS NOT NULL AND ar.profile_name != ''
+                        ORDER BY ar.profile_name ASC
+                        """)
+                .query(String.class)
+                .list();
     }
 
     public List<String> availableModels() {
-        return jdbcClient.sql("""
-            SELECT DISTINCT model FROM (
-                SELECT model FROM llm_call_logs WHERE model IS NOT NULL AND model != ''
-                UNION
-                SELECT model_name AS model FROM chat_model_pricing
-            ) all_m ORDER BY model ASC
-            """).query(String.class).list();
+        return jdbcClient
+                .sql(
+                        """
+                        SELECT DISTINCT model FROM (
+                            SELECT model FROM llm_call_logs WHERE model IS NOT NULL AND model != ''
+                            UNION
+                            SELECT model_name AS model FROM chat_model_pricing
+                        ) all_m ORDER BY model ASC
+                        """)
+                .query(String.class)
+                .list();
     }
 
     public List<String> availableSources() {
         return jdbcClient
-            .sql(
-                """
-                    SELECT DISTINCT item_type FROM (
-                        SELECT COALESCE(role, source) AS item_type FROM llm_call_logs WHERE role IS NOT NULL OR source IS NOT NULL
-                    ) t WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC
-                    """)
-            .query(String.class).list();
+                .sql(
+                        """
+                        SELECT DISTINCT item_type FROM (
+                            SELECT COALESCE(role, source) AS item_type FROM llm_call_logs WHERE role IS NOT NULL OR source IS NOT NULL
+                        ) t WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC
+                        """)
+                .query(String.class)
+                .list();
     }
 
     public List<String> availablePlaybooks() {
         return jdbcClient
-            .sql(
-                """
-                    SELECT DISTINCT playbook FROM (
-                        SELECT ar.profile_name AS playbook FROM agent_runs ar WHERE ar.profile_name IS NOT NULL AND ar.profile_name != ''
-                        UNION
-                        SELECT name AS playbook FROM playbooks
-                        UNION
-                        SELECT c.settings->>'playbook' AS playbook FROM conversations c WHERE c.settings->>'playbook' IS NOT NULL AND c.settings->>'playbook' != ''
-                        UNION
-                        SELECT c.settings->>'profile' AS playbook FROM conversations c WHERE c.settings->>'profile' IS NOT NULL AND c.settings->>'profile' != ''
-                    ) all_pb ORDER BY playbook ASC
-                    """)
-            .query(String.class).list();
+                .sql(
+                        """
+                        SELECT DISTINCT playbook FROM (
+                            SELECT ar.profile_name AS playbook FROM agent_runs ar WHERE ar.profile_name IS NOT NULL AND ar.profile_name != ''
+                            UNION
+                            SELECT name AS playbook FROM playbooks
+                            UNION
+                            SELECT c.settings->>'playbook' AS playbook FROM conversations c WHERE c.settings->>'playbook' IS NOT NULL AND c.settings->>'playbook' != ''
+                            UNION
+                            SELECT c.settings->>'profile' AS playbook FROM conversations c WHERE c.settings->>'profile' IS NOT NULL AND c.settings->>'profile' != ''
+                        ) all_pb ORDER BY playbook ASC
+                        """)
+                .query(String.class)
+                .list();
     }
 
     // -----------------------------------------------------------------------------------------------
@@ -96,66 +108,75 @@ public class CostQueryRepository {
     public List<Map<String, Object>> globalModelTokenRows(LocalDate startDate, LocalDate endDate) {
         Map<String, Object> params = new HashMap<>();
         String dateFilter =
-            new CostFilters(params).dateRange("created_at", startDate, endDate).sql();
-        String sql = """
-            SELECT
-                model,
-                gateway_cache_status,
-                SUM(prompt_tokens) AS p_tokens,
-                SUM(completion_tokens) AS c_tokens,
-                SUM(cached_tokens) AS ca_tokens,
-                SUM(thought_tokens) AS t_tokens,
-                SUM(COALESCE(total_cost, 0)) AS total_cost,
-                SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
-            FROM llm_call_logs
-            WHERE model IS NOT NULL AND model != ''""" + dateFilter
-            + " GROUP BY model, gateway_cache_status";
+                new CostFilters(params).dateRange("created_at", startDate, endDate).sql();
+        String sql =
+                """
+                SELECT
+                    model,
+                    gateway_cache_status,
+                    SUM(prompt_tokens) AS p_tokens,
+                    SUM(completion_tokens) AS c_tokens,
+                    SUM(cached_tokens) AS ca_tokens,
+                    SUM(thought_tokens) AS t_tokens,
+                    SUM(COALESCE(total_cost, 0)) AS total_cost,
+                    SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
+                FROM llm_call_logs
+                WHERE model IS NOT NULL AND model != ''\
+                """
+                        + dateFilter
+                        + " GROUP BY model, gateway_cache_status";
         return runRows(sql, params);
     }
 
     /** Per-model token sums for one user over the optional half-open UTC date range. */
-    public List<Map<String, Object>> userModelTokenRows(UUID userId, LocalDate startDate,
-        LocalDate endDate) {
+    public List<Map<String, Object>> userModelTokenRows(
+            UUID userId, LocalDate startDate, LocalDate endDate) {
         Map<String, Object> params = new HashMap<>();
         params.put("userId", userId);
         String dateFilter =
-            new CostFilters(params).dateRange("created_at", startDate, endDate).sql();
-        String sql = """
-            SELECT
-                model,
-                gateway_cache_status,
-                SUM(prompt_tokens) AS p_tokens,
-                SUM(completion_tokens) AS c_tokens,
-                SUM(cached_tokens) AS ca_tokens,
-                SUM(thought_tokens) AS t_tokens,
-                SUM(COALESCE(total_cost, 0)) AS total_cost,
-                SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
-            FROM llm_call_logs
-            WHERE model IS NOT NULL AND model != '' AND user_id = :userId""" + dateFilter
-            + " GROUP BY model, gateway_cache_status";
+                new CostFilters(params).dateRange("created_at", startDate, endDate).sql();
+        String sql =
+                """
+                SELECT
+                    model,
+                    gateway_cache_status,
+                    SUM(prompt_tokens) AS p_tokens,
+                    SUM(completion_tokens) AS c_tokens,
+                    SUM(cached_tokens) AS ca_tokens,
+                    SUM(thought_tokens) AS t_tokens,
+                    SUM(COALESCE(total_cost, 0)) AS total_cost,
+                    SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
+                FROM llm_call_logs
+                WHERE model IS NOT NULL AND model != '' AND user_id = :userId\
+                """
+                        + dateFilter
+                        + " GROUP BY model, gateway_cache_status";
         return runRows(sql, params);
     }
 
     /** Per-model token sums for one conversation over the optional half-open UTC date range. */
-    public List<Map<String, Object>> conversationModelTokenRows(UUID conversationId,
-        LocalDate startDate, LocalDate endDate) {
+    public List<Map<String, Object>> conversationModelTokenRows(
+            UUID conversationId, LocalDate startDate, LocalDate endDate) {
         Map<String, Object> params = new HashMap<>();
         params.put("convId", conversationId);
         String dateFilter =
-            new CostFilters(params).dateRange("created_at", startDate, endDate).sql();
-        String sql = """
-            SELECT
-                model,
-                gateway_cache_status,
-                SUM(prompt_tokens) AS p_tokens,
-                SUM(completion_tokens) AS c_tokens,
-                SUM(cached_tokens) AS ca_tokens,
-                SUM(thought_tokens) AS t_tokens,
-                SUM(COALESCE(total_cost, 0)) AS total_cost,
-                SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
-            FROM llm_call_logs
-            WHERE model IS NOT NULL AND model != '' AND conversation_id = :convId""" + dateFilter
-            + " GROUP BY model, gateway_cache_status";
+                new CostFilters(params).dateRange("created_at", startDate, endDate).sql();
+        String sql =
+                """
+                SELECT
+                    model,
+                    gateway_cache_status,
+                    SUM(prompt_tokens) AS p_tokens,
+                    SUM(completion_tokens) AS c_tokens,
+                    SUM(cached_tokens) AS ca_tokens,
+                    SUM(thought_tokens) AS t_tokens,
+                    SUM(COALESCE(total_cost, 0)) AS total_cost,
+                    SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
+                FROM llm_call_logs
+                WHERE model IS NOT NULL AND model != '' AND conversation_id = :convId\
+                """
+                        + dateFilter
+                        + " GROUP BY model, gateway_cache_status";
         return runRows(sql, params);
     }
 
@@ -163,44 +184,48 @@ public class CostQueryRepository {
     public List<Map<String, Object>> agentRunModelTokenRows(UUID agentRunId) {
         Map<String, Object> params = new HashMap<>();
         params.put("runId", agentRunId);
-        String sql = """
-            SELECT
-                model,
-                gateway_cache_status,
-                SUM(prompt_tokens) AS p_tokens,
-                SUM(completion_tokens) AS c_tokens,
-                SUM(cached_tokens) AS ca_tokens,
-                SUM(thought_tokens) AS t_tokens,
-                SUM(COALESCE(total_cost, 0)) AS total_cost,
-                SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
-            FROM llm_call_logs
-            WHERE model IS NOT NULL AND model != '' AND agent_run_id = :runId
-            GROUP BY model, gateway_cache_status
-            """;
+        String sql =
+                """
+                SELECT
+                    model,
+                    gateway_cache_status,
+                    SUM(prompt_tokens) AS p_tokens,
+                    SUM(completion_tokens) AS c_tokens,
+                    SUM(cached_tokens) AS ca_tokens,
+                    SUM(thought_tokens) AS t_tokens,
+                    SUM(COALESCE(total_cost, 0)) AS total_cost,
+                    SUM(COALESCE(cost_avoided, 0)) AS cost_avoided
+                FROM llm_call_logs
+                WHERE model IS NOT NULL AND model != '' AND agent_run_id = :runId
+                GROUP BY model, gateway_cache_status
+                """;
         return runRows(sql, params);
     }
 
     /** Per-model token sums for one MAS profile (joins agent_runs) over the optional date range. */
-    public List<Map<String, Object>> masProfileModelTokenRows(String profileName,
-        LocalDate startDate, LocalDate endDate) {
+    public List<Map<String, Object>> masProfileModelTokenRows(
+            String profileName, LocalDate startDate, LocalDate endDate) {
         Map<String, Object> params = new HashMap<>();
         params.put("profileName", profileName);
         String dateFilter =
-            new CostFilters(params).dateRange("l.created_at", startDate, endDate).sql();
-        String sql = """
-            SELECT
-                l.model,
-                l.gateway_cache_status AS gateway_cache_status,
-                SUM(l.prompt_tokens) AS p_tokens,
-                SUM(l.completion_tokens) AS c_tokens,
-                SUM(l.cached_tokens) AS ca_tokens,
-                SUM(l.thought_tokens) AS t_tokens,
-                SUM(COALESCE(l.total_cost, 0)) AS total_cost,
-                SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
-            FROM llm_call_logs l
-            JOIN agent_runs ar ON l.agent_run_id = ar.id
-            WHERE l.model IS NOT NULL AND l.model != '' AND ar.profile_name = :profileName"""
-            + dateFilter + " GROUP BY l.model, l.gateway_cache_status";
+                new CostFilters(params).dateRange("l.created_at", startDate, endDate).sql();
+        String sql =
+                """
+                SELECT
+                    l.model,
+                    l.gateway_cache_status AS gateway_cache_status,
+                    SUM(l.prompt_tokens) AS p_tokens,
+                    SUM(l.completion_tokens) AS c_tokens,
+                    SUM(l.cached_tokens) AS ca_tokens,
+                    SUM(l.thought_tokens) AS t_tokens,
+                    SUM(COALESCE(l.total_cost, 0)) AS total_cost,
+                    SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
+                FROM llm_call_logs l
+                JOIN agent_runs ar ON l.agent_run_id = ar.id
+                WHERE l.model IS NOT NULL AND l.model != '' AND ar.profile_name = :profileName\
+                """
+                        + dateFilter
+                        + " GROUP BY l.model, l.gateway_cache_status";
         return runRows(sql, params);
     }
 
@@ -209,33 +234,38 @@ public class CostQueryRepository {
      * created_at), ordered oldest-first.
      */
     public List<Map<String, Object>> messageCostRows(UUID conversationId) {
-        String sql = """
-            SELECT
-                l.id,
-                COALESCE(l.role, 'assistant') AS role,
-                l.model AS effective_model,
-                COALESCE(l.prompt_tokens, 0) AS prompt_tokens,
-                COALESCE(l.completion_tokens, 0) AS completion_tokens,
-                COALESCE(l.cached_tokens, 0) AS cached_tokens,
-                COALESCE(l.thought_tokens, 0) AS thought_tokens,
-                l.gateway_cache_status AS gateway_cache_status,
-                COALESCE(l.total_cost, 0) AS total_cost,
-                COALESCE(l.cost_avoided, 0) AS cost_avoided,
-                l.created_at
-            FROM llm_call_logs l
-            WHERE l.conversation_id = :convId
-            ORDER BY l.created_at ASC
-            """;
+        String sql =
+                """
+                SELECT
+                    l.id,
+                    COALESCE(l.role, 'assistant') AS role,
+                    l.model AS effective_model,
+                    COALESCE(l.prompt_tokens, 0) AS prompt_tokens,
+                    COALESCE(l.completion_tokens, 0) AS completion_tokens,
+                    COALESCE(l.cached_tokens, 0) AS cached_tokens,
+                    COALESCE(l.thought_tokens, 0) AS thought_tokens,
+                    l.gateway_cache_status AS gateway_cache_status,
+                    COALESCE(l.total_cost, 0) AS total_cost,
+                    COALESCE(l.cost_avoided, 0) AS cost_avoided,
+                    l.created_at
+                FROM llm_call_logs l
+                WHERE l.conversation_id = :convId
+                ORDER BY l.created_at ASC
+                """;
         return jdbcClient.sql(sql).param("convId", conversationId).query().listOfRows();
     }
 
     /** Per-model call counts over all non-empty models (drives the used-models pricing status). */
     public List<Map<String, Object>> modelUsageCounts() {
-        return jdbcClient.sql("""
-            SELECT model, COUNT(*) AS cnt FROM llm_call_logs
-            WHERE model IS NOT NULL AND model != ''
-            GROUP BY model
-            """).query().listOfRows();
+        return jdbcClient
+                .sql(
+                        """
+                        SELECT model, COUNT(*) AS cnt FROM llm_call_logs
+                        WHERE model IS NOT NULL AND model != ''
+                        GROUP BY model
+                        """)
+                .query()
+                .listOfRows();
     }
 
     // -----------------------------------------------------------------------------------------------
@@ -246,7 +276,7 @@ public class CostQueryRepository {
 
     /** Shared SELECT/FROM/WHERE prefix for the per-call explorer queries (RAW + MESSAGE). */
     private static final String EXPLORER_CALL_SELECT =
-        """
+            """
             SELECT
                 l.id AS item_id,
                 l.message_id AS message_id,
@@ -279,29 +309,46 @@ public class CostQueryRepository {
             LEFT JOIN messages m ON l.message_id = m.id
             LEFT JOIN agent_runs ar ON l.agent_run_id = ar.id
             LEFT JOIN users u ON COALESCE(l.user_id, c.user_id) = u.id
-            WHERE l.model IS NOT NULL AND l.model != ''""";
+            WHERE l.model IS NOT NULL AND l.model != ''\
+            """;
 
-    private String explorerCallFilters(Map<String, Object> params, LocalDate startDate,
-        LocalDate endDate, List<String> models, List<UUID> userIds, List<String> sources,
-        List<String> playbooks) {
-        return new CostFilters(params).dateRange("l.created_at", startDate, endDate)
-            .in("l.model", "models", models)
-            .in("COALESCE(l.user_id, c.user_id)", "userIds", userIds)
-            .in("COALESCE(l.role, l.source)", "sources", sources)
-            .in("COALESCE(ar.profile_name, m.playbook, c.settings->>'chat-prompt', c.settings->>'orchestrator-profile', c.settings->>'playbook', c.settings->>'profile')",
-                "playbooks", playbooks)
-            .sql();
+    private String explorerCallFilters(
+            Map<String, Object> params,
+            LocalDate startDate,
+            LocalDate endDate,
+            List<String> models,
+            List<UUID> userIds,
+            List<String> sources,
+            List<String> playbooks) {
+        return new CostFilters(params)
+                .dateRange("l.created_at", startDate, endDate)
+                .in("l.model", "models", models)
+                .in("COALESCE(l.user_id, c.user_id)", "userIds", userIds)
+                .in("COALESCE(l.role, l.source)", "sources", sources)
+                .in(
+                        "COALESCE(ar.profile_name, m.playbook, c.settings->>'chat-prompt', c.settings->>'orchestrator-profile', c.settings->>'playbook', c.settings->>'profile')",
+                        "playbooks",
+                        playbooks)
+                .sql();
     }
 
     /** Per-call explorer rows (MESSAGE view), newest-first, capped at {@code rowCap}. */
-    public List<Map<String, Object>> explorerCallRows(LocalDate startDate, LocalDate endDate,
-        List<String> models, List<UUID> userIds, List<String> sources, List<String> playbooks,
-        int rowCap) {
+    public List<Map<String, Object>> explorerCallRows(
+            LocalDate startDate,
+            LocalDate endDate,
+            List<String> models,
+            List<UUID> userIds,
+            List<String> sources,
+            List<String> playbooks,
+            int rowCap) {
         Map<String, Object> params = new HashMap<>();
         String filters =
-            explorerCallFilters(params, startDate, endDate, models, userIds, sources, playbooks);
+                explorerCallFilters(
+                        params, startDate, endDate, models, userIds, sources, playbooks);
         String sql =
-            EXPLORER_CALL_SELECT + filters + " ORDER BY l.created_at DESC LIMIT :explorerRowCap";
+                EXPLORER_CALL_SELECT
+                        + filters
+                        + " ORDER BY l.created_at DESC LIMIT :explorerRowCap";
         params.put("explorerRowCap", rowCap);
         return runRows(sql, params);
     }
@@ -313,37 +360,56 @@ public class CostQueryRepository {
      * ({@code (l.created_at, l.id) < (:cursorCreatedAt, :cursorId)}). Fetches up to {@code limit}
      * rows; the service passes {@code pageSize + 1} so it can detect whether a further page exists.
      */
-    public List<Map<String, Object>> explorerCallRowsPaged(LocalDate startDate, LocalDate endDate,
-        List<String> models, List<UUID> userIds, List<String> sources, List<String> playbooks,
-        Instant cursorCreatedAt, UUID cursorId, int limit) {
+    public List<Map<String, Object>> explorerCallRowsPaged(
+            LocalDate startDate,
+            LocalDate endDate,
+            List<String> models,
+            List<UUID> userIds,
+            List<String> sources,
+            List<String> playbooks,
+            Instant cursorCreatedAt,
+            UUID cursorId,
+            int limit) {
         Map<String, Object> params = new HashMap<>();
         String filters =
-            explorerCallFilters(params, startDate, endDate, models, userIds, sources, playbooks);
+                explorerCallFilters(
+                        params, startDate, endDate, models, userIds, sources, playbooks);
         if (cursorCreatedAt != null && cursorId != null) {
             filters += " AND (l.created_at, l.id) < (:cursorCreatedAt, :cursorId)";
             params.put("cursorCreatedAt", cursorCreatedAt.atOffset(ZoneOffset.UTC));
             params.put("cursorId", cursorId);
         }
         String sql =
-            EXPLORER_CALL_SELECT + filters + " ORDER BY l.created_at DESC, l.id DESC LIMIT :limit";
+                EXPLORER_CALL_SELECT
+                        + filters
+                        + " ORDER BY l.created_at DESC, l.id DESC LIMIT :limit";
         params.put("limit", limit);
         return runRows(sql, params);
     }
 
     /** SQL-grouped per-conversation explorer rows, capped at {@code rowCap}. */
-    public List<Map<String, Object>> explorerConversationRows(LocalDate startDate,
-        LocalDate endDate, List<String> models, List<UUID> userIds, List<String> sources,
-        List<String> playbooks, int rowCap) {
+    public List<Map<String, Object>> explorerConversationRows(
+            LocalDate startDate,
+            LocalDate endDate,
+            List<String> models,
+            List<UUID> userIds,
+            List<String> sources,
+            List<String> playbooks,
+            int rowCap) {
         Map<String, Object> params = new HashMap<>();
-        String filters = new CostFilters(params).dateRange("l.created_at", startDate, endDate)
-            .in("l.model", "models", models)
-            .in("COALESCE(l.user_id, c.user_id)", "userIds", userIds)
-            .in("COALESCE(l.role, l.source)", "sources", sources)
-            .in("COALESCE(ar.profile_name, c.settings->>'chat-prompt', c.settings->>'orchestrator-profile', c.settings->>'playbook', c.settings->>'profile')",
-                "playbooks", playbooks)
-            .sql();
+        String filters =
+                new CostFilters(params)
+                        .dateRange("l.created_at", startDate, endDate)
+                        .in("l.model", "models", models)
+                        .in("COALESCE(l.user_id, c.user_id)", "userIds", userIds)
+                        .in("COALESCE(l.role, l.source)", "sources", sources)
+                        .in(
+                                "COALESCE(ar.profile_name, c.settings->>'chat-prompt', c.settings->>'orchestrator-profile', c.settings->>'playbook', c.settings->>'profile')",
+                                "playbooks",
+                                playbooks)
+                        .sql();
         String sql =
-            """
+                """
                 SELECT
                     c.id AS conv_id,
                     c.title,
@@ -373,21 +439,22 @@ public class CostQueryRepository {
                 JOIN conversations c ON l.conversation_id = c.id
                 LEFT JOIN agent_runs ar ON l.agent_run_id = ar.id
                 LEFT JOIN users u ON COALESCE(l.user_id, c.user_id) = u.id
-                WHERE l.model IS NOT NULL AND l.model != ''"""
-                + filters
-                + " GROUP BY c.id, c.title, u.display_name, c.updated_at, l.model, ar.profile_name, l.source, l.gateway_cache_status, c.settings->>'chat-prompt', c.settings->>'orchestrator-profile', c.settings->>'playbook', c.settings->>'profile', CASE WHEN l.agent_run_id IS NOT NULL THEN 'MAS_STEP' ELSE 'MESSAGE' END"
-                + " ORDER BY c.updated_at DESC, c.id, l.model LIMIT :explorerRowCap";
+                WHERE l.model IS NOT NULL AND l.model != ''\
+                """
+                        + filters
+                        + " GROUP BY c.id, c.title, u.display_name, c.updated_at, l.model, ar.profile_name, l.source, l.gateway_cache_status, c.settings->>'chat-prompt', c.settings->>'orchestrator-profile', c.settings->>'playbook', c.settings->>'profile', CASE WHEN l.agent_run_id IS NOT NULL THEN 'MAS_STEP' ELSE 'MESSAGE' END"
+                        + " ORDER BY c.updated_at DESC, c.id, l.model LIMIT :explorerRowCap";
         params.put("explorerRowCap", rowCap);
         return runRows(sql, params);
     }
 
     /**
-     * Typed, parameterized builder for the cost-query WHERE filters (moved verbatim from
-     * {@code CostCalculationService}; replaces the former magic-comment SQL-templating DSL and its
-     * unsafe regex {@code appendReplacement}). Each call appends a parameterized {@code AND …}
-     * fragment and binds its value into the shared param map; the caller splices {@link #sql()}
-     * into its query at the point the filters belong. Distinct from {@link #dateFilter} (used by
-     * the placeholder-token UNION queries below) — this appends at the WHERE tail.
+     * Typed, parameterized builder for the cost-query WHERE filters (moved verbatim from {@code
+     * CostCalculationService}; replaces the former magic-comment SQL-templating DSL and its unsafe
+     * regex {@code appendReplacement}). Each call appends a parameterized {@code AND …} fragment
+     * and binds its value into the shared param map; the caller splices {@link #sql()} into its
+     * query at the point the filters belong. Distinct from {@link #dateFilter} (used by the
+     * placeholder-token UNION queries below) — this appends at the WHERE tail.
      */
     private static final class CostFilters {
         private final Map<String, Object> params;
@@ -433,52 +500,58 @@ public class CostQueryRepository {
     public List<Map<String, Object>> topUserTokenRows(LocalDate startDate, LocalDate endDate) {
         Map<String, Object> params = new HashMap<>();
         String dateFilter =
-            new CostFilters(params).dateRange("l.created_at", startDate, endDate).sql();
-        String sql = """
-            SELECT
-                u.id AS user_id,
-                u.display_name,
-                u.email,
-                l.model,
-                l.gateway_cache_status,
-                SUM(COALESCE(l.prompt_tokens, 0)) AS p_tokens,
-                SUM(COALESCE(l.completion_tokens, 0)) AS c_tokens,
-                SUM(COALESCE(l.cached_tokens, 0)) AS ca_tokens,
-                SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens,
-                SUM(COALESCE(l.total_cost, 0)) AS total_cost,
-                SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
-            FROM llm_call_logs l
-            LEFT JOIN conversations c ON l.conversation_id = c.id
-            JOIN users u ON COALESCE(l.user_id, c.user_id) = u.id
-            WHERE l.model IS NOT NULL AND l.model != ''""" + dateFilter
-            + " GROUP BY u.id, u.display_name, u.email, l.model, l.gateway_cache_status";
+                new CostFilters(params).dateRange("l.created_at", startDate, endDate).sql();
+        String sql =
+                """
+                SELECT
+                    u.id AS user_id,
+                    u.display_name,
+                    u.email,
+                    l.model,
+                    l.gateway_cache_status,
+                    SUM(COALESCE(l.prompt_tokens, 0)) AS p_tokens,
+                    SUM(COALESCE(l.completion_tokens, 0)) AS c_tokens,
+                    SUM(COALESCE(l.cached_tokens, 0)) AS ca_tokens,
+                    SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens,
+                    SUM(COALESCE(l.total_cost, 0)) AS total_cost,
+                    SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
+                FROM llm_call_logs l
+                LEFT JOIN conversations c ON l.conversation_id = c.id
+                JOIN users u ON COALESCE(l.user_id, c.user_id) = u.id
+                WHERE l.model IS NOT NULL AND l.model != ''\
+                """
+                        + dateFilter
+                        + " GROUP BY u.id, u.display_name, u.email, l.model, l.gateway_cache_status";
         return runRows(sql, params);
     }
 
     /** Per (conversation × model) token sums over the optional half-open UTC date range. */
-    public List<Map<String, Object>> topConversationTokenRows(LocalDate startDate,
-        LocalDate endDate) {
+    public List<Map<String, Object>> topConversationTokenRows(
+            LocalDate startDate, LocalDate endDate) {
         Map<String, Object> params = new HashMap<>();
         String dateFilter =
-            new CostFilters(params).dateRange("l.created_at", startDate, endDate).sql();
-        String sql = """
-            SELECT
-                c.id AS conv_id,
-                c.title,
-                u.display_name AS user_name,
-                l.model,
-                l.gateway_cache_status,
-                SUM(COALESCE(l.prompt_tokens, 0)) AS p_tokens,
-                SUM(COALESCE(l.completion_tokens, 0)) AS c_tokens,
-                SUM(COALESCE(l.cached_tokens, 0)) AS ca_tokens,
-                SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens,
-                SUM(COALESCE(l.total_cost, 0)) AS total_cost,
-                SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
-            FROM llm_call_logs l
-            JOIN conversations c ON l.conversation_id = c.id
-            JOIN users u ON c.user_id = u.id
-            WHERE l.model IS NOT NULL AND l.model != ''""" + dateFilter
-            + " GROUP BY c.id, c.title, u.display_name, l.model, l.gateway_cache_status";
+                new CostFilters(params).dateRange("l.created_at", startDate, endDate).sql();
+        String sql =
+                """
+                SELECT
+                    c.id AS conv_id,
+                    c.title,
+                    u.display_name AS user_name,
+                    l.model,
+                    l.gateway_cache_status,
+                    SUM(COALESCE(l.prompt_tokens, 0)) AS p_tokens,
+                    SUM(COALESCE(l.completion_tokens, 0)) AS c_tokens,
+                    SUM(COALESCE(l.cached_tokens, 0)) AS ca_tokens,
+                    SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens,
+                    SUM(COALESCE(l.total_cost, 0)) AS total_cost,
+                    SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
+                FROM llm_call_logs l
+                JOIN conversations c ON l.conversation_id = c.id
+                JOIN users u ON c.user_id = u.id
+                WHERE l.model IS NOT NULL AND l.model != ''\
+                """
+                        + dateFilter
+                        + " GROUP BY c.id, c.title, u.display_name, l.model, l.gateway_cache_status";
         return runRows(sql, params);
     }
 
@@ -486,22 +559,25 @@ public class CostQueryRepository {
     public List<Map<String, Object>> masProfileTokenRows(LocalDate startDate, LocalDate endDate) {
         Map<String, Object> params = new HashMap<>();
         String dateFilter =
-            new CostFilters(params).dateRange("l.created_at", startDate, endDate).sql();
-        String sql = """
-            SELECT
-                ar.profile_name,
-                l.model,
-                l.gateway_cache_status,
-                SUM(COALESCE(l.prompt_tokens, 0)) AS p_tokens,
-                SUM(COALESCE(l.completion_tokens, 0)) AS c_tokens,
-                SUM(COALESCE(l.cached_tokens, 0)) AS ca_tokens,
-                SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens,
-                SUM(COALESCE(l.total_cost, 0)) AS total_cost,
-                SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
-            FROM llm_call_logs l
-            JOIN agent_runs ar ON l.agent_run_id = ar.id
-            WHERE l.model IS NOT NULL AND l.model != '' AND ar.profile_name IS NOT NULL"""
-            + dateFilter + " GROUP BY ar.profile_name, l.model, l.gateway_cache_status";
+                new CostFilters(params).dateRange("l.created_at", startDate, endDate).sql();
+        String sql =
+                """
+                SELECT
+                    ar.profile_name,
+                    l.model,
+                    l.gateway_cache_status,
+                    SUM(COALESCE(l.prompt_tokens, 0)) AS p_tokens,
+                    SUM(COALESCE(l.completion_tokens, 0)) AS c_tokens,
+                    SUM(COALESCE(l.cached_tokens, 0)) AS ca_tokens,
+                    SUM(COALESCE(l.thought_tokens, 0)) AS t_tokens,
+                    SUM(COALESCE(l.total_cost, 0)) AS total_cost,
+                    SUM(COALESCE(l.cost_avoided, 0)) AS cost_avoided
+                FROM llm_call_logs l
+                JOIN agent_runs ar ON l.agent_run_id = ar.id
+                WHERE l.model IS NOT NULL AND l.model != '' AND ar.profile_name IS NOT NULL\
+                """
+                        + dateFilter
+                        + " GROUP BY ar.profile_name, l.model, l.gateway_cache_status";
         return runRows(sql, params);
     }
 
@@ -512,5 +588,4 @@ public class CostQueryRepository {
         }
         return query.query().listOfRows();
     }
-
 }

@@ -20,8 +20,9 @@ class HierarchyUtilsTest {
 
     @Test
     void testSplitHeadingPath() {
-        assertEquals(List.of("Chapter 1", "Section 2", "Intro"),
-            HierarchyUtils.splitHeadingPath("Chapter 1 > Section 2 > Intro (part 1/2)"));
+        assertEquals(
+                List.of("Chapter 1", "Section 2", "Intro"),
+                HierarchyUtils.splitHeadingPath("Chapter 1 > Section 2 > Intro (part 1/2)"));
         assertEquals(List.of(), HierarchyUtils.splitHeadingPath(""));
         assertEquals(List.of(), HierarchyUtils.splitHeadingPath(null));
     }
@@ -29,19 +30,20 @@ class HierarchyUtilsTest {
     @Test
     void testNormalizeSegment() {
         // Test non-breaking space (U+00A0) normalization to regular space
-        assertEquals("one identity manager",
-            HierarchyUtils.normalizeSegment("One\u00a0Identity\u00a0Manager"));
-        assertEquals("some section text",
-            HierarchyUtils.normalizeSegment("  Some   Section  Text  "));
+        assertEquals(
+                "one identity manager",
+                HierarchyUtils.normalizeSegment("One\u00a0Identity\u00a0Manager"));
+        assertEquals(
+                "some section text", HierarchyUtils.normalizeSegment("  Some   Section  Text  "));
         assertEquals("", HierarchyUtils.normalizeSegment(null));
     }
 
     @Test
     void testStripBreadcrumb() {
         String withBreadcrumb =
-            "> Section path: Chapter 1 > Section 2\nActual content here\nMore lines";
-        assertEquals("Actual content here\nMore lines",
-            HierarchyUtils.stripBreadcrumb(withBreadcrumb));
+                "> Section path: Chapter 1 > Section 2\nActual content here\nMore lines";
+        assertEquals(
+                "Actual content here\nMore lines", HierarchyUtils.stripBreadcrumb(withBreadcrumb));
 
         String noBreadcrumb = "No breadcrumb text";
         assertEquals("No breadcrumb text", HierarchyUtils.stripBreadcrumb(noBreadcrumb));
@@ -53,7 +55,8 @@ class HierarchyUtilsTest {
         List<String> target = List.of("Chapter 1", "Section 2");
 
         assertTrue(
-            HierarchyUtils.isSubpathOf(target, List.of("Chapter 1", "Section 2", "Subsection A")));
+                HierarchyUtils.isSubpathOf(
+                        target, List.of("Chapter 1", "Section 2", "Subsection A")));
         assertTrue(HierarchyUtils.isSubpathOf(target, List.of("chapter 1", "section 2")));
 
         assertFalse(HierarchyUtils.isSubpathOf(target, List.of("Chapter 1")));
@@ -65,8 +68,9 @@ class HierarchyUtilsTest {
         List<String> target = List.of("Chapter 1", "Section 2");
 
         assertTrue(HierarchyUtils.isExactPathMatch(target, List.of("chapter 1", "section 2")));
-        assertFalse(HierarchyUtils.isExactPathMatch(target,
-            List.of("Chapter 1", "Section 2", "Subsection A")));
+        assertFalse(
+                HierarchyUtils.isExactPathMatch(
+                        target, List.of("Chapter 1", "Section 2", "Subsection A")));
         assertFalse(HierarchyUtils.isExactPathMatch(target, List.of("Chapter 1")));
     }
 }

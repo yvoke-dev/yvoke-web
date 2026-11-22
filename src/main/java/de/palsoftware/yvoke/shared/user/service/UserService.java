@@ -50,8 +50,11 @@ public class UserService {
             return;
         }
 
-        log.info("Syncing user to local DB: entraOid={}, email={}, displayName={}", entraOid, email,
-            displayName);
+        log.info(
+                "Syncing user to local DB: entraOid={}, email={}, displayName={}",
+                entraOid,
+                email,
+                displayName);
         userRepository.upsert(entraOid, email, displayName);
     }
 
@@ -70,9 +73,9 @@ public class UserService {
         RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
         if (attrs != null) {
             Object cachedObj =
-                attrs.getAttribute(REQUEST_CACHE_ATTR, RequestAttributes.SCOPE_REQUEST);
+                    attrs.getAttribute(REQUEST_CACHE_ATTR, RequestAttributes.SCOPE_REQUEST);
             if (cachedObj instanceof CachedUser cached
-                && Objects.equals(cached.entraOid(), entraOid)) {
+                    && Objects.equals(cached.entraOid(), entraOid)) {
                 return cached.user();
             }
         }
@@ -90,8 +93,10 @@ public class UserService {
         }
 
         if (attrs != null && resolved.isPresent()) {
-            attrs.setAttribute(REQUEST_CACHE_ATTR, new CachedUser(entraOid, resolved),
-                RequestAttributes.SCOPE_REQUEST);
+            attrs.setAttribute(
+                    REQUEST_CACHE_ATTR,
+                    new CachedUser(entraOid, resolved),
+                    RequestAttributes.SCOPE_REQUEST);
         }
         return resolved;
     }

@@ -27,15 +27,23 @@ public class ChatFeedbackServiceTest {
         chatConversationService = mock(ChatConversationService.class);
 
         chatFeedbackService =
-            new ChatFeedbackService(feedbackRepository, messageRepository, chatConversationService);
+                new ChatFeedbackService(
+                        feedbackRepository, messageRepository, chatConversationService);
     }
 
     @Test
     public void testSubmitFeedback() {
         UUID messageId = UUID.randomUUID();
         UUID conversationId = UUID.randomUUID();
-        Message message = new Message(messageId, conversationId, "assistant", "Response content",
-            Collections.emptyList(), Collections.emptyList(), Instant.now());
+        Message message =
+                new Message(
+                        messageId,
+                        conversationId,
+                        "assistant",
+                        "Response content",
+                        Collections.emptyList(),
+                        Collections.emptyList(),
+                        Instant.now());
 
         when(messageRepository.findById(messageId)).thenReturn(Optional.of(message));
 
@@ -48,30 +56,44 @@ public class ChatFeedbackServiceTest {
     /**
      * A thumbs-up with no comment MUST be persisted.
      *
-     * <p>
-     * It used to be discarded: this method returned empty when no row existed yet, and the caller
-     * rendered the vote as transient UI state — so the user clicked the thumb, watched it light up,
-     * and lost it on the next page load. Two consequences. The interface showed a vote it had not
-     * saved, which is the part that matters to the person using it. And the desktop API stores
-     * exactly this case ({@code DesktopSyncService.submitFeedback} demands a comment only for a
-     * NEGATIVE rating), so one satisfaction ratio was being computed over two different collection
-     * rules, systematically undercounting web positives.
+     * <p>It used to be discarded: this method returned empty when no row existed yet, and the
+     * caller rendered the vote as transient UI state — so the user clicked the thumb, watched it
+     * light up, and lost it on the next page load. Two consequences. The interface showed a vote it
+     * had not saved, which is the part that matters to the person using it. And the desktop API
+     * stores exactly this case ({@code DesktopSyncService.submitFeedback} demands a comment only
+     * for a NEGATIVE rating), so one satisfaction ratio was being computed over two different
+     * collection rules, systematically undercounting web positives.
      *
-     * <p>
-     * The stated reason for the old behaviour does not cover it: the comment-in-the-URL problem the
-     * javadoc referred to was about free text reaching access logs, not about whether a bare rating
-     * is stored.
+     * <p>The stated reason for the old behaviour does not cover it: the comment-in-the-URL problem
+     * the javadoc referred to was about free text reaching access logs, not about whether a bare
+     * rating is stored.
      */
     @Test
     public void aBareThumbsUpIsPersistedRatherThanRenderedAsTransientUiState() {
         UUID messageId = UUID.randomUUID();
         UUID conversationId = UUID.randomUUID();
-        Message message = new Message(messageId, conversationId, "assistant", "Response content",
-            Collections.emptyList(), Collections.emptyList(), Instant.now());
+        Message message =
+                new Message(
+                        messageId,
+                        conversationId,
+                        "assistant",
+                        "Response content",
+                        Collections.emptyList(),
+                        Collections.emptyList(),
+                        Instant.now());
         when(messageRepository.findById(messageId)).thenReturn(Optional.of(message));
         // No existing row: this is the user's FIRST interaction with the rating buttons.
-        when(feedbackRepository.findByMessageId(messageId)).thenReturn(Optional.empty(), Optional
-            .of(new Feedback(UUID.randomUUID(), messageId, 1, null, Instant.now(), Instant.now())));
+        when(feedbackRepository.findByMessageId(messageId))
+                .thenReturn(
+                        Optional.empty(),
+                        Optional.of(
+                                new Feedback(
+                                        UUID.randomUUID(),
+                                        messageId,
+                                        1,
+                                        null,
+                                        Instant.now(),
+                                        Instant.now())));
 
         Optional<Feedback> result = chatFeedbackService.submitRatingPreservingComment(messageId, 1);
 
@@ -85,12 +107,26 @@ public class ChatFeedbackServiceTest {
     public void changingTheVoteKeepsTheCommentAlreadyStored() {
         UUID messageId = UUID.randomUUID();
         UUID conversationId = UUID.randomUUID();
-        Message message = new Message(messageId, conversationId, "assistant", "Response content",
-            Collections.emptyList(), Collections.emptyList(), Instant.now());
+        Message message =
+                new Message(
+                        messageId,
+                        conversationId,
+                        "assistant",
+                        "Response content",
+                        Collections.emptyList(),
+                        Collections.emptyList(),
+                        Instant.now());
         when(messageRepository.findById(messageId)).thenReturn(Optional.of(message));
         when(feedbackRepository.findByMessageId(messageId))
-            .thenReturn(Optional.of(new Feedback(UUID.randomUUID(), messageId, 1, "was helpful",
-                Instant.now(), Instant.now())));
+                .thenReturn(
+                        Optional.of(
+                                new Feedback(
+                                        UUID.randomUUID(),
+                                        messageId,
+                                        1,
+                                        "was helpful",
+                                        Instant.now(),
+                                        Instant.now())));
 
         chatFeedbackService.submitRatingPreservingComment(messageId, -1);
 
@@ -101,10 +137,23 @@ public class ChatFeedbackServiceTest {
     public void testGetFeedback() {
         UUID messageId = UUID.randomUUID();
         UUID conversationId = UUID.randomUUID();
-        Message message = new Message(messageId, conversationId, "assistant", "Response content",
-            Collections.emptyList(), Collections.emptyList(), Instant.now());
-        Feedback mockFeedback = new Feedback(UUID.randomUUID(), messageId, 5, "Good answer",
-            Instant.now(), Instant.now());
+        Message message =
+                new Message(
+                        messageId,
+                        conversationId,
+                        "assistant",
+                        "Response content",
+                        Collections.emptyList(),
+                        Collections.emptyList(),
+                        Instant.now());
+        Feedback mockFeedback =
+                new Feedback(
+                        UUID.randomUUID(),
+                        messageId,
+                        5,
+                        "Good answer",
+                        Instant.now(),
+                        Instant.now());
 
         when(messageRepository.findById(messageId)).thenReturn(Optional.of(message));
         when(chatConversationService.canViewFeedback(conversationId)).thenReturn(true);

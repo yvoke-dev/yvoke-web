@@ -25,39 +25,57 @@ public class AuditLogRepository {
         this.objectMapper = objectMapper;
     }
 
-    public void log(String entraOid, String action, @Nullable String target,
-        @Nullable Map<String, Object> detail) {
+    public void log(
+            String entraOid,
+            String action,
+            @Nullable String target,
+            @Nullable Map<String, Object> detail) {
         UUID id = UUID.randomUUID();
         String detailJson = null;
         if (detail != null && !detail.isEmpty()) {
             try {
                 detailJson = objectMapper.writeValueAsString(detail);
             } catch (JsonProcessingException e) {
-                log.warn("Failed to serialize audit log details for action {}: {}", action, detail,
-                    e);
+                log.warn(
+                        "Failed to serialize audit log details for action {}: {}",
+                        action,
+                        detail,
+                        e);
             }
         }
 
-        String sql = """
-            INSERT INTO audit_log (id, entra_oid, action, target, detail, created_at)
-            VALUES (:id, :entraOid, :action, :target, :detail::jsonb, CURRENT_TIMESTAMP)
-            """;
+        String sql =
+                """
+                INSERT INTO audit_log (id, entra_oid, action, target, detail, created_at)
+                VALUES (:id, :entraOid, :action, :target, :detail::jsonb, CURRENT_TIMESTAMP)
+                """;
 
-        jdbcClient.sql(sql).param("id", id).param("entraOid", entraOid).param("action", action)
-            .param("target", target).param("detail", detailJson).update();
+        jdbcClient
+                .sql(sql)
+                .param("id", id)
+                .param("entraOid", entraOid)
+                .param("action", action)
+                .param("target", target)
+                .param("detail", detailJson)
+                .update();
         log.info("Audit Logged: id={}, action={}, target={}", id, action, target);
     }
 
     public List<AuditLog> listLogs(int limit, int offset) {
-        String sql = """
-            SELECT id, entra_oid, action, target, detail::text AS detail_text, created_at
-            FROM audit_log
-            ORDER BY created_at DESC, id ASC
-            LIMIT :limit OFFSET :offset
-            """;
+        String sql =
+                """
+                SELECT id, entra_oid, action, target, detail::text AS detail_text, created_at
+                FROM audit_log
+                ORDER BY created_at DESC, id ASC
+                LIMIT :limit OFFSET :offset
+                """;
 
-        return jdbcClient.sql(sql).param("limit", limit).param("offset", offset)
-            .query(new AuditLogRowMapper(objectMapper)).list();
+        return jdbcClient
+                .sql(sql)
+                .param("limit", limit)
+                .param("offset", offset)
+                .query(new AuditLogRowMapper(objectMapper))
+                .list();
     }
 
     public long countLogs() {

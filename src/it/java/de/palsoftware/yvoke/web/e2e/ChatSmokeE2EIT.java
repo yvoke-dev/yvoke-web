@@ -10,13 +10,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * Smoke tests proving the e2e loop end to end: Playwright -> real HTTP server -> Spring MVC +
- * Security + Thymeleaf -> Testcontainers Postgres, with a mocked
- * {@link de.palsoftware.yvoke.llm.core.service.LlmClient} driving the rendered answer.
+ * Security + Thymeleaf -> Testcontainers Postgres, with a mocked {@link
+ * de.palsoftware.yvoke.llm.core.service.LlmClient} driving the rendered answer.
  */
 class ChatSmokeE2EIT extends AbstractE2E {
 
-    @Autowired
-    private PlaybookService playbookService;
+    @Autowired private PlaybookService playbookService;
 
     @Test
     void userCanLogInAndReachChat() {
@@ -32,8 +31,17 @@ class ChatSmokeE2EIT extends AbstractE2E {
 
     @Test
     void mockedAssistantAnswerRendersInChat() {
-        playbookService.savePlaybook("e2e-playbook", "E2E Playbook", "Smoke-test playbook",
-            "Answer the question.", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook(
+                "e2e-playbook",
+                "E2E Playbook",
+                "Smoke-test playbook",
+                "Answer the question.",
+                List.of(),
+                false,
+                "specialist",
+                false,
+                "OIM",
+                1);
         stubAssistantReply("Mocked answer from the fake LlmClient.");
 
         loginAs("user");
@@ -52,7 +60,7 @@ class ChatSmokeE2EIT extends AbstractE2E {
 
         // Default transport is async polling (~3s); the mocked answer must appear in the thread.
         assertThat(page.locator("#chat-messages"))
-            .containsText("Mocked answer from the fake LlmClient.");
+                .containsText("Mocked answer from the fake LlmClient.");
         assertThat(page.locator("#chat-messages")).containsText("What is OIM?");
         assertThat(page.locator("#chat-messages .playbook-tag")).containsText("e2e-playbook v1");
     }

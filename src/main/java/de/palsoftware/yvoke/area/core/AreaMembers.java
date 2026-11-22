@@ -7,6 +7,12 @@ import java.util.List;
  * collections, the playbooks a user can pick (orchestrator and reviewer playbooks left out, as in
  * {@code list_playbooks}) and its multi-agent profiles.
  */
-public record AreaMembers(List<String>systemPrompts,List<String>collections,List<String>playbooks,List<String>profiles){
+public record AreaMembers(
+        List<String> systemPrompts,
+        List<String> collections,
+        List<String> playbooks,
+        List<String> profiles) {
 
-public static final AreaMembers NONE=new AreaMembers(List.of(),List.of(),List.of(),List.of());}
+    public static final AreaMembers NONE =
+            new AreaMembers(List.of(), List.of(), List.of(), List.of());
+}

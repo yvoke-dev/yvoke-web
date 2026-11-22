@@ -25,8 +25,8 @@ public class RagAdminViewServiceTest {
      * recorded pool size recover each lane's own rank.
      */
     private static RetrievalTelemetryRow row(List<UUID> retrieved) {
-        return new RetrievalTelemetryRow("{}", "{}", "{}", 2, 3, List.of(A, B, B, C, D),
-            List.of(B, A, C, D), retrieved);
+        return new RetrievalTelemetryRow(
+                "{}", "{}", "{}", 2, 3, List.of(A, B, B, C, D), List.of(B, A, C, D), retrieved);
     }
 
     @Test
@@ -57,12 +57,15 @@ public class RagAdminViewServiceTest {
 
         assertThat(trace.fusedTotal()).isEqualTo(4);
         assertThat(trace.isFusionTruncated()).isFalse();
-        assertThat(trace.fusionOrder()).extracting(LaneTraceRow::position).containsExactly(1, 2, 3,
-            4);
-        assertThat(trace.fusionOrder()).extracting(LaneTraceRow::semRank).containsExactly(2, 1,
-            null, null);
-        assertThat(trace.fusionOrder()).extracting(LaneTraceRow::ftRank).containsExactly(1, null, 2,
-            3);
+        assertThat(trace.fusionOrder())
+                .extracting(LaneTraceRow::position)
+                .containsExactly(1, 2, 3, 4);
+        assertThat(trace.fusionOrder())
+                .extracting(LaneTraceRow::semRank)
+                .containsExactly(2, 1, null, null);
+        assertThat(trace.fusionOrder())
+                .extracting(LaneTraceRow::ftRank)
+                .containsExactly(1, null, 2, 3);
     }
 
     /**
@@ -86,7 +89,8 @@ public class RagAdminViewServiceTest {
     @Test
     public void aSingleLaneSearchHasNoTraceRatherThanAPartialOne() {
         RetrievalTelemetryRow singleLane =
-            new RetrievalTelemetryRow("{}", "{}", "{}", 0, 2, List.of(A, B), List.of(), List.of(A));
+                new RetrievalTelemetryRow(
+                        "{}", "{}", "{}", 0, 2, List.of(A, B), List.of(), List.of(A));
 
         assertThat(RagAdminViewService.toLaneTrace(singleLane, 10).isEmpty()).isTrue();
     }
@@ -98,8 +102,9 @@ public class RagAdminViewServiceTest {
      */
     @Test
     public void aRowWhoseSnapshotDoesNotMatchItsPoolSizesYieldsNoTrace() {
-        RetrievalTelemetryRow mismatched = new RetrievalTelemetryRow("{}", "{}", "{}", 2, 3,
-            List.of(A, B, C), List.of(B, A, C), List.of(B));
+        RetrievalTelemetryRow mismatched =
+                new RetrievalTelemetryRow(
+                        "{}", "{}", "{}", 2, 3, List.of(A, B, C), List.of(B, A, C), List.of(B));
 
         assertThat(RagAdminViewService.toLaneTrace(mismatched, 10).isEmpty()).isTrue();
     }

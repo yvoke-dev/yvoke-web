@@ -49,12 +49,12 @@ public class KgGraphReadRepositoryTest {
 
         statementSpec = mock(JdbcClient.StatementSpec.class);
         entityQuerySpec =
-            (JdbcClient.MappedQuerySpec<KgEntity>) mock(JdbcClient.MappedQuerySpec.class);
+                (JdbcClient.MappedQuerySpec<KgEntity>) mock(JdbcClient.MappedQuerySpec.class);
         relQuerySpec =
-            (JdbcClient.MappedQuerySpec<KgRelationship>) mock(JdbcClient.MappedQuerySpec.class);
+                (JdbcClient.MappedQuerySpec<KgRelationship>) mock(JdbcClient.MappedQuerySpec.class);
         callQuerySpec = (JdbcClient.MappedQuerySpec<KgCall>) mock(JdbcClient.MappedQuerySpec.class);
         fkWalkQuerySpec =
-            (JdbcClient.MappedQuerySpec<KgWalk>) mock(JdbcClient.MappedQuerySpec.class);
+                (JdbcClient.MappedQuerySpec<KgWalk>) mock(JdbcClient.MappedQuerySpec.class);
         countQuerySpec = (JdbcClient.MappedQuerySpec<Long>) mock(JdbcClient.MappedQuerySpec.class);
 
         when(jdbcClient.sql(anyString())).thenReturn(statementSpec);
@@ -63,7 +63,7 @@ public class KgGraphReadRepositoryTest {
         when(statementSpec.query(any(RowMapper.class))).thenReturn(entityQuerySpec);
 
         JdbcClient.MappedQuerySpec<Object> objectQuerySpec =
-            (JdbcClient.MappedQuerySpec<Object>) mock(JdbcClient.MappedQuerySpec.class);
+                (JdbcClient.MappedQuerySpec<Object>) mock(JdbcClient.MappedQuerySpec.class);
         when(statementSpec.query(any(Class.class))).thenReturn(objectQuerySpec);
         when(objectQuerySpec.optional()).thenReturn(Optional.of(UUID.randomUUID()));
         when(objectQuerySpec.single()).thenReturn(1L);
@@ -90,8 +90,16 @@ public class KgGraphReadRepositoryTest {
 
     @Test
     public void testFuzzySearchEntitiesUsesEscapedLike() {
-        KgEntity mockRow = new KgEntity(UUID.randomUUID(), "OIM-DB", "TableA", "table", "9.3",
-            "Desc", Collections.emptyMap(), 0.9);
+        KgEntity mockRow =
+                new KgEntity(
+                        UUID.randomUUID(),
+                        "OIM-DB",
+                        "TableA",
+                        "table",
+                        "9.3",
+                        "Desc",
+                        Collections.emptyMap(),
+                        0.9);
         when(entityQuerySpec.list()).thenReturn(List.of(mockRow));
 
         kgRepository.fuzzySearchEntities("Table%A", 10, "9.3", "OIM-DB");
@@ -104,8 +112,16 @@ public class KgGraphReadRepositoryTest {
 
     @Test
     public void testFuzzySearchEntitiesSqlContainsEscape() {
-        KgEntity mockRow = new KgEntity(UUID.randomUUID(), "OIM-DB", "TableA", "table", "9.3",
-            "Desc", Collections.emptyMap(), 0.9);
+        KgEntity mockRow =
+                new KgEntity(
+                        UUID.randomUUID(),
+                        "OIM-DB",
+                        "TableA",
+                        "table",
+                        "9.3",
+                        "Desc",
+                        Collections.emptyMap(),
+                        0.9);
         when(entityQuerySpec.list()).thenReturn(List.of(mockRow));
 
         kgRepository.fuzzySearchEntities("TableA", 10, "9.3", "OIM-DB");
@@ -132,8 +148,9 @@ public class KgGraphReadRepositoryTest {
         // Compared with whitespace collapsed — the clause wraps, and its indentation is not the
         // contract.
         assertThat(sqlCaptor.getValue().replaceAll("\\s+", " "))
-            .contains("ORDER BY similarity DESC, length(e.name) ASC, lower(e.name) ASC, "
-                + "coalesce(e.kind, '') ASC, e.tags ASC, e.id ASC");
+                .contains(
+                        "ORDER BY similarity DESC, length(e.name) ASC, lower(e.name) ASC, "
+                                + "coalesce(e.kind, '') ASC, e.tags ASC, e.id ASC");
     }
 
     @Test
@@ -147,15 +164,15 @@ public class KgGraphReadRepositoryTest {
         // tags sits before id: two rows differing only by product version must sort adjacently and
         // stably, or a pair straddles a page boundary and looks like two unrelated entities.
         assertThat(sqlCaptor.getValue())
-            .contains("ORDER BY e.name ASC, coalesce(e.kind, '') ASC, e.tags ASC, e.id ASC");
+                .contains("ORDER BY e.name ASC, coalesce(e.kind, '') ASC, e.tags ASC, e.id ASC");
     }
 
     @Test
     public void testFindEntityKindsWithEdgeCountsWhitelistsDirection() {
         when(entityQuerySpec.list()).thenReturn(Collections.emptyList());
 
-        kgRepository.findEntityKindsWithEdgeCounts("Person", "9.3", "OIM-DB", "fk_to",
-            "outgoing; DROP TABLE entities");
+        kgRepository.findEntityKindsWithEdgeCounts(
+                "Person", "9.3", "OIM-DB", "fk_to", "outgoing; DROP TABLE entities");
 
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcClient, atLeastOnce()).sql(sqlCaptor.capture());
@@ -167,8 +184,9 @@ public class KgGraphReadRepositoryTest {
         assertThat(sql).contains("lower(r.predicate) = lower(:predicate)");
         ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
         verify(statementSpec).params(paramsCaptor.capture());
-        assertThat(paramsCaptor.getValue()).containsEntry("predicate", "fk_to").containsEntry("tag",
-            "9.3");
+        assertThat(paramsCaptor.getValue())
+                .containsEntry("predicate", "fk_to")
+                .containsEntry("tag", "9.3");
     }
 
     // --- Tag clause helper tests ---
@@ -189,8 +207,8 @@ public class KgGraphReadRepositoryTest {
     @Test
     public void testTcWithInvalidAliasThrows() {
         assertThatThrownBy(() -> KgGraphReadRepository.tc("9.3", "x"))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Invalid SQL alias: x");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid SQL alias: x");
     }
 
     // --- H-3: Limit capping ---
@@ -322,8 +340,16 @@ public class KgGraphReadRepositoryTest {
 
     @Test
     public void testFuzzySearchEntities() {
-        KgEntity mockRow = new KgEntity(UUID.randomUUID(), "OIM-DB", "TableA", "table", "9.3",
-            "Desc", Collections.emptyMap(), 0.9);
+        KgEntity mockRow =
+                new KgEntity(
+                        UUID.randomUUID(),
+                        "OIM-DB",
+                        "TableA",
+                        "table",
+                        "9.3",
+                        "Desc",
+                        Collections.emptyMap(),
+                        0.9);
         when(entityQuerySpec.list()).thenReturn(List.of(mockRow));
 
         List<KgEntity> results = kgRepository.fuzzySearchEntities("TableA", 10, "9.3", "OIM-DB");
@@ -339,22 +365,41 @@ public class KgGraphReadRepositoryTest {
 
     @Test
     public void testGetNeighborhoodFound() {
-        KgEntity mockEntity = new KgEntity(UUID.randomUUID(), "OIM-DB", "TableA", "table", "9.3",
-            "Desc", Collections.emptyMap(), null);
+        KgEntity mockEntity =
+                new KgEntity(
+                        UUID.randomUUID(),
+                        "OIM-DB",
+                        "TableA",
+                        "table",
+                        "9.3",
+                        "Desc",
+                        Collections.emptyMap(),
+                        null);
 
         // Mocking the cascading query calls
-        when(statementSpec.query(any(RowMapper.class))).thenReturn(entityQuerySpec) // 1. Fetch
-                                                                                    // Entity
-            .thenReturn(relQuerySpec) // 2. Fetch FKs Out
-            .thenReturn(relQuerySpec); // 3. Fetch FKs In
+        when(statementSpec.query(any(RowMapper.class)))
+                .thenReturn(entityQuerySpec) // 1. Fetch
+                // Entity
+                .thenReturn(relQuerySpec) // 2. Fetch FKs Out
+                .thenReturn(relQuerySpec); // 3. Fetch FKs In
 
         when(entityQuerySpec.list()).thenReturn(List.of(mockEntity));
 
         KgRelationship mockFkOut =
-            new KgRelationship(UUID.randomUUID(), "OIM-DB", "TableA", "fk_to", "TableB",
-                UUID.randomUUID(), UUID.randomUUID(), "9.3", "FK", Collections.emptyMap());
-        when(relQuerySpec.list()).thenReturn(List.of(mockFkOut)) // fksOut
-            .thenReturn(Collections.emptyList()); // fksIn
+                new KgRelationship(
+                        UUID.randomUUID(),
+                        "OIM-DB",
+                        "TableA",
+                        "fk_to",
+                        "TableB",
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "9.3",
+                        "FK",
+                        Collections.emptyMap());
+        when(relQuerySpec.list())
+                .thenReturn(List.of(mockFkOut)) // fksOut
+                .thenReturn(Collections.emptyList()); // fksIn
 
         KgNeighborhood neighborhood = kgRepository.getNeighborhood("TableA", "9.3", "OIM-DB");
 
@@ -376,13 +421,16 @@ public class KgGraphReadRepositoryTest {
 
         // Mock subsequent relationship list queries
         // Reset query mapping mock to return relQuerySpec after the count check
-        doAnswer(invocation -> {
-            RowMapper<?> mapper = invocation.getArgument(0);
-            if (mapper instanceof KgRelationshipMapper) {
-                return relQuerySpec;
-            }
-            return countQuerySpec;
-        }).when(statementSpec).query(any(RowMapper.class));
+        doAnswer(
+                        invocation -> {
+                            RowMapper<?> mapper = invocation.getArgument(0);
+                            if (mapper instanceof KgRelationshipMapper) {
+                                return relQuerySpec;
+                            }
+                            return countQuerySpec;
+                        })
+                .when(statementSpec)
+                .query(any(RowMapper.class));
 
         when(relQuerySpec.list()).thenReturn(Collections.emptyList());
 
@@ -407,8 +455,16 @@ public class KgGraphReadRepositoryTest {
 
     @Test
     public void testGetProcsForTable() {
-        KgEntity mockRow = new KgEntity(UUID.randomUUID(), "OIM-DB", "ProcA", "procedure", "9.3",
-            "Proc Desc", Collections.emptyMap(), null);
+        KgEntity mockRow =
+                new KgEntity(
+                        UUID.randomUUID(),
+                        "OIM-DB",
+                        "ProcA",
+                        "procedure",
+                        "9.3",
+                        "Proc Desc",
+                        Collections.emptyMap(),
+                        null);
         when(entityQuerySpec.list()).thenReturn(List.of(mockRow));
 
         List<KgEntity> results = kgRepository.getProcsForTable("TableA", 10, "9.3", "OIM-DB");
@@ -462,7 +518,8 @@ public class KgGraphReadRepositoryTest {
     @Test
     public void testGetCallsInvalidDirection() {
         assertThatThrownBy(() -> kgRepository.getCalls("ProcB", "invalid", 10, null, "OIM-DB"))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Invalid direction");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid direction");
     }
 
     @Test

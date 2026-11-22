@@ -40,8 +40,8 @@ public class ModelPricingAdminController {
     private final ObjectMapper objectMapper;
     private final AdminAuditLogger auditLogger;
 
-    public ModelPricingAdminController(CostCalculationService costCalculationService,
-        AdminAuditLogger auditLogger) {
+    public ModelPricingAdminController(
+            CostCalculationService costCalculationService, AdminAuditLogger auditLogger) {
         this.costCalculationService = costCalculationService;
         this.objectMapper = new ObjectMapper();
         this.auditLogger = Objects.requireNonNull(auditLogger, "auditLogger must not be null");
@@ -49,16 +49,15 @@ public class ModelPricingAdminController {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ModelPricingExportDto(
-        @JsonProperty("modelName") String modelName,
-        @JsonProperty("promptPricePerMillion") BigDecimal promptPricePerMillion,
-        @JsonProperty("completionPricePerMillion") BigDecimal completionPricePerMillion,
-        @JsonProperty("cachedPricePerMillion") BigDecimal cachedPricePerMillion,
-        @JsonProperty("thoughtPricePerMillion") BigDecimal thoughtPricePerMillion,
-        @JsonProperty("prompt") BigDecimal prompt,
-        @JsonProperty("completion") BigDecimal completion,
-        @JsonProperty("cached") BigDecimal cached,
-        @JsonProperty("thought") BigDecimal thought
-    ) {
+            @JsonProperty("modelName") String modelName,
+            @JsonProperty("promptPricePerMillion") BigDecimal promptPricePerMillion,
+            @JsonProperty("completionPricePerMillion") BigDecimal completionPricePerMillion,
+            @JsonProperty("cachedPricePerMillion") BigDecimal cachedPricePerMillion,
+            @JsonProperty("thoughtPricePerMillion") BigDecimal thoughtPricePerMillion,
+            @JsonProperty("prompt") BigDecimal prompt,
+            @JsonProperty("completion") BigDecimal completion,
+            @JsonProperty("cached") BigDecimal cached,
+            @JsonProperty("thought") BigDecimal thought) {
         public BigDecimal getEffectivePrompt() {
             if (promptPricePerMillion != null) return promptPricePerMillion;
             if (prompt != null) return prompt;
@@ -90,9 +89,9 @@ public class ModelPricingAdminController {
         model.addAttribute("activeTab", "pricing");
 
         List<UsedModelPricingStatus> modelsList =
-            costCalculationService.getAllUsedModelsWithPricingStatus();
+                costCalculationService.getAllUsedModelsWithPricingStatus();
         long configuredCount =
-            modelsList.stream().filter(UsedModelPricingStatus::hasPricing).count();
+                modelsList.stream().filter(UsedModelPricingStatus::hasPricing).count();
         long missingCount = modelsList.size() - configuredCount;
         long usedCount = modelsList.stream().filter(m -> m.usageCount() > 0).count();
         long unusedCount = modelsList.size() - usedCount;
@@ -110,17 +109,30 @@ public class ModelPricingAdminController {
     public ResponseEntity<Resource> exportModelPricing() {
         log.info("Exporting model pricing configurations");
         List<UsedModelPricingStatus> modelsList =
-            costCalculationService.getAllUsedModelsWithPricingStatus();
-        List<ModelPricingExportDto> exports = modelsList.stream()
-            .filter(UsedModelPricingStatus::hasPricing)
-            .map(s -> new ModelPricingExportDto(s.modelName(),
-                s.promptPricePerMillion() != null ? s.promptPricePerMillion() : BigDecimal.ZERO,
-                s.completionPricePerMillion() != null ? s.completionPricePerMillion()
-                    : BigDecimal.ZERO,
-                s.cachedPricePerMillion() != null ? s.cachedPricePerMillion() : BigDecimal.ZERO,
-                s.thoughtPricePerMillion() != null ? s.thoughtPricePerMillion() : BigDecimal.ZERO,
-                null, null, null, null))
-            .toList();
+                costCalculationService.getAllUsedModelsWithPricingStatus();
+        List<ModelPricingExportDto> exports =
+                modelsList.stream()
+                        .filter(UsedModelPricingStatus::hasPricing)
+                        .map(s ->
+                                new ModelPricingExportDto(
+                                        s.modelName(),
+                                        s.promptPricePerMillion() != null
+                                                ? s.promptPricePerMillion()
+                                                : BigDecimal.ZERO,
+                                        s.completionPricePerMillion() != null
+                                                ? s.completionPricePerMillion()
+                                                : BigDecimal.ZERO,
+                                        s.cachedPricePerMillion() != null
+                                                ? s.cachedPricePerMillion()
+                                                : BigDecimal.ZERO,
+                                        s.thoughtPricePerMillion() != null
+                                                ? s.thoughtPricePerMillion()
+                                                : BigDecimal.ZERO,
+                                        null,
+                                        null,
+                                        null,
+                                        null))
+                        .toList();
 
         String json;
         try {
@@ -133,54 +145,77 @@ public class ModelPricingAdminController {
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
         ByteArrayResource resource = new ByteArrayResource(bytes);
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION,
-                "attachment; filename=\"model-pricing-export.json\"")
-            .contentType(MediaType.APPLICATION_JSON).contentLength(bytes.length).body(resource);
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"model-pricing-export.json\"")
+                .contentType(MediaType.APPLICATION_JSON)
+                .contentLength(bytes.length)
+                .body(resource);
     }
 
     @PostMapping("/import")
-    public String importModelPricing(@RequestParam("file") MultipartFile file,
-        RedirectAttributes redirectAttributes) throws IOException {
+    public String importModelPricing(
+            @RequestParam("file") MultipartFile file, RedirectAttributes redirectAttributes)
+            throws IOException {
         log.info("Importing model pricing from file");
         String content =
-            BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
+                BoundedUploadReader.readUtf8(file, BoundedUploadReader.MAX_CONFIG_IMPORT_BYTES);
         List<ModelPricingExportDto> items;
         if (content.trim().startsWith("[")) {
-            items = objectMapper.readValue(content,
-                new TypeReference<List<ModelPricingExportDto>>() {});
+            items =
+                    objectMapper.readValue(
+                            content, new TypeReference<List<ModelPricingExportDto>>() {});
         } else {
             ModelPricingExportDto single =
-                objectMapper.readValue(content, ModelPricingExportDto.class);
+                    objectMapper.readValue(content, ModelPricingExportDto.class);
             items = List.of(single);
         }
 
         int importedCount = 0;
         for (ModelPricingExportDto item : items) {
             if (item.modelName() != null && !item.modelName().isBlank()) {
-                costCalculationService.updateModelPricing(item.modelName().trim(),
-                    item.getEffectivePrompt(), item.getEffectiveCompletion(),
-                    item.getEffectiveCached(), item.getEffectiveThought());
+                costCalculationService.updateModelPricing(
+                        item.modelName().trim(),
+                        item.getEffectivePrompt(),
+                        item.getEffectiveCompletion(),
+                        item.getEffectiveCached(),
+                        item.getEffectiveThought());
                 importedCount++;
             }
         }
         auditLogger.log("IMPORT_MODEL_PRICING", "batch", Map.of("importedCount", importedCount));
-        redirectAttributes.addFlashAttribute("success",
-            "Successfully imported pricing for " + importedCount + " model(s).");
+        redirectAttributes.addFlashAttribute(
+                "success", "Successfully imported pricing for " + importedCount + " model(s).");
         return "redirect:/admin/pricing";
     }
 
     @PostMapping("/save")
-    public String saveModelPricing(@RequestParam String modelName,
-        @RequestParam(defaultValue = "0.00") BigDecimal prompt,
-        @RequestParam(defaultValue = "0.00") BigDecimal completion,
-        @RequestParam(defaultValue = "0.00") BigDecimal cached,
-        @RequestParam(defaultValue = "0.00") BigDecimal thought) {
+    public String saveModelPricing(
+            @RequestParam String modelName,
+            @RequestParam(defaultValue = "0.00") BigDecimal prompt,
+            @RequestParam(defaultValue = "0.00") BigDecimal completion,
+            @RequestParam(defaultValue = "0.00") BigDecimal cached,
+            @RequestParam(defaultValue = "0.00") BigDecimal thought) {
         log.info(
-            "Saving model pricing for model '{}': prompt={}, completion={}, cached={}, thought={}",
-            modelName, prompt, completion, cached, thought);
+                "Saving model pricing for model '{}': prompt={}, completion={}, cached={}, thought={}",
+                modelName,
+                prompt,
+                completion,
+                cached,
+                thought);
         costCalculationService.updateModelPricing(modelName, prompt, completion, cached, thought);
-        auditLogger.log("SAVE_MODEL_PRICING", modelName.trim(), Map.of("prompt", prompt,
-            "completion", completion, "cached", cached, "thought", thought));
+        auditLogger.log(
+                "SAVE_MODEL_PRICING",
+                modelName.trim(),
+                Map.of(
+                        "prompt",
+                        prompt,
+                        "completion",
+                        completion,
+                        "cached",
+                        cached,
+                        "thought",
+                        thought));
         return "redirect:/admin/pricing";
     }
 

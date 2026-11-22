@@ -11,9 +11,9 @@ import java.util.regex.Pattern;
 public final class HierarchyUtils {
 
     private static final Pattern PART_SUFFIX_PATTERN =
-        Pattern.compile("\\s*\\(part \\d+/\\d+\\)\\s*$");
+            Pattern.compile("\\s*\\(part \\d+/\\d+\\)\\s*$");
     private static final Pattern BREADCRUMB_PATTERN =
-        Pattern.compile("^>\\s+Section path:[^\\n]*\\n+");
+            Pattern.compile("^>\\s+Section path:[^\\n]*\\n+");
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     private HierarchyUtils() {

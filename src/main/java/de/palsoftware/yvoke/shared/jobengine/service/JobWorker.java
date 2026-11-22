@@ -32,9 +32,11 @@ public class JobWorker {
     private final Set<UUID> activeJobIds = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
 
-    public JobWorker(JobRepository jobRepository, JobService jobService,
-        @Qualifier(WorkerConfig.JOB_EXECUTOR_BEAN) TaskExecutor jobExecutor,
-        WorkerProperties properties) {
+    public JobWorker(
+            JobRepository jobRepository,
+            JobService jobService,
+            @Qualifier(WorkerConfig.JOB_EXECUTOR_BEAN) TaskExecutor jobExecutor,
+            WorkerProperties properties) {
         this.jobRepository = jobRepository;
         this.jobService = jobService;
         this.jobExecutor = jobExecutor;
@@ -92,8 +94,10 @@ public class JobWorker {
     @PreDestroy
     public void onShutdown() {
         shuttingDown.set(true);
-        log.info("JobWorker {} stopping new job claims ({} job(s) currently active)", workerId,
-            activeCount.get());
+        log.info(
+                "JobWorker {} stopping new job claims ({} job(s) currently active)",
+                workerId,
+                activeCount.get());
     }
 
     private void dispatch(IngestionJob job) {

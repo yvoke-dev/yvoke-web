@@ -48,60 +48,64 @@ class MarkdownTreeSplitTest {
 
     @Test
     void tableOfContentsBlockIsDropped() {
-        String md = """
-            # Title
+        String md =
+                """
+                # Title
 
-            ## Table of contents
+                ## Table of contents
 
-            ### Linky
+                ### Linky
 
-            ## Real Section
+                ## Real Section
 
-            Real body content.
-            """;
+                Real body content.
+                """;
         List<Section> sections = MarkdownTree.buildOrderedSections(md);
         assertThat(sections).extracting(Section::title).containsExactly("Real Section");
     }
 
     @Test
     void emptyPlaceholderWithoutChildrenIsDropped() {
-        String md = """
-            # Title
+        String md =
+                """
+                # Title
 
-            ## Group
+                ## Group
 
-            ### Child
+                ### Child
 
-            Child body.
+                Child body.
 
-            ## Lonely Placeholder
+                ## Lonely Placeholder
 
-            ## Another
+                ## Another
 
-            Another body.
-            """;
+                Another body.
+                """;
         List<Section> sections = MarkdownTree.buildOrderedSections(md);
-        assertThat(sections).extracting(Section::title).containsExactly("Group", "Child",
-            "Another");
+        assertThat(sections)
+                .extracting(Section::title)
+                .containsExactly("Group", "Child", "Another");
     }
 
     @Test
     void sortOrderIsContiguousAndInDocumentOrder() {
-        String md = """
-            # Title
+        String md =
+                """
+                # Title
 
-            ## A
+                ## A
 
-            Body a.
+                Body a.
 
-            ## B
+                ## B
 
-            Body b.
+                Body b.
 
-            ### B1
+                ### B1
 
-            Body b1.
-            """;
+                Body b1.
+                """;
         List<Section> sections = MarkdownTree.buildOrderedSections(md);
         // sort_order is the index in this list: contiguous 0..N-1, strictly increasing, no gaps.
         assertThat(sections).extracting(Section::title).containsExactly("A", "B", "B1");

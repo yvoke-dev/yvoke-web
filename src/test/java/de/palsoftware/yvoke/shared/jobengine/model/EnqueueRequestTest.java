@@ -14,8 +14,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * A blank tag must normalize to "no tag". A literal {@code ""} in the tag list makes the collection
- * validator reject the enqueue ("tag must not be blank") and makes the version-skip lookup
- * ({@code :tag = ANY(tags)}) never match, so every sync re-embeds every page.
+ * validator reject the enqueue ("tag must not be blank") and makes the version-skip lookup ({@code
+ * :tag = ANY(tags)}) never match, so every sync re-embeds every page.
  */
 class EnqueueRequestTest {
 
@@ -30,7 +30,8 @@ class EnqueueRequestTest {
     @Test
     void blankStringTagWithSettingsBecomesNoTag() {
         EnqueueRequest req =
-            new EnqueueRequest("confluence-page-import", "ref", "   ", "coll", Map.of("a", "b"));
+                new EnqueueRequest(
+                        "confluence-page-import", "ref", "   ", "coll", Map.of("a", "b"));
 
         assertThat(req.tags()).isEmpty();
         assertThat(req.tag()).isNull();
@@ -54,8 +55,9 @@ class EnqueueRequestTest {
 
     @Test
     void blankEntriesAreStrippedFromATagList() {
-        EnqueueRequest req = new EnqueueRequest("standard", "ref",
-            Arrays.asList("9.3", "", "  ", null), "coll", Map.of());
+        EnqueueRequest req =
+                new EnqueueRequest(
+                        "standard", "ref", Arrays.asList("9.3", "", "  ", null), "coll", Map.of());
 
         assertThat(req.tags()).containsExactly("9.3");
     }
@@ -70,7 +72,7 @@ class EnqueueRequestTest {
     @Test
     void jsonCreatorWithBlankListEntriesYieldsNoTag() {
         EnqueueRequest req =
-            EnqueueRequest.create("standard", "ref", List.of("", "  "), "coll", Map.of());
+                EnqueueRequest.create("standard", "ref", List.of("", "  "), "coll", Map.of());
 
         assertThat(req.tags()).isEmpty();
     }
@@ -82,10 +84,11 @@ class EnqueueRequestTest {
             Validator validator = factory.getValidator();
 
             Set<ConstraintViolation<EnqueueRequest>> violations =
-                validator.validate(new EnqueueRequest("", "  ", "9.3", ""));
+                    validator.validate(new EnqueueRequest("", "  ", "9.3", ""));
 
-            assertThat(violations).extracting(v -> v.getPropertyPath().toString()).contains("kind",
-                "sourceRef", "collection");
+            assertThat(violations)
+                    .extracting(v -> v.getPropertyPath().toString())
+                    .contains("kind", "sourceRef", "collection");
         }
     }
 
@@ -95,7 +98,7 @@ class EnqueueRequestTest {
             Validator validator = factory.getValidator();
 
             assertThat(validator.validate(new EnqueueRequest("standard", "ref", "9.3", "coll")))
-                .isEmpty();
+                    .isEmpty();
         }
     }
 }

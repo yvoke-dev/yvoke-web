@@ -5,4 +5,21 @@ import java.time.Instant;
 import java.util.UUID;
 
 /** Slim projection of an AgentRun for API boundary transfer without internal JSON config blobs. */
-@JsonInclude(JsonInclude.Include.NON_NULL)public record AgentRunTraceDto(UUID id,UUID conversationId,UUID messageId,UUID assistantMessageId,String profileName,String status,int reviewRounds,String finalVerdict,Integer promptTokens,Integer completionTokens,Integer totalTokens,Integer cachedTokens,Integer thoughtTokens,String error,Instant startedAt,Instant finishedAt){}
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record AgentRunTraceDto(
+        UUID id,
+        UUID conversationId,
+        UUID messageId,
+        UUID assistantMessageId,
+        String profileName,
+        String status,
+        int reviewRounds,
+        String finalVerdict,
+        Integer promptTokens,
+        Integer completionTokens,
+        Integer totalTokens,
+        Integer cachedTokens,
+        Integer thoughtTokens,
+        String error,
+        Instant startedAt,
+        Instant finishedAt) {}

@@ -19,17 +19,18 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * no direct coverage, so a regression in array unmarshalling (nulls, empty arrays, ordering) would
  * have gone unnoticed.
  */
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration"
+        })
 public class CollectionRepositoryIT {
 
     private static final String PREFIX = "OIM-COLLREPO-";
 
-    @Autowired
-    private CollectionRepository repository;
+    @Autowired private CollectionRepository repository;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     public void setUp() {
@@ -51,9 +52,12 @@ public class CollectionRepositoryIT {
     private UUID insertWithTags(String name, String tagsLiteral) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO collections (id, name, description, created_at, tags) "
-                + "VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?::TEXT[])",
-            id, name, "desc for " + name, tagsLiteral);
+                "INSERT INTO collections (id, name, description, created_at, tags) "
+                        + "VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?::TEXT[])",
+                id,
+                name,
+                "desc for " + name,
+                tagsLiteral);
         return id;
     }
 
@@ -88,7 +92,7 @@ public class CollectionRepositoryIT {
 
         assertThat(repository.findByName(PREFIX + "CASE").map(Collection::id)).contains(id);
         assertThat(repository.findByName((PREFIX + "CASE").toLowerCase()).map(Collection::id))
-            .contains(id);
+                .contains(id);
         assertThat(repository.findByName(PREFIX + "MISSING")).isEmpty();
     }
 
@@ -98,10 +102,11 @@ public class CollectionRepositoryIT {
         insertWithTags(PREFIX + "AAA", "{a1,a2}");
 
         List<Collection> ours =
-            repository.findAll().stream().filter(c -> c.name().startsWith(PREFIX)).toList();
+                repository.findAll().stream().filter(c -> c.name().startsWith(PREFIX)).toList();
 
-        assertThat(ours).extracting(Collection::name).containsExactly(PREFIX + "AAA",
-            PREFIX + "ZZZ");
+        assertThat(ours)
+                .extracting(Collection::name)
+                .containsExactly(PREFIX + "AAA", PREFIX + "ZZZ");
         assertThat(ours.get(0).tags()).containsExactly("a1", "a2");
         assertThat(ours.get(1).tags()).containsExactly("z1");
     }
@@ -109,15 +114,14 @@ public class CollectionRepositoryIT {
     /**
      * The corpus tag vocabulary is DERIVED from {@code collections.tags} — there is no registry.
      *
-     * <p>
-     * A {@code tags} table existed until V6, and its only writer was
-     * {@code TagRepository.getOrCreateTag}: a tag was recorded exactly when it arrived through an
-     * admin form or the ingest enqueue. Every other writer sets the {@code TEXT[]} column directly
-     * — above all the corpus import ({@code yvoke-exports/lib/objects.py}:
-     * {@code INSERT INTO collections … tags = EXCLUDED.tags}) — so an imported collection's tags
-     * never reached the registry and the admin dropdowns could not offer them. Live proof: the
-     * registry held 2 names while {@code 10.0} and {@code 9.3.1} were on 27 collections and 22k
-     * documents. {@code insertWithTags} below is exactly that import write shape.
+     * <p>A {@code tags} table existed until V6, and its only writer was {@code
+     * TagRepository.getOrCreateTag}: a tag was recorded exactly when it arrived through an admin
+     * form or the ingest enqueue. Every other writer sets the {@code TEXT[]} column directly —
+     * above all the corpus import ({@code yvoke-exports/lib/objects.py}: {@code INSERT INTO
+     * collections … tags = EXCLUDED.tags}) — so an imported collection's tags never reached the
+     * registry and the admin dropdowns could not offer them. Live proof: the registry held 2 names
+     * while {@code 10.0} and {@code 9.3.1} were on 27 collections and 22k documents. {@code
+     * insertWithTags} below is exactly that import write shape.
      */
     @Test
     public void findAllTagNamesSeesTagsWrittenStraightIntoTheArray() {
@@ -125,8 +129,10 @@ public class CollectionRepositoryIT {
         insertWithTags(PREFIX + "SHARES-A-TAG", "{9.3.1,content}");
         insertWithTags(PREFIX + "UNTAGGED", "{}");
 
-        List<String> ours = repository.findAllTagNames().stream()
-            .filter(t -> List.of("10.0", "9.3.1", "content").contains(t)).toList();
+        List<String> ours =
+                repository.findAllTagNames().stream()
+                        .filter(t -> List.of("10.0", "9.3.1", "content").contains(t))
+                        .toList();
 
         // De-duplicated across collections, sorted case-insensitively, no empty-array artefact.
         assertThat(ours).containsExactly("10.0", "9.3.1", "content");

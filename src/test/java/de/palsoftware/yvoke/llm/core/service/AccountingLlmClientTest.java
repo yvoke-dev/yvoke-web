@@ -28,9 +28,8 @@ import org.junit.jupiter.api.Test;
 /**
  * Pins the single accounting seam.
  *
- * <p>
- * Before this class existed, every caller had to remember to extract usage and publish
- * {@code LlmCallLoggedEvent} itself. One of them ({@code GeneralSummarizer}) never did, and nothing
+ * <p>Before this class existed, every caller had to remember to extract usage and publish {@code
+ * LlmCallLoggedEvent} itself. One of them ({@code GeneralSummarizer}) never did, and nothing
  * detected it for the life of the codebase. These tests exist so that accounting is a property of
  * calling the LLM at all, not of remembering to account for it.
  */
@@ -38,8 +37,14 @@ class AccountingLlmClientTest {
 
     private final List<LlmCallLoggedEvent> published = new ArrayList<>();
 
-    private static final LlmRequest REQUEST = new LlmRequest("gemini-3.1-flash",
-        List.of(new LlmMessage("user", "hi")), 0.0, 100, List.of(), null);
+    private static final LlmRequest REQUEST =
+            new LlmRequest(
+                    "gemini-3.1-flash",
+                    List.of(new LlmMessage("user", "hi")),
+                    0.0,
+                    100,
+                    List.of(),
+                    null);
 
     @AfterEach
     void clearContext() {
@@ -47,8 +52,8 @@ class AccountingLlmClientTest {
     }
 
     private AccountingLlmClient clientFor(LlmClient delegate) {
-        return new AccountingLlmClient(delegate,
-            event -> published.add((LlmCallLoggedEvent) event));
+        return new AccountingLlmClient(
+                delegate, event -> published.add((LlmCallLoggedEvent) event));
     }
 
     private static LlmClient generateReturning(LlmResponse response) {
@@ -65,8 +70,8 @@ class AccountingLlmClientTest {
         };
     }
 
-    private static LlmClient streamingChunks(List<LlmResponseChunk> chunks,
-        RuntimeException toThrow) {
+    private static LlmClient streamingChunks(
+            List<LlmResponseChunk> chunks, RuntimeException toThrow) {
         return new LlmClient() {
             @Override
             public LlmResponse generate(LlmRequest request) {
@@ -88,13 +93,12 @@ class AccountingLlmClientTest {
     }
 
     /**
-     * The listener behind {@link #publish} is a plain synchronous {@code @EventListener} —
-     * {@code LlmCallLoggingService.onLlmCall}, with no {@code @Async} and no {@code @EnableAsync}
-     * anywhere in the application — so it runs a {@code SELECT model_pricing} and an
-     * {@code INSERT llm_call_logs} on whatever thread published the event.
+     * The listener behind {@link #publish} is a plain synchronous {@code @EventListener} — {@code
+     * LlmCallLoggingService.onLlmCall}, with no {@code @Async} and no {@code @EnableAsync} anywhere
+     * in the application — so it runs a {@code SELECT model_pricing} and an {@code INSERT
+     * llm_call_logs} on whatever thread published the event.
      *
-     * <p>
-     * When the user presses Stop that thread's interrupt flag is still set: the provider clients
+     * <p>When the user presses Stop that thread's interrupt flag is still set: the provider clients
      * detect cancellation with {@code isInterrupted()}, a read that never clears, and nothing
      * between there and here clears it either. JDBC on an interrupted thread is the hazard this
      * codebase already mitigates at both sibling write sites — {@code OrchestrationService} and
@@ -103,33 +107,37 @@ class AccountingLlmClientTest {
      * {@code log.warn} by the listener AND by {@link AccountingLlmClient#publish}. The lost row is
      * the in-flight, largest call of the turn.
      *
-     * <p>
-     * The flag must be restored afterwards, or clearing it here would convert the caller's
+     * <p>The flag must be restored afterwards, or clearing it here would convert the caller's
      * cancellation into an apparently normal return — trading a lost ledger row for a lost Stop.
      */
     @Test
     void theAccountingWriteDoesNotRunOnAnInterruptedThread() {
         List<Boolean> interruptedDuringPublish = new ArrayList<>();
-        AccountingLlmClient client = new AccountingLlmClient(
-            streamingChunks(List.of(chunk("partial", new LlmUsage(9, 1, 10, 0, 0))),
-                new CancellationException("user pressed stop")),
-            event -> {
-                interruptedDuringPublish.add(Thread.currentThread().isInterrupted());
-                published.add((LlmCallLoggedEvent) event);
-            });
+        AccountingLlmClient client =
+                new AccountingLlmClient(
+                        streamingChunks(
+                                List.of(chunk("partial", new LlmUsage(9, 1, 10, 0, 0))),
+                                new CancellationException("user pressed stop")),
+                        event -> {
+                            interruptedDuringPublish.add(Thread.currentThread().isInterrupted());
+                            published.add((LlmCallLoggedEvent) event);
+                        });
 
         Thread.currentThread().interrupt();
         try {
-            assertThrows(CancellationException.class, () -> client.generateStream(REQUEST, c -> {
-            }));
+            assertThrows(
+                    CancellationException.class, () -> client.generateStream(REQUEST, c -> {}));
 
-            assertEquals(List.of(false), interruptedDuringPublish,
-                "the accounting listener runs JDBC; reaching it with the interrupt flag set is how "
-                    + "the row is lost");
+            assertEquals(
+                    List.of(false),
+                    interruptedDuringPublish,
+                    "the accounting listener runs JDBC; reaching it with the interrupt flag set is how "
+                            + "the row is lost");
             assertEquals(1, published.size(), "a cancelled stream still burned tokens");
             assertEquals(9, published.get(0).promptTokens());
-            assertTrue(Thread.currentThread().isInterrupted(),
-                "the flag must be restored, or a deliberate cancellation is swallowed");
+            assertTrue(
+                    Thread.currentThread().isInterrupted(),
+                    "the flag must be restored, or a deliberate cancellation is swallowed");
         } finally {
             // Never leak an interrupt into the next test on this thread.
             Thread.interrupted();
@@ -167,11 +175,11 @@ class AccountingLlmClientTest {
         UUID messageId = UUID.randomUUID();
         UUID agentRunId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        LlmCallContextHolder.set(conversationId, messageId, agentRunId, userId, "chat",
-            "assistant");
+        LlmCallContextHolder.set(
+                conversationId, messageId, agentRunId, userId, "chat", "assistant");
 
         clientFor(generateReturning(new LlmResponse("x", new LlmUsage(1, 1, 2, 0, 0))))
-            .generate(REQUEST);
+                .generate(REQUEST);
 
         LlmCallLoggedEvent event = published.get(0);
         assertEquals(conversationId, event.conversationId());
@@ -189,7 +197,7 @@ class AccountingLlmClientTest {
     @Test
     void testMissingContextStillLogsUnderUnknownSource() {
         clientFor(generateReturning(new LlmResponse("x", new LlmUsage(1, 1, 2, 0, 0))))
-            .generate(REQUEST);
+                .generate(REQUEST);
 
         LlmCallLoggedEvent event = published.get(0);
         assertEquals(LlmCallContextHolder.UNKNOWN_SOURCE, event.source());
@@ -200,11 +208,14 @@ class AccountingLlmClientTest {
     @Test
     void testStreamForwardsEveryChunkInOrder() {
         List<LlmResponseChunk> chunks =
-            List.of(chunk("a", null), chunk("b", null), chunk("c", new LlmUsage(7, 3, 10, 0, 0)));
+                List.of(
+                        chunk("a", null),
+                        chunk("b", null),
+                        chunk("c", new LlmUsage(7, 3, 10, 0, 0)));
         List<String> seen = new ArrayList<>();
 
-        clientFor(streamingChunks(chunks, null)).generateStream(REQUEST,
-            c -> seen.add(c.content()));
+        clientFor(streamingChunks(chunks, null))
+                .generateStream(REQUEST, c -> seen.add(c.content()));
 
         assertEquals(List.of("a", "b", "c"), seen);
     }
@@ -212,11 +223,13 @@ class AccountingLlmClientTest {
     /** Usage arrives in the last chunk that carries it; that is the value to bill. */
     @Test
     void testStreamPublishesOnceWithTheLastUsageSeen() {
-        List<LlmResponseChunk> chunks = List.of(chunk("a", null),
-            chunk("b", new LlmUsage(5, 1, 6, 0, 0)), chunk("c", new LlmUsage(9, 4, 13, 2, 1)));
+        List<LlmResponseChunk> chunks =
+                List.of(
+                        chunk("a", null),
+                        chunk("b", new LlmUsage(5, 1, 6, 0, 0)),
+                        chunk("c", new LlmUsage(9, 4, 13, 2, 1)));
 
-        clientFor(streamingChunks(chunks, null)).generateStream(REQUEST, c -> {
-        });
+        clientFor(streamingChunks(chunks, null)).generateStream(REQUEST, c -> {});
 
         assertEquals(1, published.size());
         LlmCallLoggedEvent event = published.get(0);
@@ -233,11 +246,14 @@ class AccountingLlmClientTest {
     void testStreamThatFailsMidwayStillPublishesObservedUsageAndRethrows() {
         RuntimeException boom = new IllegalStateException("stream died");
         List<LlmResponseChunk> chunks =
-            List.of(chunk("a", new LlmUsage(4, 2, 6, 0, 0)), chunk("b", null));
+                List.of(chunk("a", new LlmUsage(4, 2, 6, 0, 0)), chunk("b", null));
 
-        RuntimeException thrown = assertThrows(IllegalStateException.class,
-            () -> clientFor(streamingChunks(chunks, boom)).generateStream(REQUEST, c -> {
-            }));
+        RuntimeException thrown =
+                assertThrows(
+                        IllegalStateException.class,
+                        () ->
+                                clientFor(streamingChunks(chunks, boom))
+                                        .generateStream(REQUEST, c -> {}));
 
         assertSame(boom, thrown);
         assertEquals(1, published.size());
@@ -247,8 +263,8 @@ class AccountingLlmClientTest {
     /** Nothing to bill: the provider never reported usage, so no row is invented. */
     @Test
     void testStreamWithNoUsageAtAllPublishesNothing() {
-        clientFor(streamingChunks(List.of(chunk("a", null)), null)).generateStream(REQUEST, c -> {
-        });
+        clientFor(streamingChunks(List.of(chunk("a", null)), null))
+                .generateStream(REQUEST, c -> {});
 
         assertTrue(published.isEmpty());
     }
@@ -256,7 +272,7 @@ class AccountingLlmClientTest {
     @Test
     void testDurationIsRecorded() {
         clientFor(generateReturning(new LlmResponse("x", new LlmUsage(1, 1, 2, 0, 0))))
-            .generate(REQUEST);
+                .generate(REQUEST);
 
         Integer durationMs = published.get(0).durationMs();
         assertTrue(durationMs != null && durationMs >= 0, "durationMs should be measured");
@@ -266,15 +282,18 @@ class AccountingLlmClientTest {
     @Test
     void testPublisherFailureDoesNotBreakTheCall() {
         LlmResponse expected = new LlmResponse("hello", new LlmUsage(1, 1, 2, 0, 0));
-        AccountingLlmClient client = new AccountingLlmClient(generateReturning(expected), event -> {
-            throw new IllegalStateException("event bus down");
-        });
+        AccountingLlmClient client =
+                new AccountingLlmClient(
+                        generateReturning(expected),
+                        event -> {
+                            throw new IllegalStateException("event bus down");
+                        });
 
         assertSame(expected, client.generate(REQUEST));
     }
 
     private static final LlmGatewayInfo REPLAYED =
-        new LlmGatewayInfo(GatewayCacheStatus.REPLAYED, "01KZ6A5K");
+            new LlmGatewayInfo(GatewayCacheStatus.REPLAYED, "01KZ6A5K");
 
     private static LlmResponseChunk chunk(String text, LlmUsage usage, LlmGatewayInfo gateway) {
         return new LlmResponseChunk(text, null, null, usage, null, gateway);
@@ -300,7 +319,7 @@ class AccountingLlmClientTest {
     @Test
     void testGenerateWithoutGatewayLeavesStatusNull() {
         clientFor(generateReturning(new LlmResponse("x", new LlmUsage(1, 1, 2, 0, 0))))
-            .generate(REQUEST);
+                .generate(REQUEST);
 
         LlmCallLoggedEvent event = published.get(0);
         assertNull(event.gatewayCacheStatus());
@@ -315,11 +334,13 @@ class AccountingLlmClientTest {
      */
     @Test
     void testStreamCapturesGatewayStatusFromAChunkThatCarriesNoUsage() {
-        List<LlmResponseChunk> chunks = List.of(chunk("a", null, REPLAYED),
-            chunk("b", null, REPLAYED), chunk("c", new LlmUsage(9, 4, 13, 0, 0), null));
+        List<LlmResponseChunk> chunks =
+                List.of(
+                        chunk("a", null, REPLAYED),
+                        chunk("b", null, REPLAYED),
+                        chunk("c", new LlmUsage(9, 4, 13, 0, 0), null));
 
-        clientFor(streamingChunks(chunks, null)).generateStream(REQUEST, c -> {
-        });
+        clientFor(streamingChunks(chunks, null)).generateStream(REQUEST, c -> {});
 
         assertEquals(1, published.size());
         LlmCallLoggedEvent event = published.get(0);
@@ -335,22 +356,26 @@ class AccountingLlmClientTest {
     @Test
     void testGenerateRecordsUsageCarriedOnAFailedCallAndRethrows() {
         LlmUsage billed = new LlmUsage(1200, 0, 1200, 0, 0);
-        LlmCallFailedException blocked = new LlmCallFailedException(
-            "Gemini returned no text content (finishReason=SAFETY)", null, billed);
-        LlmClient delegate = new LlmClient() {
-            @Override
-            public LlmResponse generate(LlmRequest request) {
-                throw blocked;
-            }
+        LlmCallFailedException blocked =
+                new LlmCallFailedException(
+                        "Gemini returned no text content (finishReason=SAFETY)", null, billed);
+        LlmClient delegate =
+                new LlmClient() {
+                    @Override
+                    public LlmResponse generate(LlmRequest request) {
+                        throw blocked;
+                    }
 
-            @Override
-            public void generateStream(LlmRequest request, Consumer<LlmResponseChunk> onChunk) {
-                throw new UnsupportedOperationException();
-            }
-        };
+                    @Override
+                    public void generateStream(
+                            LlmRequest request, Consumer<LlmResponseChunk> onChunk) {
+                        throw new UnsupportedOperationException();
+                    }
+                };
 
         LlmCallFailedException thrown =
-            assertThrows(LlmCallFailedException.class, () -> clientFor(delegate).generate(REQUEST));
+                assertThrows(
+                        LlmCallFailedException.class, () -> clientFor(delegate).generate(REQUEST));
 
         assertSame(blocked, thrown);
         assertEquals(1, published.size());
@@ -360,17 +385,19 @@ class AccountingLlmClientTest {
     /** Nothing reported, nothing to bill: no row is invented for a failure either. */
     @Test
     void testGenerateWithAFailureCarryingNoUsagePublishesNothing() {
-        LlmClient delegate = new LlmClient() {
-            @Override
-            public LlmResponse generate(LlmRequest request) {
-                throw new LlmCallFailedException("blocked", null, null);
-            }
+        LlmClient delegate =
+                new LlmClient() {
+                    @Override
+                    public LlmResponse generate(LlmRequest request) {
+                        throw new LlmCallFailedException("blocked", null, null);
+                    }
 
-            @Override
-            public void generateStream(LlmRequest request, Consumer<LlmResponseChunk> onChunk) {
-                throw new UnsupportedOperationException();
-            }
-        };
+                    @Override
+                    public void generateStream(
+                            LlmRequest request, Consumer<LlmResponseChunk> onChunk) {
+                        throw new UnsupportedOperationException();
+                    }
+                };
 
         assertThrows(LlmCallFailedException.class, () -> clientFor(delegate).generate(REQUEST));
 
@@ -393,18 +420,23 @@ class AccountingLlmClientTest {
         LlmUsage first = new LlmUsage(10, 20, 30, 0, 15);
         LlmUsage second = new LlmUsage(11, 22, 33, 0, 1);
         AccountingLlmClient client =
-            clientFor(streamingChunks(List.of(new LlmResponseChunk(null, "thinking", null, first),
-                LlmResponseChunk.endOfCall(first, null),
-                new LlmResponseChunk("the answer", null, null, second),
-                LlmResponseChunk.endOfCall(second, null)), null));
+                clientFor(
+                        streamingChunks(
+                                List.of(
+                                        new LlmResponseChunk(null, "thinking", null, first),
+                                        LlmResponseChunk.endOfCall(first, null),
+                                        new LlmResponseChunk("the answer", null, null, second),
+                                        LlmResponseChunk.endOfCall(second, null)),
+                                null));
 
-        client.generateStream(REQUEST, c -> {
-        });
+        client.generateStream(REQUEST, c -> {});
 
         assertEquals(2, published.size(), "two HTTP calls must produce two rows, not one");
         assertEquals(30, published.get(0).totalTokens());
-        assertEquals(33, published.get(1).totalTokens(),
-            "the second row must report only its own call; summing would report 63");
+        assertEquals(
+                33,
+                published.get(1).totalTokens(),
+                "the second row must report only its own call; summing would report 63");
     }
 
     /**
@@ -416,16 +448,21 @@ class AccountingLlmClientTest {
     void theEndOfCallMarkerIsConsumedAndNotForwarded() {
         LlmUsage usage = new LlmUsage(1, 2, 3, 0, 0);
         AccountingLlmClient client =
-            clientFor(streamingChunks(List.of(new LlmResponseChunk("hi", null, null, null),
-                LlmResponseChunk.endOfCall(usage, null)), null));
+                clientFor(
+                        streamingChunks(
+                                List.of(
+                                        new LlmResponseChunk("hi", null, null, null),
+                                        LlmResponseChunk.endOfCall(usage, null)),
+                                null));
 
         List<LlmResponseChunk> seen = new ArrayList<>();
         client.generateStream(REQUEST, seen::add);
 
         assertEquals(1, seen.size(), "the caller must see the content chunk and nothing else");
         assertEquals("hi", seen.get(0).content());
-        assertFalse(seen.stream().anyMatch(LlmResponseChunk::endOfCall),
-            "an end-of-call marker must never reach the caller");
+        assertFalse(
+                seen.stream().anyMatch(LlmResponseChunk::endOfCall),
+                "an end-of-call marker must never reach the caller");
     }
 
     /**
@@ -438,15 +475,20 @@ class AccountingLlmClientTest {
         // Two calls: the first reports usage, the second reports none at all. Without the reset the
         // second marker republishes the FIRST call's tokens and bills them twice.
         AccountingLlmClient client =
-            clientFor(streamingChunks(List.of(LlmResponseChunk.endOfCall(first, null),
-                new LlmResponseChunk("x", null, null, null),
-                LlmResponseChunk.endOfCall(null, null)), null));
+                clientFor(
+                        streamingChunks(
+                                List.of(
+                                        LlmResponseChunk.endOfCall(first, null),
+                                        new LlmResponseChunk("x", null, null, null),
+                                        LlmResponseChunk.endOfCall(null, null)),
+                                null));
 
-        client.generateStream(REQUEST, c -> {
-        });
+        client.generateStream(REQUEST, c -> {});
 
-        assertEquals(1, published.size(),
-            "the second call reported no usage, so it must not republish the first call's tokens");
+        assertEquals(
+                1,
+                published.size(),
+                "the second call reported no usage, so it must not republish the first call's tokens");
         assertEquals(30, published.get(0).totalTokens());
     }
 
@@ -458,11 +500,14 @@ class AccountingLlmClientTest {
     void aStreamWithoutAnyMarkerStillPublishesOnceAtTheEnd() {
         LlmUsage usage = new LlmUsage(5, 6, 11, 0, 0);
         AccountingLlmClient client =
-            clientFor(streamingChunks(List.of(new LlmResponseChunk("a", null, null, null),
-                new LlmResponseChunk("b", null, null, usage)), null));
+                clientFor(
+                        streamingChunks(
+                                List.of(
+                                        new LlmResponseChunk("a", null, null, null),
+                                        new LlmResponseChunk("b", null, null, usage)),
+                                null));
 
-        client.generateStream(REQUEST, c -> {
-        });
+        client.generateStream(REQUEST, c -> {});
 
         assertEquals(1, published.size());
         assertEquals(11, published.get(0).totalTokens());

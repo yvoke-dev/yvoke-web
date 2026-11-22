@@ -25,7 +25,7 @@ public class KgDocumentExtractJobHandlerTest {
     @Test
     public void registersForKgExtractKindAndExpectsEntities() {
         KgDocumentExtractJobHandler handler =
-            new KgDocumentExtractJobHandler(mock(DocumentIngestService.class));
+                new KgDocumentExtractJobHandler(mock(DocumentIngestService.class));
 
         assertThat(handler.kind()).isEqualTo("kg-extract");
         assertThat(handler.expectsEntities()).isTrue();
@@ -36,9 +36,25 @@ public class KgDocumentExtractJobHandlerTest {
     public void delegatesRunToProcessDocumentKg() {
         DocumentIngestService service = mock(DocumentIngestService.class);
         JobContext ctx = mock(JobContext.class);
-        IngestionJob job = new IngestionJob(UUID.randomUUID(), "kg-extract", "sourceRef", List.of(),
-            UUID.randomUUID(), "col", null, null, 0, 0, null, null, OffsetDateTime.now(), null,
-            null, Map.of(), null);
+        IngestionJob job =
+                new IngestionJob(
+                        UUID.randomUUID(),
+                        "kg-extract",
+                        "sourceRef",
+                        List.of(),
+                        UUID.randomUUID(),
+                        "col",
+                        null,
+                        null,
+                        0,
+                        0,
+                        null,
+                        null,
+                        OffsetDateTime.now(),
+                        null,
+                        null,
+                        Map.of(),
+                        null);
         JobCounts counts = new JobCounts(1, 0, 9, 14, 0);
         when(ctx.job()).thenReturn(job);
         when(service.processDocumentKg(job, ctx)).thenReturn(counts);

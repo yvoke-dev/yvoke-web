@@ -54,7 +54,7 @@ public class UserRepositoryTest {
     public void testFindByEntraOid() {
         String entraOid = "user-oid-123";
         User mockUser =
-            new User(UUID.randomUUID(), entraOid, "test@example.com", "Test User", null);
+                new User(UUID.randomUUID(), entraOid, "test@example.com", "Test User", null);
         when(querySpec.optional()).thenReturn(Optional.of(mockUser));
 
         Optional<User> result = userRepository.findByEntraOid(entraOid);

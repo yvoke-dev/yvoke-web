@@ -41,10 +41,23 @@ public class CitationControllerTest {
         collectionService = mock(CollectionService.class);
         model = new ConcurrentModel();
 
-        ChunkRow defaultChunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text",
-            List.of(), "heading", 1, 1, null, "docTitle", "md", "DefaultCol", null, 1.0);
+        ChunkRow defaultChunk =
+                new ChunkRow(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "text",
+                        List.of(),
+                        "heading",
+                        1,
+                        1,
+                        null,
+                        "docTitle",
+                        "md",
+                        "DefaultCol",
+                        null,
+                        1.0);
         when(chunkRepository.findByIdPrefix(anyString(), any()))
-            .thenReturn(Optional.of(defaultChunk));
+                .thenReturn(Optional.of(defaultChunk));
     }
 
     @AfterEach
@@ -54,10 +67,12 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationWithPositiveLimit() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
-        SectionResponse mockResponse = new SectionResponse(List.of("Intro"), "file.md", "9.3", 1,
-            "heading only", "Sample text");
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
+        SectionResponse mockResponse =
+                new SectionResponse(
+                        List.of("Intro"), "file.md", "9.3", 1, "heading only", "Sample text");
 
         when(sectionService.getChunkContent("chunk123")).thenReturn(mockResponse);
 
@@ -70,10 +85,12 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationWithDisabledLimitNegative() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
-        SectionResponse mockResponse = new SectionResponse(List.of("Intro"), "file.md", "9.3", 1,
-            "heading only", "Sample text");
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
+        SectionResponse mockResponse =
+                new SectionResponse(
+                        List.of("Intro"), "file.md", "9.3", 1, "heading only", "Sample text");
 
         when(sectionService.getChunkContent("chunk123")).thenReturn(mockResponse);
 
@@ -86,10 +103,12 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationWithDisabledLimitZero() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
-        SectionResponse mockResponse = new SectionResponse(List.of("Intro"), "file.md", "9.3", 1,
-            "heading only", "Sample text");
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
+        SectionResponse mockResponse =
+                new SectionResponse(
+                        List.of("Intro"), "file.md", "9.3", 1, "heading only", "Sample text");
 
         when(sectionService.getChunkContent("chunk123")).thenReturn(mockResponse);
 
@@ -102,10 +121,12 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationByDocumentId() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
-        SectionResponse mockResponse = new SectionResponse(List.of("Intro"), "file.md", "9.3", 1,
-            "heading only", "Sample text");
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
+        SectionResponse mockResponse =
+                new SectionResponse(
+                        List.of("Intro"), "file.md", "9.3", 1, "heading only", "Sample text");
 
         when(sectionService.getSectionByDocumentId("doc123", null)).thenReturn(mockResponse);
 
@@ -118,29 +139,34 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationMissingParams() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
 
         String view = controller.getCitation(null, null, model);
 
         assertThat(view).isEqualTo("document/fragments/citation-expander");
         assertThat(model.getAttribute("section")).isNull();
         assertThat((String) model.getAttribute("error"))
-            .contains("Either chunkId or documentId must be provided");
+                .contains("Either chunkId or documentId must be provided");
     }
 
     @Test
     public void testAmbiguousLookupDoesNotLeakDocumentInventory() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
 
         // Any lookup that cannot be narrowed to one document enumerates every match with its
         // full id, kind, title and tags. That inventory must never reach the citation dialog.
         when(sectionService.getSectionByDocumentId("ADSAccount", null))
-            .thenThrow(new IllegalArgumentException("""
-                multiple documents match — pass document_id for one:
-                  6f1d0b0e-2c4a-4f0d-9a1b-2e3c4d5e6f70  [table]  ADSAccount  (9.3.1)
-                  8a2e1c1f-3d5b-4a1e-8b2c-3f4d5e6f7081  [entity_model]  ADSAccount  (10.0)"""));
+                .thenThrow(
+                        new IllegalArgumentException(
+                                """
+                                multiple documents match — pass document_id for one:
+                                  6f1d0b0e-2c4a-4f0d-9a1b-2e3c4d5e6f70  [table]  ADSAccount  (9.3.1)
+                                  8a2e1c1f-3d5b-4a1e-8b2c-3f4d5e6f7081  [entity_model]  ADSAccount  (10.0)\
+                                """));
 
         String view = controller.getCitation(null, "ADSAccount", model);
 
@@ -157,14 +183,16 @@ public class CitationControllerTest {
 
     @Test
     public void testMissingDocumentIdYieldsNotFoundMessage() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
 
         // A re-ingested or deleted id is a stale reference, not an outage. SectionService signals
         // that with NoSuchElementException, which must not fall through to the generic handler.
         when(sectionService.getSectionByDocumentId("11111111-2222-3333-4444-555555555555", null))
-            .thenThrow(new NoSuchElementException(
-                "(no document found for id '11111111-2222-3333-4444-555555555555')"));
+                .thenThrow(
+                        new NoSuchElementException(
+                                "(no document found for id '11111111-2222-3333-4444-555555555555')"));
 
         String view = controller.getCitation(null, "11111111-2222-3333-4444-555555555555", model);
 
@@ -179,13 +207,14 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationServiceExceptionIsNotLeaked() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
 
         // An unexpected (e.g. data-access) failure must not surface its raw message — which can
         // carry SQL / provider / stack detail — into the rendered fragment (SEC-17 / ARC-10).
         when(sectionService.getChunkContent(any()))
-            .thenThrow(new RuntimeException("ERROR: relation \"chunks\" does not exist"));
+                .thenThrow(new RuntimeException("ERROR: relation \"chunks\" does not exist"));
 
         String view = controller.getCitation("chunk123", null, model);
 
@@ -200,19 +229,41 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationForChunkInUnauthorizedAreaReturnsNotFound() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
 
-        ChunkRow chunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text", List.of(),
-            "heading", 1, 1, null, "docTitle", "md", "FinanceCol", null, 1.0);
+        ChunkRow chunk =
+                new ChunkRow(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "text",
+                        List.of(),
+                        "heading",
+                        1,
+                        1,
+                        null,
+                        "docTitle",
+                        "md",
+                        "FinanceCol",
+                        null,
+                        1.0);
         when(chunkRepository.findByIdPrefix(eq("chunk123"), any())).thenReturn(Optional.of(chunk));
 
-        Collection col = new Collection(UUID.randomUUID(), "FinanceCol", "desc", List.of(),
-            OffsetDateTime.now(), "Finance");
+        Collection col =
+                new Collection(
+                        UUID.randomUUID(),
+                        "FinanceCol",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("FinanceCol")).thenReturn(Optional.of(col));
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         String view = controller.getCitation("chunk123", null, model);
 
@@ -223,21 +274,34 @@ public class CitationControllerTest {
 
     @Test
     public void testGetCitationForDocumentInUnauthorizedAreaReturnsNotFound() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
 
         UUID docId = UUID.randomUUID();
         UUID colId = UUID.randomUUID();
-        DocumentRow doc = new DocumentRow(docId, colId, "FinanceCol", "md", "Title", null,
-            "SUCCESS", List.of(), Instant.now());
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        colId,
+                        "FinanceCol",
+                        "md",
+                        "Title",
+                        null,
+                        "SUCCESS",
+                        List.of(),
+                        Instant.now());
         when(documentRepository.findById(docId)).thenReturn(Optional.of(doc));
 
         Collection col =
-            new Collection(colId, "FinanceCol", "desc", List.of(), OffsetDateTime.now(), "Finance");
+                new Collection(
+                        colId, "FinanceCol", "desc", List.of(), OffsetDateTime.now(), "Finance");
         when(collectionService.findById(colId)).thenReturn(Optional.of(col));
 
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         String view = controller.getCitation(null, docId.toString(), model);
 
@@ -248,24 +312,46 @@ public class CitationControllerTest {
 
     @Test
     public void testGetChunkCitationEndpoint200WhenAuthorizedAnd404WhenUnauthorized() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
 
-        ChunkRow chunk = new ChunkRow(UUID.randomUUID(), UUID.randomUUID(), "text", List.of(),
-            "heading", 1, 1, null, "docTitle", "md", "Col", null, 1.0);
+        ChunkRow chunk =
+                new ChunkRow(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "text",
+                        List.of(),
+                        "heading",
+                        1,
+                        1,
+                        null,
+                        "docTitle",
+                        "md",
+                        "Col",
+                        null,
+                        1.0);
         when(chunkRepository.findByIdPrefix(eq("chunk123"), any())).thenReturn(Optional.of(chunk));
 
-        Collection col = new Collection(UUID.randomUUID(), "Col", "desc", List.of(),
-            OffsetDateTime.now(), "Finance");
+        Collection col =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Col",
+                        "desc",
+                        List.of(),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Col")).thenReturn(Optional.of(col));
 
         SectionResponse section =
-            new SectionResponse(List.of("Intro"), "file.md", "9.3", 1, "heading", "text");
+                new SectionResponse(List.of("Intro"), "file.md", "9.3", 1, "heading", "text");
         when(sectionService.getChunkContent("chunk123")).thenReturn(section);
 
         // Unauthorized caller
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         String unauthorizedView = controller.getCitation("chunk123", null, model);
         assertThat(unauthorizedView).isEqualTo("document/fragments/citation-expander");
@@ -273,8 +359,10 @@ public class CitationControllerTest {
         assertThat(model.getAttribute("error")).isEqualTo(CitationController.NOT_FOUND_ERROR);
 
         // Authorized caller
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_FINANCE"));
 
         Model authorizedModel = new ConcurrentModel();
         String authorizedView = controller.getCitation("chunk123", null, authorizedModel);
@@ -285,26 +373,38 @@ public class CitationControllerTest {
 
     @Test
     public void testGetDocumentCitationEndpoint200WhenAuthorizedAnd404WhenUnauthorized() {
-        CitationController controller = new CitationController(sectionService, chunkRepository,
-            documentRepository, collectionService);
+        CitationController controller =
+                new CitationController(
+                        sectionService, chunkRepository, documentRepository, collectionService);
 
         UUID docId = UUID.randomUUID();
         UUID colId = UUID.randomUUID();
-        DocumentRow doc = new DocumentRow(docId, colId, "Col", "md", "Title", null, "SUCCESS",
-            List.of(), Instant.now());
+        DocumentRow doc =
+                new DocumentRow(
+                        docId,
+                        colId,
+                        "Col",
+                        "md",
+                        "Title",
+                        null,
+                        "SUCCESS",
+                        List.of(),
+                        Instant.now());
         when(documentRepository.findById(docId)).thenReturn(Optional.of(doc));
 
         Collection col =
-            new Collection(colId, "Col", "desc", List.of(), OffsetDateTime.now(), "Finance");
+                new Collection(colId, "Col", "desc", List.of(), OffsetDateTime.now(), "Finance");
         when(collectionService.findById(colId)).thenReturn(Optional.of(col));
 
         SectionResponse section =
-            new SectionResponse(List.of("Intro"), "file.md", "9.3", 1, "heading", "text");
+                new SectionResponse(List.of("Intro"), "file.md", "9.3", 1, "heading", "text");
         when(sectionService.getSectionByDocumentId(docId.toString(), null)).thenReturn(section);
 
         // Unauthorized caller
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_OIM"));
 
         String unauthorizedView = controller.getCitation(null, docId.toString(), model);
         assertThat(unauthorizedView).isEqualTo("document/fragments/citation-expander");
@@ -312,8 +412,10 @@ public class CitationControllerTest {
         assertThat(model.getAttribute("error")).isEqualTo(CitationController.NOT_FOUND_ERROR);
 
         // Authorized caller
-        SecurityContextHolder.getContext().setAuthentication(
-            new TestingAuthenticationToken("user", "pass", "ROLE_USER", "AREA_USER_FINANCE"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "user", "pass", "ROLE_USER", "AREA_USER_FINANCE"));
 
         Model authorizedModel = new ConcurrentModel();
         String authorizedView = controller.getCitation(null, docId.toString(), authorizedModel);

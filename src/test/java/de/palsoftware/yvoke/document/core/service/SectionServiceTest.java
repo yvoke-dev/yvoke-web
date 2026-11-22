@@ -39,8 +39,7 @@ class SectionServiceTest {
      * {@code get_section}'s {@code heading_path} is PREFIX matching rooted at the top of the
      * document, and the two halves of that sentence fail in opposite directions.
      *
-     * <p>
-     * Rooted: {@code HierarchyUtils.isSubpathOf(target, chunkPath)} compares segment by segment
+     * <p>Rooted: {@code HierarchyUtils.isSubpathOf(target, chunkPath)} compares segment by segment
      * from index 0, so a leaf name on its own matches nothing however unambiguous it looks to a
      * model — and on this corpus a section name genuinely recurs under several chapters, which is
      * exactly why the rule cannot be relaxed to "contains". Prefix: every chunk UNDER the requested
@@ -50,19 +49,17 @@ class SectionServiceTest {
      * silently truncates every section to its own chunks and drops the sub-sections the agent asked
      * for.
      *
-     * <p>
-     * Comparison is per-segment via {@code normalizeSegment} (NFKC, whitespace collapsed, trimmed,
-     * lowercased) after {@code splitHeadingPath} strips a {@code (part n/m)} suffix, so a
+     * <p>Comparison is per-segment via {@code normalizeSegment} (NFKC, whitespace collapsed,
+     * trimmed, lowercased) after {@code splitHeadingPath} strips a {@code (part n/m)} suffix, so a
      * breadcrumb copied out of a search hit — which carries exactly that suffix, and whatever
      * spacing the ingest produced — still resolves. Tighten any of those and citations stop
      * resolving for reasons nobody can see from the input.
      *
-     * <p>
-     * The no-match branch matters as much as the match: it throws with the available paths listed,
-     * which is the only feedback a caller gets about why the lookup failed. It is worth knowing
-     * that this help does NOT reach the model — {@code GetSectionTool} catches Exception and
-     * returns the flat {@code "ERROR: the 'get_section' tool failed to complete the request."}, so
-     * the path list goes to the log only — which makes the log line the whole diagnostic, and a
+     * <p>The no-match branch matters as much as the match: it throws with the available paths
+     * listed, which is the only feedback a caller gets about why the lookup failed. It is worth
+     * knowing that this help does NOT reach the model — {@code GetSectionTool} catches Exception
+     * and returns the flat {@code "ERROR: the 'get_section' tool failed to complete the request."},
+     * so the path list goes to the log only — which makes the log line the whole diagnostic, and a
      * change that degrades this message into a bare "not found" removes the last trace of it.
      * Nothing covers any of this today: this class had exactly one test (the happy path), and
      * {@code GetSectionToolTest} covers the happy path, the chunk_id form and the missing-id
@@ -71,94 +68,166 @@ class SectionServiceTest {
     @Test
     void anUnrootedOrUnknownHeadingPathMatchesNothingAndTheErrorListsTheAvailablePaths() {
         UUID chunkId3 = UUID.randomUUID();
-        DocumentRow docRow = new DocumentRow(docId, UUID.randomUUID(), "OIM", "hierarchical",
-            "Install Guide", Map.of("tag", "9.3", "source_file", "install.md"), "completed",
-            List.of("9.3"), Instant.now());
+        DocumentRow docRow =
+                new DocumentRow(
+                        docId,
+                        UUID.randomUUID(),
+                        "OIM",
+                        "hierarchical",
+                        "Install Guide",
+                        Map.of("tag", "9.3", "source_file", "install.md"),
+                        "completed",
+                        List.of("9.3"),
+                        Instant.now());
 
         // "Section A" exists under TWO different chapters — the shape that makes an unrooted match
         // ambiguous rather than merely lenient.
         ChunkPathRow underChapterOne =
-            new ChunkPathRow(chunkId1, List.of("Chapter 1"), "Section A", 10, 0);
+                new ChunkPathRow(chunkId1, List.of("Chapter 1"), "Section A", 10, 0);
         ChunkPathRow deeper =
-            new ChunkPathRow(chunkId2, List.of("Chapter 1", "Section A"), "Details", 20, 0);
+                new ChunkPathRow(chunkId2, List.of("Chapter 1", "Section A"), "Details", 20, 0);
         ChunkPathRow underChapterTwo =
-            new ChunkPathRow(chunkId3, List.of("Chapter 2"), "Section A", 30, 0);
+                new ChunkPathRow(chunkId3, List.of("Chapter 2"), "Section A", 30, 0);
 
         when(documentRepository.findByManual("install", "OIM")).thenReturn(Optional.of(docRow));
         when(chunkRepository.findChunkPathsByDocumentId(eq(docId)))
-            .thenReturn(List.of(underChapterOne, deeper, underChapterTwo));
+                .thenReturn(List.of(underChapterOne, deeper, underChapterTwo));
         when(chunkRepository.findChunksByIds(anyList())).thenReturn(List.of());
 
         // 1. Unrooted: the leaf segment alone is not a subpath from the root, so nothing matches —
         // and the error must hand back the rooted paths that WOULD have worked.
         assertThatThrownBy(() -> sectionService.getSection("OIM", "install", "Section A"))
-            .isInstanceOf(NoSuchElementException.class)
-            .hasMessageContaining("no section matched 'Section A'")
-            .hasMessageContaining("heading_path must be rooted at the top")
-            .hasMessageContaining("Chapter 1 > Section A")
-            .hasMessageContaining("Chapter 2 > Section A");
+                .isInstanceOf(NoSuchElementException.class)
+                .hasMessageContaining("no section matched 'Section A'")
+                .hasMessageContaining("heading_path must be rooted at the top")
+                .hasMessageContaining("Chapter 1 > Section A")
+                .hasMessageContaining("Chapter 2 > Section A");
 
         // 2. A path the document simply does not have fails the same way, listing the same menu.
         assertThatThrownBy(() -> sectionService.getSection("OIM", "install", "Chapter 3 > Nope"))
-            .isInstanceOf(NoSuchElementException.class)
-            .hasMessageContaining("no section matched 'Chapter 3 > Nope'")
-            .hasMessageContaining("Chapter 1 > Section A > Details");
+                .isInstanceOf(NoSuchElementException.class)
+                .hasMessageContaining("no section matched 'Chapter 3 > Nope'")
+                .hasMessageContaining("Chapter 1 > Section A > Details");
 
         // 3. Rooted but sloppily typed — wrong case, collapsed whitespace, a copied "(part n/m)"
         // suffix — still matches, AND drags in the sub-section below it.
-        ChunkRow sectionA = new ChunkRow(chunkId1, docId, "Section A body", List.of("Chapter 1"),
-            "Section A", 2, 10, "9.3", "install.md", "hierarchical", "OIM", null, 0.0);
+        ChunkRow sectionA =
+                new ChunkRow(
+                        chunkId1,
+                        docId,
+                        "Section A body",
+                        List.of("Chapter 1"),
+                        "Section A",
+                        2,
+                        10,
+                        "9.3",
+                        "install.md",
+                        "hierarchical",
+                        "OIM",
+                        null,
+                        0.0);
         ChunkRow details =
-            new ChunkRow(chunkId2, docId, "Details body", List.of("Chapter 1", "Section A"),
-                "Details", 3, 20, "9.3", "install.md", "hierarchical", "OIM", null, 0.0);
+                new ChunkRow(
+                        chunkId2,
+                        docId,
+                        "Details body",
+                        List.of("Chapter 1", "Section A"),
+                        "Details",
+                        3,
+                        20,
+                        "9.3",
+                        "install.md",
+                        "hierarchical",
+                        "OIM",
+                        null,
+                        0.0);
         when(chunkRepository.findChunksByIds(eq(List.of(chunkId1, chunkId2))))
-            .thenReturn(List.of(sectionA, details));
+                .thenReturn(List.of(sectionA, details));
 
         SectionResponse response =
-            sectionService.getSection("OIM", "install", "  chapter 1  >   SECTION   a (part 2/3) ");
+                sectionService.getSection(
+                        "OIM", "install", "  chapter 1  >   SECTION   a (part 2/3) ");
 
         assertThat(response.chunkCount())
-            .as("the requested section AND everything under it — never the section alone")
-            .isEqualTo(2);
+                .as("the requested section AND everything under it — never the section alone")
+                .isEqualTo(2);
         assertThat(response.scope()).isEqualTo("with sub-sections");
-        assertThat(response.text()).contains("Section A body").contains("Details body")
-            .as("Chapter 2's identically named section must not be pulled in")
-            .doesNotContain("Chapter 2");
+        assertThat(response.text())
+                .contains("Section A body")
+                .contains("Details body")
+                .as("Chapter 2's identically named section must not be pulled in")
+                .doesNotContain("Chapter 2");
     }
 
     @Test
     void testGetSectionByManualName() {
-        DocumentRow docRow = new DocumentRow(docId, UUID.randomUUID(), "OIM", "manual",
-            "Manual Title", Map.of("tag", "9.3", "source_file", "manual1.md"), "completed",
-            Collections.emptyList(), Instant.now());
+        DocumentRow docRow =
+                new DocumentRow(
+                        docId,
+                        UUID.randomUUID(),
+                        "OIM",
+                        "manual",
+                        "Manual Title",
+                        Map.of("tag", "9.3", "source_file", "manual1.md"),
+                        "completed",
+                        Collections.emptyList(),
+                        Instant.now());
 
-        ChunkRow chunk1 = new ChunkRow(chunkId1, docId,
-            "> Section path: Introduction\nIntro Text Part 1", Collections.emptyList(),
-            "Introduction (part 1/2)", 1, 10, "9.3", "manual1.md", "manual", "OIM", null, 0.0);
+        ChunkRow chunk1 =
+                new ChunkRow(
+                        chunkId1,
+                        docId,
+                        "> Section path: Introduction\nIntro Text Part 1",
+                        Collections.emptyList(),
+                        "Introduction (part 1/2)",
+                        1,
+                        10,
+                        "9.3",
+                        "manual1.md",
+                        "manual",
+                        "OIM",
+                        null,
+                        0.0);
 
-        ChunkRow chunk2 = new ChunkRow(chunkId2, docId,
-            "> Section path: Introduction\nIntro Text Part 2", Collections.emptyList(),
-            "Introduction (part 2/2)", 1, 20, "9.3", "manual1.md", "manual", "OIM", null, 0.0);
+        ChunkRow chunk2 =
+                new ChunkRow(
+                        chunkId2,
+                        docId,
+                        "> Section path: Introduction\nIntro Text Part 2",
+                        Collections.emptyList(),
+                        "Introduction (part 2/2)",
+                        1,
+                        20,
+                        "9.3",
+                        "manual1.md",
+                        "manual",
+                        "OIM",
+                        null,
+                        0.0);
 
         ChunkPathRow path1 =
-            new ChunkPathRow(chunkId1, Collections.emptyList(), "Introduction (part 1/2)", 10, 0);
+                new ChunkPathRow(
+                        chunkId1, Collections.emptyList(), "Introduction (part 1/2)", 10, 0);
         ChunkPathRow path2 =
-            new ChunkPathRow(chunkId2, Collections.emptyList(), "Introduction (part 2/2)", 20, 0);
+                new ChunkPathRow(
+                        chunkId2, Collections.emptyList(), "Introduction (part 2/2)", 20, 0);
 
         when(documentRepository.findByManual("manual1", "OIM")).thenReturn(Optional.of(docRow));
         when(chunkRepository.findChunkPathsByDocumentId(eq(docId)))
-            .thenReturn(List.of(path1, path2));
+                .thenReturn(List.of(path1, path2));
         when(chunkRepository.findChunksByIds(eq(List.of(chunkId1, chunkId2))))
-            .thenReturn(List.of(chunk1, chunk2));
+                .thenReturn(List.of(chunk1, chunk2));
 
         SectionResponse response = sectionService.getSection("OIM", "manual1", "Introduction");
         assertEquals(List.of("Introduction"), response.headingPath());
         assertEquals(2, response.chunkCount());
 
         // Assert text is in correct reading order and breadcrumbs stripped
-        String expectedText = "# Section: Introduction\n"
-            + "_(document: manual1.md  ·  tag: 9.3  ·  2 chunk(s)  ·  with sub-sections)_\n\n"
-            + "Intro Text Part 1\n" + "Intro Text Part 2\n";
+        String expectedText =
+                "# Section: Introduction\n"
+                        + "_(document: manual1.md  ·  tag: 9.3  ·  2 chunk(s)  ·  with sub-sections)_\n\n"
+                        + "Intro Text Part 1\n"
+                        + "Intro Text Part 2\n";
         assertEquals(expectedText, response.text());
     }
 
@@ -167,25 +236,52 @@ class SectionServiceTest {
         String docTitle = "1IM - Build your own Unix® Connector with PowerShell";
 
         // Case A: Root chunk whose heading is the document title -> headingPath becomes empty
-        ChunkRow rootChunk = new ChunkRow(chunkId1, docId, "Some text", List.of(), docTitle, 1, 0,
-            "?", docTitle, "confluence", "COL", null, 0.0);
+        ChunkRow rootChunk =
+                new ChunkRow(
+                        chunkId1,
+                        docId,
+                        "Some text",
+                        List.of(),
+                        docTitle,
+                        1,
+                        0,
+                        "?",
+                        docTitle,
+                        "confluence",
+                        "COL",
+                        null,
+                        0.0);
         when(chunkRepository.findByIdPrefix(eq("root123"), any()))
-            .thenReturn(Optional.of(rootChunk));
+                .thenReturn(Optional.of(rootChunk));
 
         SectionResponse rootResponse = sectionService.getChunkContent("root123");
         assertThat(rootResponse.documentTitle()).isEqualTo(docTitle);
         assertThat(rootResponse.headingPath())
-            .as("root chunk matching documentTitle should have empty headingPath").isEmpty();
+                .as("root chunk matching documentTitle should have empty headingPath")
+                .isEmpty();
 
         // Case B: Sub-section chunk whose path starts with documentTitle -> documentTitle stripped
-        ChunkRow subChunk = new ChunkRow(chunkId2, docId, "Some text", List.of(docTitle),
-            "The Connection", 2, 10, "?", docTitle, "confluence", "COL", null, 0.0);
+        ChunkRow subChunk =
+                new ChunkRow(
+                        chunkId2,
+                        docId,
+                        "Some text",
+                        List.of(docTitle),
+                        "The Connection",
+                        2,
+                        10,
+                        "?",
+                        docTitle,
+                        "confluence",
+                        "COL",
+                        null,
+                        0.0);
         when(chunkRepository.findByIdPrefix(eq("sub123"), any())).thenReturn(Optional.of(subChunk));
 
         SectionResponse subResponse = sectionService.getChunkContent("sub123");
         assertThat(subResponse.headingPath())
-            .as("sub-section should omit the leading documentTitle from headingPath")
-            .containsExactly("The Connection");
+                .as("sub-section should omit the leading documentTitle from headingPath")
+                .containsExactly("The Connection");
     }
 
     @Test
@@ -193,26 +289,52 @@ class SectionServiceTest {
         String docTitle = "1IM - Build your own Unix® Connector with PowerShell";
 
         // Case A: Text starts with # documentTitle -> stripped
-        String textWithTitle = "# 1IM - Build your own Unix® Connector with PowerShell\n\n"
-            + "🔗 Confluence Page: [View in Confluence](http://example.com)\n\n"
-            + "The Connection\n\nPosh-SSH was quickly found...";
-        ChunkRow chunkWithTitle = new ChunkRow(chunkId1, docId, textWithTitle, List.of(), docTitle,
-            1, 0, "?", docTitle, "confluence", "COL", null, 0.0);
+        String textWithTitle =
+                "# 1IM - Build your own Unix® Connector with PowerShell\n\n"
+                        + "🔗 Confluence Page: [View in Confluence](http://example.com)\n\n"
+                        + "The Connection\n\nPosh-SSH was quickly found...";
+        ChunkRow chunkWithTitle =
+                new ChunkRow(
+                        chunkId1,
+                        docId,
+                        textWithTitle,
+                        List.of(),
+                        docTitle,
+                        1,
+                        0,
+                        "?",
+                        docTitle,
+                        "confluence",
+                        "COL",
+                        null,
+                        0.0);
         when(chunkRepository.findByIdPrefix(eq("cite123"), any()))
-            .thenReturn(Optional.of(chunkWithTitle));
+                .thenReturn(Optional.of(chunkWithTitle));
 
         SectionResponse responseA = sectionService.getChunkContent("cite123");
         assertThat(responseA.text())
-            .startsWith("🔗 Confluence Page: [View in Confluence](http://example.com)")
-            .doesNotContain("# 1IM - Build your own Unix® Connector with PowerShell");
+                .startsWith("🔗 Confluence Page: [View in Confluence](http://example.com)")
+                .doesNotContain("# 1IM - Build your own Unix® Connector with PowerShell");
 
         // Case B: Text starts with a different section heading -> preserved
         String textWithSubheading = "# The Connection\n\nPosh-SSH was quickly found...";
         ChunkRow chunkWithSubheading =
-            new ChunkRow(chunkId2, docId, textWithSubheading, List.of(docTitle), "The Connection",
-                2, 10, "?", docTitle, "confluence", "COL", null, 0.0);
+                new ChunkRow(
+                        chunkId2,
+                        docId,
+                        textWithSubheading,
+                        List.of(docTitle),
+                        "The Connection",
+                        2,
+                        10,
+                        "?",
+                        docTitle,
+                        "confluence",
+                        "COL",
+                        null,
+                        0.0);
         when(chunkRepository.findByIdPrefix(eq("cite456"), any()))
-            .thenReturn(Optional.of(chunkWithSubheading));
+                .thenReturn(Optional.of(chunkWithSubheading));
 
         SectionResponse responseB = sectionService.getChunkContent("cite456");
         assertThat(responseB.text()).startsWith("# The Connection");

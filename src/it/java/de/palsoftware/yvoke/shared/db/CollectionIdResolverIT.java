@@ -17,17 +17,18 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * trimming, empty vs. throwing lookups, and the canonical missing-collection message that the KG /
  * document / job-engine repositories all rely on.
  */
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration"
+        })
 public class CollectionIdResolverIT {
 
     private static final String COLLECTION = "OIM-RESOLVER-TEST";
 
-    @Autowired
-    private CollectionIdResolver resolver;
+    @Autowired private CollectionIdResolver resolver;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private UUID collectionId;
 
@@ -35,8 +36,8 @@ public class CollectionIdResolverIT {
     public void setUp() {
         cleanup();
         collectionId = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO collections (id, name) VALUES (?, ?)", collectionId,
-            COLLECTION);
+        jdbcTemplate.update(
+                "INSERT INTO collections (id, name) VALUES (?, ?)", collectionId, COLLECTION);
     }
 
     @AfterEach
@@ -64,13 +65,13 @@ public class CollectionIdResolverIT {
     public void requireIdReturnsIdWhenPresent() {
         assertThat(resolver.requireId(COLLECTION)).isEqualTo(collectionId);
         assertThat(resolver.requireId("  " + COLLECTION.toLowerCase() + "  "))
-            .isEqualTo(collectionId);
+                .isEqualTo(collectionId);
     }
 
     @Test
     public void requireIdThrowsCanonicalMessageWhenAbsent() {
         assertThatThrownBy(() -> resolver.requireId("no-such-collection"))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("does not exist - create it via the admin collections page");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("does not exist - create it via the admin collections page");
     }
 }

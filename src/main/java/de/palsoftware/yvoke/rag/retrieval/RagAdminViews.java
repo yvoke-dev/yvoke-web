@@ -9,8 +9,8 @@ import java.util.UUID;
  * Per-view DTOs for the RAG admin pages (ARC-01 / Wave 3.3). The search and logs templates render
  * these slim projections instead of raw {@link HybridSearchResult}/{@link RetrievalLogDetails}
  * records (persistence/retrieval-shaped types, the former nesting {@link TelemetryInfo}). Accessor
- * names mirror the source records (including the derived {@code collection()} and
- * {@code getTruncatedMessageContent}); mapping is in {@code RagAdminViewService}.
+ * names mirror the source records (including the derived {@code collection()} and {@code
+ * getTruncatedMessageContent}); mapping is in {@code RagAdminViewService}.
  */
 public final class RagAdminViews {
 
@@ -20,17 +20,23 @@ public final class RagAdminViews {
     public record SearchTelemetryView(boolean inSem, boolean inFt) {}
 
     /** A retrieved chunk on the search console (admin/search). */
-    public record SearchResultView(UUID id, String text, List<String> headingPath,
-        @Nullable String heading, @Nullable String documentTitle, @Nullable String kind,
-        double score, SearchTelemetryView telemetry) {}
+    public record SearchResultView(
+            UUID id,
+            String text,
+            List<String> headingPath,
+            @Nullable String heading,
+            @Nullable String documentTitle,
+            @Nullable String kind,
+            double score,
+            SearchTelemetryView telemetry) {}
 
     /**
      * One chunk's coordinates across the retrieval stages. {@code semRank}/{@code ftRank} are the
      * chunk's 1-indexed position in that lane's candidate list, or {@code null} when the lane did
      * not retrieve it at all — which is the distinction the fused rank alone cannot show.
      */
-    public record LaneTraceRow(int position, int rrfRank, @Nullable Integer semRank,
-        @Nullable Integer ftRank) {
+    public record LaneTraceRow(
+            int position, int rrfRank, @Nullable Integer semRank, @Nullable Integer ftRank) {
 
         /** {@code both} / {@code sem} / {@code ft} — which lane(s) supplied this chunk. */
         public String lane() {
@@ -42,13 +48,16 @@ public final class RagAdminViews {
     }
 
     /**
-     * The per-stage trace behind one search, reconstructed from the stage snapshots in
-     * {@code retrieval_logs} — no extra instrumentation. {@code fusionOrder} is capped for display
-     * ({@code fusionShown} of {@code fusedTotal}); {@code returnedOrder} is every row the caller
-     * actually got, in the order shown.
+     * The per-stage trace behind one search, reconstructed from the stage snapshots in {@code
+     * retrieval_logs} — no extra instrumentation. {@code fusionOrder} is capped for display ({@code
+     * fusionShown} of {@code fusedTotal}); {@code returnedOrder} is every row the caller actually
+     * got, in the order shown.
      */
-    public record LaneTrace(List<LaneTraceRow> fusionOrder, List<LaneTraceRow> returnedOrder,
-        int fusedTotal, int fusionShown) {
+    public record LaneTrace(
+            List<LaneTraceRow> fusionOrder,
+            List<LaneTraceRow> returnedOrder,
+            int fusedTotal,
+            int fusionShown) {
 
         public static LaneTrace empty() {
             return new LaneTrace(List.of(), List.of(), 0, 0);
@@ -65,10 +74,19 @@ public final class RagAdminViews {
     }
 
     /** A retrieval-log row (admin/logs). */
-    public record RetrievalLogView(UUID id, UUID messageId, String collection, String tag,
-        String pools, String finalVal, String rerank, Instant createdAt,
-        @Nullable String messageContent, @Nullable Integer feedbackRating,
-        @Nullable String feedbackComment, List<UUID> retrievedChunkIds) {
+    public record RetrievalLogView(
+            UUID id,
+            UUID messageId,
+            String collection,
+            String tag,
+            String pools,
+            String finalVal,
+            String rerank,
+            Instant createdAt,
+            @Nullable String messageContent,
+            @Nullable Integer feedbackRating,
+            @Nullable String feedbackComment,
+            List<UUID> retrievedChunkIds) {
 
         @Nullable
         public String getTruncatedMessageContent(int maxChars) {

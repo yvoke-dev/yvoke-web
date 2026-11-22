@@ -60,7 +60,7 @@ class ConfluenceConnectorControllerTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
 
         collectionService = mock(CollectionService.class);
         confluenceClientService = mock(ConfluenceClientService.class);
@@ -72,19 +72,47 @@ class ConfluenceConnectorControllerTest {
 
         when(userService.getCurrentUser()).thenReturn(Optional.empty());
         when(instanceService.save(any(), any()))
-            .thenAnswer(invocation -> invocation.getArgument(0, ConfluenceInstance.class));
+                .thenAnswer(invocation -> invocation.getArgument(0, ConfluenceInstance.class));
 
-        Collection defaultCol = new Collection(UUID.randomUUID(), "OIM - Docs", "", List.of("10.0"),
-            OffsetDateTime.now(), "OIM");
+        Collection defaultCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OIM - Docs",
+                        "",
+                        List.of("10.0"),
+                        OffsetDateTime.now(),
+                        "OIM");
         when(collectionService.getCollection(any())).thenReturn(Optional.of(defaultCol));
 
-        ConfluenceInstance defaultInstance = new ConfluenceInstance(INSTANCE_ID, "iCC Wiki",
-            "icc-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", null, null, "DOCS",
-            "12345", "public", "draft", "OIM - Docs", "10.0", false, true, null, null);
+        ConfluenceInstance defaultInstance =
+                new ConfluenceInstance(
+                        INSTANCE_ID,
+                        "iCC Wiki",
+                        "icc-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "DOCS",
+                        "12345",
+                        "public",
+                        "draft",
+                        "OIM - Docs",
+                        "10.0",
+                        false,
+                        true,
+                        null,
+                        null);
         when(instanceService.findInstance(INSTANCE_ID)).thenReturn(Optional.of(defaultInstance));
 
-        controller = new ConfluenceConnectorController(confluenceClientService, instanceService,
-            collectionService, auditLogRepository, jobService, userService);
+        controller =
+                new ConfluenceConnectorController(
+                        confluenceClientService,
+                        instanceService,
+                        collectionService,
+                        auditLogRepository,
+                        jobService,
+                        userService);
     }
 
     @AfterEach
@@ -94,135 +122,302 @@ class ConfluenceConnectorControllerTest {
 
     @Test
     void saveInstance_unauthorizedTargetCollection_throwsNotFound() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", "", List.of("1.0"),
-            OffsetDateTime.now(), "Finance");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance - Docs",
+                        "",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance - Docs")).thenReturn(Optional.of(finCol));
 
-        ConfluenceInstanceForm form = new ConfluenceInstanceForm(null, "Fin Wiki", "fin-wiki",
-            "https://acme.atlassian.net", "svc@example.com", "FIN", "12345", "public", "draft",
-            "Finance - Docs", "1.0", false, true);
+        ConfluenceInstanceForm form =
+                new ConfluenceInstanceForm(
+                        null,
+                        "Fin Wiki",
+                        "fin-wiki",
+                        "https://acme.atlassian.net",
+                        "svc@example.com",
+                        "FIN",
+                        "12345",
+                        "public",
+                        "draft",
+                        "Finance - Docs",
+                        "1.0",
+                        false,
+                        true);
 
-        assertThatThrownBy(
-            () -> controller.saveInstance(form, noErrors(form), "tok", redirectAttributes))
-            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+        assertThatThrownBy(() ->
+                        controller.saveInstance(form, noErrors(form), "tok", redirectAttributes))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
     }
 
     @Test
     void saveInstance_unknownCollectionForSuperAdmin_delegatesToServiceForFlashRejection() {
         when(collectionService.getCollection("Unknown - Docs")).thenReturn(Optional.empty());
         when(collectionService.listCollections()).thenReturn(List.of());
-        when(instanceService.save(any(), any())).thenThrow(
-            new IllegalArgumentException("Target collection does not exist: Unknown - Docs"));
+        when(instanceService.save(any(), any()))
+                .thenThrow(
+                        new IllegalArgumentException(
+                                "Target collection does not exist: Unknown - Docs"));
 
-        ConfluenceInstanceForm form = new ConfluenceInstanceForm(null, "Unknown Wiki",
-            "unknown-wiki", "https://acme.atlassian.net", "svc@example.com", "UNK", "12345",
-            "public", "draft", "Unknown - Docs", "1.0", false, true);
+        ConfluenceInstanceForm form =
+                new ConfluenceInstanceForm(
+                        null,
+                        "Unknown Wiki",
+                        "unknown-wiki",
+                        "https://acme.atlassian.net",
+                        "svc@example.com",
+                        "UNK",
+                        "12345",
+                        "public",
+                        "draft",
+                        "Unknown - Docs",
+                        "1.0",
+                        false,
+                        true);
 
-        assertThatThrownBy(
-            () -> controller.saveInstance(form, noErrors(form), "tok", redirectAttributes))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Target collection does not exist: Unknown - Docs");
+        assertThatThrownBy(() ->
+                        controller.saveInstance(form, noErrors(form), "tok", redirectAttributes))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Target collection does not exist: Unknown - Docs");
     }
 
     @Test
     void saveInstance_duplicateNameInAnotherArea_throwsIllegalArgumentException() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
-        ConfluenceInstance other = new ConfluenceInstance(UUID.randomUUID(), "Existing Wiki",
-            "other-wiki", "https://acme.atlassian.net", "svc@example.com", null, null, "SPACE", "1",
-            null, null, "Finance - Docs", "1.0", false, true, null, null);
+        ConfluenceInstance other =
+                new ConfluenceInstance(
+                        UUID.randomUUID(),
+                        "Existing Wiki",
+                        "other-wiki",
+                        "https://acme.atlassian.net",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "SPACE",
+                        "1",
+                        null,
+                        null,
+                        "Finance - Docs",
+                        "1.0",
+                        false,
+                        true,
+                        null,
+                        null);
         when(instanceService.findByName("Existing Wiki")).thenReturn(Optional.of(other));
 
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", "", List.of("1.0"),
-            OffsetDateTime.now(), "Finance");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance - Docs",
+                        "",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance - Docs")).thenReturn(Optional.of(finCol));
 
-        ConfluenceInstanceForm form = new ConfluenceInstanceForm(null, "Existing Wiki", "new-slug",
-            "https://acme.atlassian.net", "svc@example.com", "DOCS", "12345", "public", "draft",
-            "OIM - Docs", "10.0", false, true);
+        ConfluenceInstanceForm form =
+                new ConfluenceInstanceForm(
+                        null,
+                        "Existing Wiki",
+                        "new-slug",
+                        "https://acme.atlassian.net",
+                        "svc@example.com",
+                        "DOCS",
+                        "12345",
+                        "public",
+                        "draft",
+                        "OIM - Docs",
+                        "10.0",
+                        false,
+                        true);
 
-        assertThatThrownBy(
-            () -> controller.saveInstance(form, noErrors(form), "tok", redirectAttributes))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining(
-                "Another Confluence instance in another area already uses the name");
+        assertThatThrownBy(() ->
+                        controller.saveInstance(form, noErrors(form), "tok", redirectAttributes))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(
+                        "Another Confluence instance in another area already uses the name");
     }
 
     @Test
     void deleteInstance_unauthorizedArea_throwsNotFound() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
         UUID finId = UUID.randomUUID();
-        ConfluenceInstance finInstance = new ConfluenceInstance(finId, "Fin Wiki", "fin-wiki",
-            "https://acme.atlassian.net", "svc@example.com", null, null, "FIN", "1", null, null,
-            "Finance - Docs", "1.0", false, true, null, null);
+        ConfluenceInstance finInstance =
+                new ConfluenceInstance(
+                        finId,
+                        "Fin Wiki",
+                        "fin-wiki",
+                        "https://acme.atlassian.net",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "FIN",
+                        "1",
+                        null,
+                        null,
+                        "Finance - Docs",
+                        "1.0",
+                        false,
+                        true,
+                        null,
+                        null);
         when(instanceService.findInstance(finId)).thenReturn(Optional.of(finInstance));
 
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", "", List.of("1.0"),
-            OffsetDateTime.now(), "Finance");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance - Docs",
+                        "",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance - Docs")).thenReturn(Optional.of(finCol));
 
         assertThatThrownBy(() -> controller.deleteInstance(finId, redirectAttributes))
-            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
     }
 
     @Test
     void syncConfluence_unauthorizedArea_throwsNotFound() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
         UUID finId = UUID.randomUUID();
-        ConfluenceInstanceView finView = new ConfluenceInstanceView(finId, "Fin Wiki", "fin-wiki",
-            "https://acme.atlassian.net/wiki", "svc@example.com", "FIN", "12345", "public", null,
-            "Finance - Docs", "1.0", false, true, TokenHealth.OK);
+        ConfluenceInstanceView finView =
+                new ConfluenceInstanceView(
+                        finId,
+                        "Fin Wiki",
+                        "fin-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        "FIN",
+                        "12345",
+                        "public",
+                        null,
+                        "Finance - Docs",
+                        "1.0",
+                        false,
+                        true,
+                        TokenHealth.OK);
         when(instanceService.findView(finId)).thenReturn(Optional.of(finView));
 
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", "", List.of("1.0"),
-            OffsetDateTime.now(), "Finance");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance - Docs",
+                        "",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("Finance - Docs")).thenReturn(Optional.of(finCol));
 
         assertThatThrownBy(() -> controller.syncConfluence(finId, redirectAttributes))
-            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
     }
 
     @Test
     void orphanedInstanceWithDeletedTargetCollectionFailsClosedForAreaAdmin() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
         UUID orphanId = UUID.randomUUID();
-        ConfluenceInstance orphanInstance = new ConfluenceInstance(orphanId, "Orphan Wiki",
-            "orphan-wiki", "https://acme.atlassian.net", "svc@example.com", null, null, "ORP", "1",
-            null, null, "Deleted - Docs", "1.0", false, true, null, null);
-        ConfluenceInstanceView orphanView = new ConfluenceInstanceView(orphanId, "Orphan Wiki",
-            "orphan-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "ORP", "1", null,
-            null, "Deleted - Docs", "1.0", false, true, TokenHealth.OK);
+        ConfluenceInstance orphanInstance =
+                new ConfluenceInstance(
+                        orphanId,
+                        "Orphan Wiki",
+                        "orphan-wiki",
+                        "https://acme.atlassian.net",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "ORP",
+                        "1",
+                        null,
+                        null,
+                        "Deleted - Docs",
+                        "1.0",
+                        false,
+                        true,
+                        null,
+                        null);
+        ConfluenceInstanceView orphanView =
+                new ConfluenceInstanceView(
+                        orphanId,
+                        "Orphan Wiki",
+                        "orphan-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        "ORP",
+                        "1",
+                        null,
+                        null,
+                        "Deleted - Docs",
+                        "1.0",
+                        false,
+                        true,
+                        TokenHealth.OK);
         when(instanceService.findInstance(orphanId)).thenReturn(Optional.of(orphanInstance));
         when(instanceService.findView(orphanId)).thenReturn(Optional.of(orphanView));
         when(collectionService.getCollection("Deleted - Docs")).thenReturn(Optional.empty());
 
-        ConfluenceInstanceForm overwriteForm = new ConfluenceInstanceForm(orphanId, "Hijacked",
-            "orphan-wiki", "https://acme.atlassian.net", "svc@example.com", "DOCS", "12345",
-            "public", "draft", "OIM - Docs", "10.0", false, true);
-        assertThatThrownBy(() -> controller.saveInstance(overwriteForm, noErrors(overwriteForm),
-            "tok", redirectAttributes)).isInstanceOf(ResponseStatusException.class)
-            .hasMessageContaining("404");
+        ConfluenceInstanceForm overwriteForm =
+                new ConfluenceInstanceForm(
+                        orphanId,
+                        "Hijacked",
+                        "orphan-wiki",
+                        "https://acme.atlassian.net",
+                        "svc@example.com",
+                        "DOCS",
+                        "12345",
+                        "public",
+                        "draft",
+                        "OIM - Docs",
+                        "10.0",
+                        false,
+                        true);
+        assertThatThrownBy(() ->
+                        controller.saveInstance(
+                                overwriteForm, noErrors(overwriteForm), "tok", redirectAttributes))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
         verify(instanceService, never()).save(any(), any());
 
         assertThatThrownBy(() -> controller.deleteInstance(orphanId, redirectAttributes))
-            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
         verify(instanceService, never()).delete(any());
 
         assertThatThrownBy(() -> controller.syncConfluence(orphanId, redirectAttributes))
-            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
         verify(jobService, never()).enqueue(any());
 
         String testHtml =
-            controller.testConfluenceConnection(orphanId, null, null, null, null, null, null, null);
+                controller.testConfluenceConnection(
+                        orphanId, null, null, null, null, null, null, null);
         assertThat(testHtml).contains("no longer exists");
         verifyNoInteractions(confluenceClientService);
     }
@@ -230,50 +425,121 @@ class ConfluenceConnectorControllerTest {
     @Test
     void superAdminCanDeleteOrReassignOrphanedInstanceWithDeletedTargetCollection() {
         SecurityContextHolder.getContext()
-            .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
+                .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
 
         UUID orphanId = UUID.randomUUID();
-        ConfluenceInstance orphanInstance = new ConfluenceInstance(orphanId, "Orphan Wiki",
-            "orphan-wiki", "https://acme.atlassian.net", "svc@example.com", null, null, "ORP", "1",
-            null, null, "Deleted - Docs", "1.0", false, true, null, null);
+        ConfluenceInstance orphanInstance =
+                new ConfluenceInstance(
+                        orphanId,
+                        "Orphan Wiki",
+                        "orphan-wiki",
+                        "https://acme.atlassian.net",
+                        "svc@example.com",
+                        null,
+                        null,
+                        "ORP",
+                        "1",
+                        null,
+                        null,
+                        "Deleted - Docs",
+                        "1.0",
+                        false,
+                        true,
+                        null,
+                        null);
         when(instanceService.findInstance(orphanId)).thenReturn(Optional.of(orphanInstance));
         when(collectionService.getCollection("Deleted - Docs")).thenReturn(Optional.empty());
         when(instanceService.delete(orphanId))
-            .thenReturn(new ConfluenceInstanceService.Deletion("Orphan Wiki", "orphan-wiki", 0));
+                .thenReturn(
+                        new ConfluenceInstanceService.Deletion("Orphan Wiki", "orphan-wiki", 0));
 
         assertThat(controller.deleteInstance(orphanId, redirectAttributes))
-            .isEqualTo("redirect:/admin/connectors");
+                .isEqualTo("redirect:/admin/connectors");
         verify(instanceService).delete(orphanId);
 
-        ConfluenceInstanceForm reassignForm = new ConfluenceInstanceForm(orphanId, "Reassigned",
-            "orphan-wiki", "https://acme.atlassian.net", "svc@example.com", "DOCS", "12345",
-            "public", "draft", "OIM - Docs", "10.0", false, true);
-        assertThat(controller.saveInstance(reassignForm, noErrors(reassignForm), "tok",
-            redirectAttributes)).isEqualTo("redirect:/admin/connectors");
+        ConfluenceInstanceForm reassignForm =
+                new ConfluenceInstanceForm(
+                        orphanId,
+                        "Reassigned",
+                        "orphan-wiki",
+                        "https://acme.atlassian.net",
+                        "svc@example.com",
+                        "DOCS",
+                        "12345",
+                        "public",
+                        "draft",
+                        "OIM - Docs",
+                        "10.0",
+                        false,
+                        true);
+        assertThat(
+                        controller.saveInstance(
+                                reassignForm, noErrors(reassignForm), "tok", redirectAttributes))
+                .isEqualTo("redirect:/admin/connectors");
         verify(instanceService).save(any(), eq("tok"));
     }
 
     @Test
     void syncAllInstances_filtersOutUnadministeredInstances() {
-        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
-            "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new TestingAuthenticationToken(
+                                "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_OIM"));
 
-        ConfluenceInstanceView oimView = new ConfluenceInstanceView(UUID.randomUUID(), "OIM Wiki",
-            "oim-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "DOCS", "12345",
-            "public", null, "OIM - Docs", "10.0", false, true, TokenHealth.OK);
-        ConfluenceInstanceView finView = new ConfluenceInstanceView(UUID.randomUUID(), "Fin Wiki",
-            "fin-wiki", "https://acme.atlassian.net/wiki", "svc@example.com", "FIN", "54321",
-            "public", null, "Finance - Docs", "1.0", false, true, TokenHealth.OK);
+        ConfluenceInstanceView oimView =
+                new ConfluenceInstanceView(
+                        UUID.randomUUID(),
+                        "OIM Wiki",
+                        "oim-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        "DOCS",
+                        "12345",
+                        "public",
+                        null,
+                        "OIM - Docs",
+                        "10.0",
+                        false,
+                        true,
+                        TokenHealth.OK);
+        ConfluenceInstanceView finView =
+                new ConfluenceInstanceView(
+                        UUID.randomUUID(),
+                        "Fin Wiki",
+                        "fin-wiki",
+                        "https://acme.atlassian.net/wiki",
+                        "svc@example.com",
+                        "FIN",
+                        "54321",
+                        "public",
+                        null,
+                        "Finance - Docs",
+                        "1.0",
+                        false,
+                        true,
+                        TokenHealth.OK);
         when(instanceService.listInstances()).thenReturn(List.of(oimView, finView));
 
-        Collection oimCol = new Collection(UUID.randomUUID(), "OIM - Docs", "", List.of("10.0"),
-            OffsetDateTime.now(), "OIM");
-        Collection finCol = new Collection(UUID.randomUUID(), "Finance - Docs", "", List.of("1.0"),
-            OffsetDateTime.now(), "Finance");
+        Collection oimCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "OIM - Docs",
+                        "",
+                        List.of("10.0"),
+                        OffsetDateTime.now(),
+                        "OIM");
+        Collection finCol =
+                new Collection(
+                        UUID.randomUUID(),
+                        "Finance - Docs",
+                        "",
+                        List.of("1.0"),
+                        OffsetDateTime.now(),
+                        "Finance");
         when(collectionService.getCollection("OIM - Docs")).thenReturn(Optional.of(oimCol));
         when(collectionService.getCollection("Finance - Docs")).thenReturn(Optional.of(finCol));
         when(jobService.enqueue(any(EnqueueRequest.class)))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         controller.syncAllInstances(redirectAttributes);
 
@@ -283,9 +549,20 @@ class ConfluenceConnectorControllerTest {
     }
 
     private static ConfluenceInstanceForm form(UUID id) {
-        return new ConfluenceInstanceForm(id, "iCC Wiki", "icc-wiki", "https://acme.atlassian.net",
-            "svc@example.com", "DOCS", "12345", "public", "draft", "OIM - Docs", "10.0", false,
-            true);
+        return new ConfluenceInstanceForm(
+                id,
+                "iCC Wiki",
+                "icc-wiki",
+                "https://acme.atlassian.net",
+                "svc@example.com",
+                "DOCS",
+                "12345",
+                "public",
+                "draft",
+                "OIM - Docs",
+                "10.0",
+                false,
+                true);
     }
 
     private static BindingResult noErrors(ConfluenceInstanceForm form) {
@@ -293,15 +570,42 @@ class ConfluenceConnectorControllerTest {
     }
 
     private static ConfluenceInstanceView view(boolean enabled) {
-        return new ConfluenceInstanceView(INSTANCE_ID, "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net/wiki", "svc@example.com", "DOCS", "12345", "public", null,
-            "OIM - Docs", "10.0", false, enabled, TokenHealth.OK);
+        return new ConfluenceInstanceView(
+                INSTANCE_ID,
+                "iCC Wiki",
+                "icc-wiki",
+                "https://acme.atlassian.net/wiki",
+                "svc@example.com",
+                "DOCS",
+                "12345",
+                "public",
+                null,
+                "OIM - Docs",
+                "10.0",
+                false,
+                enabled,
+                TokenHealth.OK);
     }
 
     private static ConfluenceInstance stored(String apiTokenEnc, String tokenKeyId) {
-        return new ConfluenceInstance(INSTANCE_ID, "iCC Wiki", "icc-wiki",
-            "https://acme.atlassian.net/wiki", "svc@example.com", apiTokenEnc, tokenKeyId, "DOCS",
-            "12345", "public", "draft", "OIM - Docs", "10.0", false, true, null, null);
+        return new ConfluenceInstance(
+                INSTANCE_ID,
+                "iCC Wiki",
+                "icc-wiki",
+                "https://acme.atlassian.net/wiki",
+                "svc@example.com",
+                apiTokenEnc,
+                tokenKeyId,
+                "DOCS",
+                "12345",
+                "public",
+                "draft",
+                "OIM - Docs",
+                "10.0",
+                false,
+                true,
+                null,
+                null);
     }
 
     // ---------------------------------------------------------------------
@@ -313,11 +617,12 @@ class ConfluenceConnectorControllerTest {
         ConfluenceInstanceForm form = form(INSTANCE_ID);
 
         assertThat(
-            controller.saveInstance(form, noErrors(form), "brand-new-token", redirectAttributes))
-            .isEqualTo("redirect:/admin/connectors");
+                        controller.saveInstance(
+                                form, noErrors(form), "brand-new-token", redirectAttributes))
+                .isEqualTo("redirect:/admin/connectors");
 
         ArgumentCaptor<ConfluenceInstance> draft =
-            ArgumentCaptor.forClass(ConfluenceInstance.class);
+                ArgumentCaptor.forClass(ConfluenceInstance.class);
         verify(instanceService).save(draft.capture(), eq("brand-new-token"));
         assertThat(draft.getValue().id()).isEqualTo(INSTANCE_ID);
         assertThat(draft.getValue().slug()).isEqualTo("icc-wiki");
@@ -348,7 +653,7 @@ class ConfluenceConnectorControllerTest {
         binding.rejectValue("rootPageId", "Pattern", "The root page ID must be numeric.");
 
         assertThat(controller.saveInstance(form, binding, null, redirectAttributes))
-            .isEqualTo("redirect:/admin/connectors");
+                .isEqualTo("redirect:/admin/connectors");
 
         verify(redirectAttributes).addFlashAttribute(eq("error"), contains("must be numeric"));
         verify(instanceService, never()).save(any(), any());
@@ -366,17 +671,25 @@ class ConfluenceConnectorControllerTest {
         ConfluenceInstanceForm form = form(null);
         BindingResult binding = new BeanPropertyBindingResult(form, "instanceForm");
         binding.addError(
-            new FieldError("instanceForm", "id", "not-a-uuid", true, new String[] {"typeMismatch"},
-                null, "Failed to convert value of type 'java.lang.String' to required type "
-                    + "'java.util.UUID'; nested exception is IllegalArgumentException"));
+                new FieldError(
+                        "instanceForm",
+                        "id",
+                        "not-a-uuid",
+                        true,
+                        new String[] {"typeMismatch"},
+                        null,
+                        "Failed to convert value of type 'java.lang.String' to required type "
+                                + "'java.util.UUID'; nested exception is IllegalArgumentException"));
 
         assertThat(controller.saveInstance(form, binding, null, redirectAttributes))
-            .isEqualTo("redirect:/admin/connectors");
+                .isEqualTo("redirect:/admin/connectors");
 
         ArgumentCaptor<String> flash = ArgumentCaptor.forClass(String.class);
         verify(redirectAttributes).addFlashAttribute(eq("error"), flash.capture());
-        assertThat(flash.getValue()).contains("wrong format").doesNotContain("java.util.UUID")
-            .doesNotContain("nested exception");
+        assertThat(flash.getValue())
+                .contains("wrong format")
+                .doesNotContain("java.util.UUID")
+                .doesNotContain("nested exception");
         verify(instanceService, never()).save(any(), any());
     }
 
@@ -387,12 +700,14 @@ class ConfluenceConnectorControllerTest {
     @Test
     void aRejectedDomainPropagatesInsteadOfBeingSwallowed() {
         ConfluenceInstanceForm form = form(INSTANCE_ID);
-        when(instanceService.save(any(), any())).thenThrow(
-            new IllegalArgumentException("Confluence base URL must use http(s): acme.example.com"));
+        when(instanceService.save(any(), any()))
+                .thenThrow(
+                        new IllegalArgumentException(
+                                "Confluence base URL must use http(s): acme.example.com"));
 
-        assertThatThrownBy(
-            () -> controller.saveInstance(form, noErrors(form), null, redirectAttributes))
-            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() ->
+                        controller.saveInstance(form, noErrors(form), null, redirectAttributes))
+                .isInstanceOf(IllegalArgumentException.class);
 
         verify(auditLogRepository, never()).log(anyString(), anyString(), any(), any());
     }
@@ -405,13 +720,15 @@ class ConfluenceConnectorControllerTest {
         controller.saveInstance(form, noErrors(form), "brand-new-token", redirectAttributes);
 
         ArgumentCaptor<Map<String, Object>> detail = ArgumentCaptor.forClass(Map.class);
-        verify(auditLogRepository).log(anyString(), eq("CONFIGURE_CONFLUENCE"), anyString(),
-            detail.capture());
-        assertThat(detail.getValue()).containsEntry("tokenUpdated", true).containsEntry("slug",
-            "icc-wiki");
+        verify(auditLogRepository)
+                .log(anyString(), eq("CONFIGURE_CONFLUENCE"), anyString(), detail.capture());
+        assertThat(detail.getValue())
+                .containsEntry("tokenUpdated", true)
+                .containsEntry("slug", "icc-wiki");
         assertThat(detail.getValue().values())
-            .noneMatch(v -> String.valueOf(v).contains("brand-new-token")
-                || String.valueOf(v).contains("enc:"));
+                .noneMatch(v ->
+                        String.valueOf(v).contains("brand-new-token")
+                                || String.valueOf(v).contains("enc:"));
     }
 
     // ---------------------------------------------------------------------
@@ -425,20 +742,20 @@ class ConfluenceConnectorControllerTest {
     @Test
     void deletingReportsTheQueuedJobsThatWereCancelledWithIt() {
         when(instanceService.delete(INSTANCE_ID))
-            .thenReturn(new ConfluenceInstanceService.Deletion("iCC Wiki", "icc-wiki", 42));
+                .thenReturn(new ConfluenceInstanceService.Deletion("iCC Wiki", "icc-wiki", 42));
 
         assertThat(controller.deleteInstance(INSTANCE_ID, redirectAttributes))
-            .isEqualTo("redirect:/admin/connectors");
+                .isEqualTo("redirect:/admin/connectors");
 
         verify(redirectAttributes).addFlashAttribute(eq("success"), contains("42 queued job(s)"));
-        verify(auditLogRepository).log(anyString(), eq("DELETE_CONFLUENCE_INSTANCE"),
-            eq("icc-wiki"), any());
+        verify(auditLogRepository)
+                .log(anyString(), eq("DELETE_CONFLUENCE_INSTANCE"), eq("icc-wiki"), any());
     }
 
     @Test
     void deletingAnInstanceWithNoQueuedWorkJustConfirms() {
         when(instanceService.delete(INSTANCE_ID))
-            .thenReturn(new ConfluenceInstanceService.Deletion("iCC Wiki", "icc-wiki", 0));
+                .thenReturn(new ConfluenceInstanceService.Deletion("iCC Wiki", "icc-wiki", 0));
 
         controller.deleteInstance(INSTANCE_ID, redirectAttributes);
 
@@ -465,16 +782,15 @@ class ConfluenceConnectorControllerTest {
         assertThat(request.collection()).isEqualTo("OIM - Docs");
         assertThat(request.tags()).containsExactly("10.0");
         assertThat(result).isEqualTo("redirect:/admin/jobs/" + jobId);
-        verify(auditLogRepository).log(anyString(), eq("SYNC_CONFLUENCE_TRIGGER"), anyString(),
-            any());
+        verify(auditLogRepository)
+                .log(anyString(), eq("SYNC_CONFLUENCE_TRIGGER"), anyString(), any());
     }
 
     /**
      * The crawl must carry its instance id, not just the slug in its kind.
      *
-     * <p>
-     * The slug is editable on this same form and a crawl can sit queued for hours, so resolving by
-     * slug at execution time lets a later rename point the crawl at whichever instance now holds
+     * <p>The slug is editable on this same form and a crawl can sit queued for hours, so resolving
+     * by slug at execution time lets a later rename point the crawl at whichever instance now holds
      * that slug — authenticating with the other site's credentials and fanning its pages into the
      * other site's collection. The id is what makes the job self-contained.
      */
@@ -487,8 +803,9 @@ class ConfluenceConnectorControllerTest {
 
         ArgumentCaptor<EnqueueRequest> captor = ArgumentCaptor.forClass(EnqueueRequest.class);
         verify(jobService).enqueue(captor.capture());
-        assertThat(captor.getValue().settings()).containsEntry("instanceId", INSTANCE_ID.toString())
-            .containsEntry("instanceName", "iCC Wiki");
+        assertThat(captor.getValue().settings())
+                .containsEntry("instanceId", INSTANCE_ID.toString())
+                .containsEntry("instanceName", "iCC Wiki");
     }
 
     /**
@@ -503,10 +820,10 @@ class ConfluenceConnectorControllerTest {
         when(jobService.enqueue(any())).thenReturn(EnqueueResult.adopted(activeJobId));
 
         assertThat(controller.syncConfluence(INSTANCE_ID, redirectAttributes))
-            .isEqualTo("redirect:/admin/jobs/" + activeJobId);
+                .isEqualTo("redirect:/admin/jobs/" + activeJobId);
         verify(redirectAttributes, never()).addFlashAttribute(eq("error"), any());
-        verify(redirectAttributes).addFlashAttribute(eq("success"),
-            contains("already queued or running"));
+        verify(redirectAttributes)
+                .addFlashAttribute(eq("success"), contains("already queued or running"));
     }
 
     @Test
@@ -514,7 +831,7 @@ class ConfluenceConnectorControllerTest {
         when(instanceService.findView(INSTANCE_ID)).thenReturn(Optional.empty());
 
         assertThat(controller.syncConfluence(INSTANCE_ID, redirectAttributes))
-            .isEqualTo("redirect:/admin/connectors");
+                .isEqualTo("redirect:/admin/connectors");
         verify(jobService, never()).enqueue(any());
     }
 
@@ -523,7 +840,7 @@ class ConfluenceConnectorControllerTest {
         when(instanceService.findView(INSTANCE_ID)).thenReturn(Optional.of(view(false)));
 
         assertThat(controller.syncConfluence(INSTANCE_ID, redirectAttributes))
-            .isEqualTo("redirect:/admin/connectors");
+                .isEqualTo("redirect:/admin/connectors");
         verify(jobService, never()).enqueue(any());
         verify(redirectAttributes).addFlashAttribute(eq("error"), contains("disabled"));
     }
@@ -536,10 +853,10 @@ class ConfluenceConnectorControllerTest {
     void syncAllOnlyStartsEnabledInstances() {
         when(instanceService.listInstances()).thenReturn(List.of(view(true), view(false)));
         when(jobService.enqueue(any()))
-            .thenAnswer(invocation -> EnqueueResult.created(UUID.randomUUID()));
+                .thenAnswer(invocation -> EnqueueResult.created(UUID.randomUUID()));
 
         assertThat(controller.syncAllInstances(redirectAttributes))
-            .isEqualTo("redirect:/admin/connectors");
+                .isEqualTo("redirect:/admin/connectors");
 
         verify(jobService, times(1)).enqueue(any());
         verify(redirectAttributes).addFlashAttribute(eq("success"), contains("1 instance(s)"));
@@ -552,13 +869,26 @@ class ConfluenceConnectorControllerTest {
      */
     @Test
     void syncAllKeepsGoingAfterOneInstanceCannotBeEnqueuedAndNamesIt() {
-        ConfluenceInstanceView broken = new ConfluenceInstanceView(UUID.randomUUID(), "Broken",
-            "broken", "https://b.atlassian.net/wiki", "b@example.com", "B", "1", null, null,
-            "Gone Collection", null, false, true, TokenHealth.OK);
+        ConfluenceInstanceView broken =
+                new ConfluenceInstanceView(
+                        UUID.randomUUID(),
+                        "Broken",
+                        "broken",
+                        "https://b.atlassian.net/wiki",
+                        "b@example.com",
+                        "B",
+                        "1",
+                        null,
+                        null,
+                        "Gone Collection",
+                        null,
+                        false,
+                        true,
+                        TokenHealth.OK);
         when(instanceService.listInstances()).thenReturn(List.of(broken, view(true)));
         when(jobService.enqueue(any()))
-            .thenThrow(new IllegalArgumentException("unknown collection"))
-            .thenReturn(EnqueueResult.created(UUID.randomUUID()));
+                .thenThrow(new IllegalArgumentException("unknown collection"))
+                .thenReturn(EnqueueResult.created(UUID.randomUUID()));
 
         controller.syncAllInstances(redirectAttributes);
 
@@ -586,16 +916,31 @@ class ConfluenceConnectorControllerTest {
         ConfluenceInstance instance = stored("enc:stored-token", "keyA");
         when(instanceService.findInstance(INSTANCE_ID)).thenReturn(Optional.of(instance));
         when(confluenceClientService.resolveApiToken(instance)).thenReturn("decrypted-token");
-        when(confluenceClientService.testConnection(anyString(), anyString(), anyString(),
-            anyString(), anyString(), any(), any())).thenReturn(
-                ConfluenceClientService.ConnectionTestResult.success("Docs", "Root", 3, 7, ""));
+        when(confluenceClientService.testConnection(
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any()))
+                .thenReturn(
+                        ConfluenceClientService.ConnectionTestResult.success(
+                                "Docs", "Root", 3, 7, ""));
 
-        String html = controller.testConfluenceConnection(INSTANCE_ID, null, null, null, null, null,
-            null, null);
+        String html =
+                controller.testConfluenceConnection(
+                        INSTANCE_ID, null, null, null, null, null, null, null);
 
-        verify(confluenceClientService).testConnection(eq("https://acme.atlassian.net/wiki"),
-            eq("svc@example.com"), eq("decrypted-token"), eq("DOCS"), eq("12345"), eq("public"),
-            eq("draft"));
+        verify(confluenceClientService)
+                .testConnection(
+                        eq("https://acme.atlassian.net/wiki"),
+                        eq("svc@example.com"),
+                        eq("decrypted-token"),
+                        eq("DOCS"),
+                        eq("12345"),
+                        eq("public"),
+                        eq("draft"));
         assertThat(html).contains("Docs").doesNotContain("decrypted-token");
     }
 
@@ -608,15 +953,37 @@ class ConfluenceConnectorControllerTest {
         ConfluenceInstance instance = stored("enc:stored-token", "keyA");
         when(instanceService.findInstance(INSTANCE_ID)).thenReturn(Optional.of(instance));
         when(confluenceClientService.resolveApiToken(instance)).thenReturn("decrypted-token");
-        when(confluenceClientService.testConnection(anyString(), anyString(), anyString(),
-            anyString(), anyString(), any(), any())).thenReturn(
-                ConfluenceClientService.ConnectionTestResult.success("Ops", "Root", 1, 2, ""));
+        when(confluenceClientService.testConnection(
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any()))
+                .thenReturn(
+                        ConfluenceClientService.ConnectionTestResult.success(
+                                "Ops", "Root", 1, 2, ""));
 
-        controller.testConfluenceConnection(INSTANCE_ID, "https://acme.atlassian.net/wiki",
-            "other@example.com", "  ", "OPS", "999", "", "");
+        controller.testConfluenceConnection(
+                INSTANCE_ID,
+                "https://acme.atlassian.net/wiki",
+                "other@example.com",
+                "  ",
+                "OPS",
+                "999",
+                "",
+                "");
 
-        verify(confluenceClientService).testConnection(eq("https://acme.atlassian.net/wiki"),
-            eq("other@example.com"), eq("decrypted-token"), eq("OPS"), eq("999"), eq(""), eq(""));
+        verify(confluenceClientService)
+                .testConnection(
+                        eq("https://acme.atlassian.net/wiki"),
+                        eq("other@example.com"),
+                        eq("decrypted-token"),
+                        eq("OPS"),
+                        eq("999"),
+                        eq(""),
+                        eq(""));
     }
 
     /**
@@ -629,8 +996,16 @@ class ConfluenceConnectorControllerTest {
         ConfluenceInstance instance = stored("enc:stored-token", "keyA");
         when(instanceService.findInstance(INSTANCE_ID)).thenReturn(Optional.of(instance));
 
-        String html = controller.testConfluenceConnection(INSTANCE_ID,
-            "https://attacker.example.com", "svc@example.com", "  ", "DOCS", "12345", "", "");
+        String html =
+                controller.testConfluenceConnection(
+                        INSTANCE_ID,
+                        "https://attacker.example.com",
+                        "svc@example.com",
+                        "  ",
+                        "DOCS",
+                        "12345",
+                        "",
+                        "");
 
         assertThat(html).contains("Re-enter the API token");
         verifyNoInteractions(confluenceClientService);
@@ -641,15 +1016,37 @@ class ConfluenceConnectorControllerTest {
     void testingAllowsADifferentDomainWhenTheTokenIsSubmittedExplicitly() {
         ConfluenceInstance instance = stored("enc:stored-token", "keyA");
         when(instanceService.findInstance(INSTANCE_ID)).thenReturn(Optional.of(instance));
-        when(confluenceClientService.testConnection(anyString(), anyString(), anyString(),
-            anyString(), anyString(), any(), any())).thenReturn(
-                ConfluenceClientService.ConnectionTestResult.success("Ops", "Root", 1, 2, ""));
+        when(confluenceClientService.testConnection(
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any()))
+                .thenReturn(
+                        ConfluenceClientService.ConnectionTestResult.success(
+                                "Ops", "Root", 1, 2, ""));
 
-        controller.testConfluenceConnection(INSTANCE_ID, "https://other.atlassian.net",
-            "other@example.com", "typed-token", "OPS", "999", "", "");
+        controller.testConfluenceConnection(
+                INSTANCE_ID,
+                "https://other.atlassian.net",
+                "other@example.com",
+                "typed-token",
+                "OPS",
+                "999",
+                "",
+                "");
 
-        verify(confluenceClientService).testConnection(eq("https://other.atlassian.net"),
-            eq("other@example.com"), eq("typed-token"), eq("OPS"), eq("999"), eq(""), eq(""));
+        verify(confluenceClientService)
+                .testConnection(
+                        eq("https://other.atlassian.net"),
+                        eq("other@example.com"),
+                        eq("typed-token"),
+                        eq("OPS"),
+                        eq("999"),
+                        eq(""),
+                        eq(""));
     }
 
     /** Every credential-egress path is audited; the connection test used to be the exception. */
@@ -658,15 +1055,34 @@ class ConfluenceConnectorControllerTest {
         ConfluenceInstance instance = stored("enc:stored-token", "keyA");
         when(instanceService.findInstance(INSTANCE_ID)).thenReturn(Optional.of(instance));
         when(confluenceClientService.resolveApiToken(instance)).thenReturn("decrypted-token");
-        when(confluenceClientService.testConnection(anyString(), anyString(), anyString(),
-            anyString(), anyString(), any(), any())).thenReturn(
-                ConfluenceClientService.ConnectionTestResult.success("Ops", "Root", 1, 2, ""));
+        when(confluenceClientService.testConnection(
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any()))
+                .thenReturn(
+                        ConfluenceClientService.ConnectionTestResult.success(
+                                "Ops", "Root", 1, 2, ""));
 
-        controller.testConfluenceConnection(INSTANCE_ID, "https://acme.atlassian.net/wiki",
-            "svc@example.com", "  ", "DOCS", "12345", "", "");
+        controller.testConfluenceConnection(
+                INSTANCE_ID,
+                "https://acme.atlassian.net/wiki",
+                "svc@example.com",
+                "  ",
+                "DOCS",
+                "12345",
+                "",
+                "");
 
-        verify(auditLogRepository).log(any(), eq("TEST_CONFLUENCE_CONNECTION"),
-            eq("https://acme.atlassian.net/wiki"), any());
+        verify(auditLogRepository)
+                .log(
+                        any(),
+                        eq("TEST_CONFLUENCE_CONNECTION"),
+                        eq("https://acme.atlassian.net/wiki"),
+                        any());
     }
 
     /**
@@ -678,29 +1094,40 @@ class ConfluenceConnectorControllerTest {
         ConfluenceInstance instance = stored("enc:stored-token", "keyA");
         when(instanceService.findInstance(INSTANCE_ID)).thenReturn(Optional.of(instance));
         when(confluenceClientService.resolveApiToken(instance))
-            .thenThrow(new IllegalStateException("Confluence instance 'iCC Wiki': stored API token "
-                + "cannot be decrypted (APP_SECRET_KEY rotated?) (token health: UNDECRYPTABLE); "
-                + "re-enter the token on the connectors page."));
+                .thenThrow(
+                        new IllegalStateException(
+                                "Confluence instance 'iCC Wiki': stored API token "
+                                        + "cannot be decrypted (APP_SECRET_KEY rotated?) (token health: UNDECRYPTABLE); "
+                                        + "re-enter the token on the connectors page."));
 
-        String html = controller.testConfluenceConnection(INSTANCE_ID, null, null, null, null, null,
-            null, null);
+        String html =
+                controller.testConfluenceConnection(
+                        INSTANCE_ID, null, null, null, null, null, null, null);
 
-        assertThat(html).contains("Connection Failed").contains("iCC Wiki")
-            .contains("re-enter the token");
-        verify(confluenceClientService, never()).testConnection(anyString(), anyString(),
-            anyString(), anyString(), anyString(), any(), any());
+        assertThat(html)
+                .contains("Connection Failed")
+                .contains("iCC Wiki")
+                .contains("re-enter the token");
+        verify(confluenceClientService, never())
+                .testConnection(
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any());
     }
 
     /**
      * The connection test is a credential-egress event: it sends a Confluence API token to a host
-     * named in the request, and the audit row is the only record of which token went where.
-     * {@code testingWritesAnAuditRowNamingTheTargetHost} passes {@code any()} for the detail map,
-     * so the one field that says WHICH credential was egressed — the stored, encrypted one
-     * belonging to the instance, or one the operator typed into the form — is asserted nowhere.
+     * named in the request, and the audit row is the only record of which token went where. {@code
+     * testingWritesAnAuditRowNamingTheTargetHost} passes {@code any()} for the detail map, so the
+     * one field that says WHICH credential was egressed — the stored, encrypted one belonging to
+     * the instance, or one the operator typed into the form — is asserted nowhere.
      *
-     * <p>
-     * Losing it is invisible: the row still exists, still names the action and the target host, and
-     * still reads as a complete audit trail. But "the stored iCC Wiki token was sent to
+     * <p>Losing it is invisible: the row still exists, still names the action and the target host,
+     * and still reads as a complete audit trail. But "the stored iCC Wiki token was sent to
      * acme.atlassian.net" and "someone typed a token and probed acme.atlassian.net" are different
      * incidents with different responses — only the first means a stored secret has to be rotated.
      * Both branches are driven here from the same request shape so the value cannot be satisfied by
@@ -713,56 +1140,120 @@ class ConfluenceConnectorControllerTest {
         ConfluenceInstance instance = stored("enc:stored-token", "keyA");
         when(instanceService.findInstance(INSTANCE_ID)).thenReturn(Optional.of(instance));
         when(confluenceClientService.resolveApiToken(instance)).thenReturn("decrypted-token");
-        when(confluenceClientService.testConnection(anyString(), anyString(), anyString(),
-            anyString(), anyString(), any(), any())).thenReturn(
-                ConfluenceClientService.ConnectionTestResult.success("Ops", "Root", 1, 2, ""));
+        when(confluenceClientService.testConnection(
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any()))
+                .thenReturn(
+                        ConfluenceClientService.ConnectionTestResult.success(
+                                "Ops", "Root", 1, 2, ""));
 
         // Token box left blank: the STORED credential is decrypted and sent to the host.
-        controller.testConfluenceConnection(INSTANCE_ID, "https://acme.atlassian.net/wiki",
-            "svc@example.com", "  ", "DOCS", "12345", "", "");
+        controller.testConfluenceConnection(
+                INSTANCE_ID,
+                "https://acme.atlassian.net/wiki",
+                "svc@example.com",
+                "  ",
+                "DOCS",
+                "12345",
+                "",
+                "");
         // A token typed into the form: that one is sent instead.
-        controller.testConfluenceConnection(INSTANCE_ID, "https://acme.atlassian.net/wiki",
-            "svc@example.com", "typed-token", "DOCS", "12345", "", "");
+        controller.testConfluenceConnection(
+                INSTANCE_ID,
+                "https://acme.atlassian.net/wiki",
+                "svc@example.com",
+                "typed-token",
+                "DOCS",
+                "12345",
+                "",
+                "");
 
         ArgumentCaptor<Map<String, Object>> detail = ArgumentCaptor.forClass(Map.class);
-        verify(auditLogRepository, times(2)).log(any(), eq("TEST_CONFLUENCE_CONNECTION"),
-            eq("https://acme.atlassian.net/wiki"), detail.capture());
+        verify(auditLogRepository, times(2))
+                .log(
+                        any(),
+                        eq("TEST_CONFLUENCE_CONNECTION"),
+                        eq("https://acme.atlassian.net/wiki"),
+                        detail.capture());
 
-        assertThat(detail.getAllValues()).extracting(d -> d.get("tokenSource"))
-            .as("which credential left the building - the stored one first, the typed one second")
-            .containsExactly("stored", "submitted");
-        assertThat(detail.getAllValues()).allSatisfy(d -> assertThat(d.values())
-            .as("the audit records the SOURCE of the credential, never the credential")
-            .noneMatch(v -> String.valueOf(v).contains("decrypted-token")
-                || String.valueOf(v).contains("typed-token")
-                || String.valueOf(v).contains("enc:")));
+        assertThat(detail.getAllValues())
+                .extracting(d -> d.get("tokenSource"))
+                .as(
+                        "which credential left the building - the stored one first, the typed one second")
+                .containsExactly("stored", "submitted");
+        assertThat(detail.getAllValues())
+                .allSatisfy(d ->
+                        assertThat(d.values())
+                                .as(
+                                        "the audit records the SOURCE of the credential, never the credential")
+                                .noneMatch(v ->
+                                        String.valueOf(v).contains("decrypted-token")
+                                                || String.valueOf(v).contains("typed-token")
+                                                || String.valueOf(v).contains("enc:")));
     }
 
     @Test
     void testingAnUnsavedInstanceWithoutATokenExplainsWhatIsMissing() {
-        String html = controller.testConfluenceConnection(null, "https://acme.atlassian.net",
-            "svc@example.com", null, "DOCS", "12345", null, null);
+        String html =
+                controller.testConfluenceConnection(
+                        null,
+                        "https://acme.atlassian.net",
+                        "svc@example.com",
+                        null,
+                        "DOCS",
+                        "12345",
+                        null,
+                        null);
 
         assertThat(html).contains("Connection Failed").contains("API token");
-        verify(confluenceClientService, never()).testConnection(anyString(), anyString(),
-            anyString(), anyString(), anyString(), any(), any());
+        verify(confluenceClientService, never())
+                .testConnection(
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any());
     }
 
     @Test
     void testingAnInstanceThatWasJustDeletedFailsCleanly() {
         when(instanceService.findInstance(INSTANCE_ID)).thenReturn(Optional.empty());
 
-        assertThat(controller.testConfluenceConnection(INSTANCE_ID, null, null, null, null, null,
-            null, null)).contains("no longer exists");
+        assertThat(
+                        controller.testConfluenceConnection(
+                                INSTANCE_ID, null, null, null, null, null, null, null))
+                .contains("no longer exists");
     }
 
     @Test
     void testingWithIncompleteUnsavedSettingsSaysWhatIsMissing() {
-        String html = controller.testConfluenceConnection(null, "https://acme.atlassian.net", null,
-            "a-token", null, null, null, null);
+        String html =
+                controller.testConfluenceConnection(
+                        null,
+                        "https://acme.atlassian.net",
+                        null,
+                        "a-token",
+                        null,
+                        null,
+                        null,
+                        null);
 
         assertThat(html).contains("Connection Failed");
-        verify(confluenceClientService, never()).testConnection(anyString(), anyString(),
-            anyString(), anyString(), anyString(), isNull(), isNull());
+        verify(confluenceClientService, never())
+                .testConnection(
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        isNull(),
+                        isNull());
     }
 }

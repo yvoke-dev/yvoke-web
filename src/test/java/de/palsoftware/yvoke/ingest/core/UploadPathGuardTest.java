@@ -57,19 +57,19 @@ class UploadPathGuardTest {
     @Test
     void rejectsRelativeTraversalEscape(@TempDir Path root) {
         assertThatThrownBy(() -> guardRootedAt(root).resolve("../evil.txt"))
-            .isInstanceOf(SecurityException.class);
+                .isInstanceOf(SecurityException.class);
     }
 
     @Test
     void rejectsDeepTraversalToSystemFile(@TempDir Path root) {
         assertThatThrownBy(() -> guardRootedAt(root).resolve("../../../../../../etc/passwd"))
-            .isInstanceOf(SecurityException.class);
+                .isInstanceOf(SecurityException.class);
     }
 
     @Test
     void rejectsAbsolutePathOutsideRoot(@TempDir Path root) {
         assertThatThrownBy(() -> guardRootedAt(root).resolve("/etc/passwd"))
-            .isInstanceOf(SecurityException.class);
+                .isInstanceOf(SecurityException.class);
     }
 
     @Test
@@ -79,13 +79,13 @@ class UploadPathGuardTest {
         String siblingRef = "../" + normalizedRoot(root).getFileName() + "-evil/x.txt";
 
         assertThatThrownBy(() -> guardRootedAt(root).resolve(siblingRef))
-            .isInstanceOf(SecurityException.class);
+                .isInstanceOf(SecurityException.class);
     }
 
     @Test
     void rejectsNullRef(@TempDir Path root) {
         assertThatThrownBy(() -> guardRootedAt(root).resolve(null))
-            .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

@@ -23,8 +23,7 @@ import org.junit.jupiter.api.Test;
  * itself can never be corrected without breaking validation on every environment that already ran
  * it.
  *
- * <p>
- * The damage from crossing that line is asymmetric and silent. A seed with a fixed id or name
+ * <p>The damage from crossing that line is asymmetric and silent. A seed with a fixed id or name
  * either collides with the toolkit-managed row (the migration fails at startup, so the app will not
  * boot until someone deletes production data by hand) or, with {@code ON CONFLICT DO NOTHING},
  * succeeds and does nothing — which is the worse outcome, because a fresh environment then quietly
@@ -32,8 +31,7 @@ import org.junit.jupiter.api.Test;
  * between environments for no visible reason. Neither shape is a schema error, so Flyway, the
  * compiler and every integration test report success.
  *
- * <p>
- * There is no other guard. {@code SchemaPresenceIT} asserts that objects EXIST, never that a
+ * <p>There is no other guard. {@code SchemaPresenceIT} asserts that objects EXIST, never that a
  * migration refrained from writing rows, and the ITs run against a database these migrations built,
  * so a seeded row simply becomes part of what every test considers normal. Comments are stripped
  * before matching so prose about seeding (including this rule being explained in a migration) does
@@ -47,24 +45,30 @@ public class MigrationSeedPolicyTest {
      * Row-writing statements aimed at either content table: {@code INSERT INTO} and {@code COPY},
      * in any casing, schema-qualified or quoted or neither.
      */
-    private static final Pattern SEEDS_CONTENT = Pattern.compile(
-        "(?:insert\\s+into|copy)\\s+(?:\"?public\"?\\s*\\.\\s*)?\"?(playbooks|system_prompts)\"?\\b",
-        Pattern.CASE_INSENSITIVE);
+    private static final Pattern SEEDS_CONTENT =
+            Pattern.compile(
+                    "(?:insert\\s+into|copy)\\s+(?:\"?public\"?\\s*\\.\\s*)?\"?(playbooks|system_prompts)\"?\\b",
+                    Pattern.CASE_INSENSITIVE);
 
     @Test
     public void noMigrationSeedsPlaybooksOrSystemPrompts() throws IOException {
         assertThat(Files.isDirectory(MIGRATION_DIR))
-            .as("migrations must be readable from the module root at %s — a walk that finds "
-                + "nothing would make this test vacuously pass", MIGRATION_DIR.toAbsolutePath())
-            .isTrue();
+                .as(
+                        "migrations must be readable from the module root at %s — a walk that finds "
+                                + "nothing would make this test vacuously pass",
+                        MIGRATION_DIR.toAbsolutePath())
+                .isTrue();
 
         List<Path> migrations;
         try (Stream<Path> files = Files.list(MIGRATION_DIR)) {
             migrations =
-                files.filter(p -> p.getFileName().toString().endsWith(".sql")).sorted().toList();
+                    files.filter(p -> p.getFileName().toString().endsWith(".sql"))
+                            .sorted()
+                            .toList();
         }
-        assertThat(migrations).as("at least the baseline schema migration must be found")
-            .isNotEmpty();
+        assertThat(migrations)
+                .as("at least the baseline schema migration must be found")
+                .isNotEmpty();
 
         List<String> offenders = new ArrayList<>();
         for (Path migration : migrations) {
@@ -76,11 +80,12 @@ public class MigrationSeedPolicyTest {
         }
 
         assertThat(offenders)
-            .as("playbooks and system_prompts are content owned by the export/import toolkit: a "
-                + "migration-seeded row can never be re-applied after an edit, and an "
-                + "ON CONFLICT DO NOTHING seed leaves a fresh environment running a stale prompt "
-                + "with no error anywhere")
-            .isEmpty();
+                .as(
+                        "playbooks and system_prompts are content owned by the export/import toolkit: a "
+                                + "migration-seeded row can never be re-applied after an edit, and an "
+                                + "ON CONFLICT DO NOTHING seed leaves a fresh environment running a stale prompt "
+                                + "with no error anywhere")
+                .isEmpty();
     }
 
     /** Comments are prose, including prose that quotes the very statement this rule forbids. */

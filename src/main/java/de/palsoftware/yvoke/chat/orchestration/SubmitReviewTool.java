@@ -25,50 +25,51 @@ public class SubmitReviewTool implements ContextAwareToolCallback {
     public SubmitReviewTool(ObjectMapper objectMapper, Consumer<Verdict> onVerdict) {
         this.objectMapper = objectMapper;
         this.onVerdict = onVerdict;
-        this.definition = new ToolDefinition() {
-            @Override
-            public String name() {
-                return "submit_review";
-            }
-
-            @Override
-            public String description() {
-                return "Submit your final review verdict. You MUST call this exactly once as your "
-                    + "last action. Set approved=true only if every claim in the answer is supported "
-                    + "by the supplied evidence; otherwise approved=false with concrete feedback the "
-                    + "orchestrator can act on.";
-            }
-
-            @Override
-            public String inputSchema() {
-                return """
-                    {
-                      "type": "object",
-                      "properties": {
-                        "approved": {
-                          "type": "boolean",
-                          "description": "true if the answer is fully grounded in the supplied evidence."
-                        },
-                        "feedback": {
-                          "type": "string",
-                          "description": "Concise reasoning; on rejection, what must be fixed."
-                        },
-                        "unsupported_claims": {
-                          "type": "array",
-                          "items": { "type": "string" },
-                          "description": "Claims with NOTHING behind them in the supplied evidence. Use this only when no supplied source supports the claim — fixing one may require new research."
-                        },
-                        "citation_fixes": {
-                          "type": "array",
-                          "items": { "type": "string" },
-                          "description": "Defects repairable from the evidence already supplied: a claim attached to the wrong source, an uncited claim a supplied source does support, or a duplicated reference entry. State the repair concretely, e.g. 'swap [5] to [4] on the SAP HCM structural profile claim'. These need no new research, so listing one here rather than under unsupported_claims is what stops the orchestrator re-running a search it does not need."
-                        }
-                      },
-                      "required": ["approved", "feedback"]
+        this.definition =
+                new ToolDefinition() {
+                    @Override
+                    public String name() {
+                        return "submit_review";
                     }
-                    """;
-            }
-        };
+
+                    @Override
+                    public String description() {
+                        return "Submit your final review verdict. You MUST call this exactly once as your "
+                                + "last action. Set approved=true only if every claim in the answer is supported "
+                                + "by the supplied evidence; otherwise approved=false with concrete feedback the "
+                                + "orchestrator can act on.";
+                    }
+
+                    @Override
+                    public String inputSchema() {
+                        return """
+                        {
+                          "type": "object",
+                          "properties": {
+                            "approved": {
+                              "type": "boolean",
+                              "description": "true if the answer is fully grounded in the supplied evidence."
+                            },
+                            "feedback": {
+                              "type": "string",
+                              "description": "Concise reasoning; on rejection, what must be fixed."
+                            },
+                            "unsupported_claims": {
+                              "type": "array",
+                              "items": { "type": "string" },
+                              "description": "Claims with NOTHING behind them in the supplied evidence. Use this only when no supplied source supports the claim — fixing one may require new research."
+                            },
+                            "citation_fixes": {
+                              "type": "array",
+                              "items": { "type": "string" },
+                              "description": "Defects repairable from the evidence already supplied: a claim attached to the wrong source, an uncited claim a supplied source does support, or a duplicated reference entry. State the repair concretely, e.g. 'swap [5] to [4] on the SAP HCM structural profile claim'. These need no new research, so listing one here rather than under unsupported_claims is what stops the orchestrator re-running a search it does not need."
+                            }
+                          },
+                          "required": ["approved", "feedback"]
+                        }
+                        """;
+                    }
+                };
     }
 
     @Override
@@ -89,9 +90,9 @@ public class SubmitReviewTool implements ContextAwareToolCallback {
             boolean approved = Boolean.TRUE.equals(args.get("approved"));
             String feedback = (String) args.getOrDefault("feedback", "");
             List<String> unsupported =
-                (List<String>) args.getOrDefault("unsupported_claims", List.of());
+                    (List<String>) args.getOrDefault("unsupported_claims", List.of());
             List<String> citationFixes =
-                (List<String>) args.getOrDefault("citation_fixes", List.of());
+                    (List<String>) args.getOrDefault("citation_fixes", List.of());
             onVerdict.accept(new Verdict(approved, feedback, unsupported, citationFixes));
             if (context != null) {
                 context.setHaltRequested(true);

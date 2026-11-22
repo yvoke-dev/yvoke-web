@@ -33,10 +33,12 @@ public class DesktopOrchestratorRunService {
     private final AgentStepRepository agentStepRepository;
     private final OrchestratorProfileService orchestratorProfileService;
 
-    public DesktopOrchestratorRunService(ConversationRepository conversationRepository,
-        MessageRepository messageRepository, AgentRunRepository agentRunRepository,
-        AgentStepRepository agentStepRepository,
-        OrchestratorProfileService orchestratorProfileService) {
+    public DesktopOrchestratorRunService(
+            ConversationRepository conversationRepository,
+            MessageRepository messageRepository,
+            AgentRunRepository agentRunRepository,
+            AgentStepRepository agentStepRepository,
+            OrchestratorProfileService orchestratorProfileService) {
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
         this.agentRunRepository = Objects.requireNonNull(agentRunRepository);
@@ -55,17 +57,21 @@ public class DesktopOrchestratorRunService {
         }
         Conversation conversation = verifyOwnership(req.conversationId(), user);
         OrchestratorProfile profile =
-            orchestratorProfileService.getProfile(req.profileName().trim()).orElse(null);
-        if (profile == null || profile.area() == null || profile.area().isBlank()
-            || !AreaAccessContext.canAccessUserArea(profile.area())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Unknown orchestrator profile: " + req.profileName());
+                orchestratorProfileService.getProfile(req.profileName().trim()).orElse(null);
+        if (profile == null
+                || profile.area() == null
+                || profile.area().isBlank()
+                || !AreaAccessContext.canAccessUserArea(profile.area())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Unknown orchestrator profile: " + req.profileName());
         }
         String profileArea = profile.area().trim();
-        if (conversation.area() != null && !conversation.area().isBlank()
-            && !conversation.area().trim().equalsIgnoreCase(profileArea)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Orchestrator profile area does not match conversation area");
+        if (conversation.area() != null
+                && !conversation.area().isBlank()
+                && !conversation.area().trim().equalsIgnoreCase(profileArea)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Orchestrator profile area does not match conversation area");
         }
         conversationRepository.updateAreaIfAbsent(req.conversationId(), profileArea);
         if (req.messageId() != null) {
@@ -75,18 +81,25 @@ public class DesktopOrchestratorRunService {
         List<OrchestratorRunRequest.Step> steps = req.steps() != null ? req.steps() : List.of();
         for (OrchestratorRunRequest.Step s : steps) {
             if (s.playbookVersion() != null && s.playbookVersion() < 1) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "playbookVersion must be >= 1");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "playbookVersion must be >= 1");
             }
         }
 
         UUID runId = UUID.randomUUID();
         agentRunRepository.create(runId, req.conversationId(), req.profileName(), req.config());
-        agentRunRepository.finish(runId, req.messageId(),
-            req.status() != null ? req.status() : "done", zero(req.reviewRounds()),
-            req.finalVerdict(), zero(req.promptTokens()), zero(req.completionTokens()),
-            zero(req.totalTokens()), zero(req.cachedTokens()), zero(req.thoughtTokens()),
-            req.error());
+        agentRunRepository.finish(
+                runId,
+                req.messageId(),
+                req.status() != null ? req.status() : "done",
+                zero(req.reviewRounds()),
+                req.finalVerdict(),
+                zero(req.promptTokens()),
+                zero(req.completionTokens()),
+                zero(req.totalTokens()),
+                zero(req.cachedTokens()),
+                zero(req.thoughtTokens()),
+                req.error());
         if (req.messageId() != null) {
             agentRunRepository.updateAssistantMessageId(runId, req.messageId());
         }
@@ -94,30 +107,53 @@ public class DesktopOrchestratorRunService {
         int autoSeq = 0;
         for (OrchestratorRunRequest.Step s : steps) {
             String playbookName =
-                (s.playbookName() != null && !s.playbookName().isBlank()) ? s.playbookName().trim()
-                    : null;
+                    (s.playbookName() != null && !s.playbookName().isBlank())
+                            ? s.playbookName().trim()
+                            : null;
             Integer playbookVersion = playbookName != null ? s.playbookVersion() : null;
-            agentStepRepository.insert(UUID.randomUUID(), runId,
-                s.seq() != null ? s.seq() : autoSeq, s.role() != null ? s.role() : "specialist",
-                zero(s.round()), playbookName, playbookVersion, s.model(), s.thinkingLevel(),
-                s.input(), s.output(), s.messages(), s.verdict(), zero(s.promptTokens()),
-                zero(s.completionTokens()), zero(s.totalTokens()), zero(s.cachedTokens()),
-                zero(s.thoughtTokens()));
+            agentStepRepository.insert(
+                    UUID.randomUUID(),
+                    runId,
+                    s.seq() != null ? s.seq() : autoSeq,
+                    s.role() != null ? s.role() : "specialist",
+                    zero(s.round()),
+                    playbookName,
+                    playbookVersion,
+                    s.model(),
+                    s.thinkingLevel(),
+                    s.input(),
+                    s.output(),
+                    s.messages(),
+                    s.verdict(),
+                    zero(s.promptTokens()),
+                    zero(s.completionTokens()),
+                    zero(s.totalTokens()),
+                    zero(s.cachedTokens()),
+                    zero(s.thoughtTokens()));
             autoSeq++;
         }
-        log.info("Recorded desktop orchestrator run {} (conversation={}, profile={}, steps={})",
-            runId, req.conversationId(), req.profileName(), steps.size());
+        log.info(
+                "Recorded desktop orchestrator run {} (conversation={}, profile={}, steps={})",
+                runId,
+                req.conversationId(),
+                req.profileName(),
+                steps.size());
         return runId;
     }
 
     private Conversation verifyOwnership(UUID conversationId, User user) {
-        Conversation conversation = conversationRepository.findById(conversationId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Conversation not found: " + conversationId));
-        if (conversation.area() != null && !conversation.area().isBlank()
-            && !AreaAccessContext.canAccessUserArea(conversation.area())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Conversation not found: " + conversationId);
+        Conversation conversation =
+                conversationRepository
+                        .findById(conversationId)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Conversation not found: " + conversationId));
+        if (conversation.area() != null
+                && !conversation.area().isBlank()
+                && !AreaAccessContext.canAccessUserArea(conversation.area())) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Conversation not found: " + conversationId);
         }
         if (!Objects.equals(conversation.userId(), user.id())) {
             throw new AccessDeniedException("Access denied to conversation: " + conversationId);
@@ -126,12 +162,16 @@ public class DesktopOrchestratorRunService {
     }
 
     private void verifyMessageBelongsToConversation(UUID messageId, UUID conversationId) {
-        Message message = messageRepository.findById(messageId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Message not found: " + messageId));
+        Message message =
+                messageRepository
+                        .findById(messageId)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.BAD_REQUEST, "Message not found: " + messageId));
         if (!Objects.equals(message.conversationId(), conversationId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Message " + messageId + " does not belong to conversation " + conversationId);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Message " + messageId + " does not belong to conversation " + conversationId);
         }
     }
 

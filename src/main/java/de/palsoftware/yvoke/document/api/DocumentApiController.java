@@ -22,8 +22,8 @@ public class DocumentApiController {
     private final DocumentRepository documentRepository;
     private final CollectionService collectionService;
 
-    public DocumentApiController(DocumentRepository documentRepository,
-        CollectionService collectionService) {
+    public DocumentApiController(
+            DocumentRepository documentRepository, CollectionService collectionService) {
         this.documentRepository = documentRepository;
         this.collectionService = collectionService;
     }
@@ -31,34 +31,39 @@ public class DocumentApiController {
     /**
      * Lists an area's documents for one version.
      *
-     * <p>
-     * The area name is matched case-insensitively and then the STORED spelling is what the query
+     * <p>The area name is matched case-insensitively and then the STORED spelling is what the query
      * runs with. Both halves matter, and they are the two halves of the same rule: matching
      * leniently while querying with the caller's spelling resolves to nothing, and refusing to
      * match at all turns a typo into a confident empty list. Every MCP tool already guards this
-     * input the same way; this endpoint was the one member of the family that did not, so
-     * {@code collection=docs} against a stored {@code Docs} answered 200 with {@code []} —
+     * input the same way; this endpoint was the one member of the family that did not, so {@code
+     * collection=docs} against a stored {@code Docs} answered 200 with {@code []} —
      * indistinguishable from an area that genuinely holds no documents.
      */
     @GetMapping
-    public List<DocumentDto> listDocuments(@RequestParam("collection") String collectionName,
-        @RequestParam("tag") String tag) {
+    public List<DocumentDto> listDocuments(
+            @RequestParam("collection") String collectionName, @RequestParam("tag") String tag) {
 
         String requested = collectionName.trim();
-        Collection matched = collectionService.listCollections().stream()
-            .filter(c -> c.name().equalsIgnoreCase(requested)).findFirst()
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Collection '" + requested + "' does not exist."));
+        Collection matched =
+                collectionService.listCollections().stream()
+                        .filter(c -> c.name().equalsIgnoreCase(requested))
+                        .findFirst()
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Collection '" + requested + "' does not exist."));
 
-        if (matched.area() != null && !matched.area().isBlank()
-            && !(AreaAccessContext.canIngestArea(matched.area())
-                || AreaAccessContext.canAdministerArea(matched.area()))) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Collection '" + requested + "' does not exist.");
+        if (matched.area() != null
+                && !matched.area().isBlank()
+                && !(AreaAccessContext.canIngestArea(matched.area())
+                        || AreaAccessContext.canAdministerArea(matched.area()))) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Collection '" + requested + "' does not exist.");
         }
 
         return documentRepository.listByCollectionAndTag(matched.name(), tag.trim()).stream()
-            .map(DocumentApiController::toDto).toList();
+                .map(DocumentApiController::toDto)
+                .toList();
     }
 
     private static DocumentDto toDto(DocumentDetails d) {

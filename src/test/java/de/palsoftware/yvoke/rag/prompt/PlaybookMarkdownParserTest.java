@@ -13,22 +13,23 @@ class PlaybookMarkdownParserTest {
 
     @Test
     void testParseMarkdownWithFullFrontmatter() {
-        String md = """
-            ---
-            name: oim-orchestrator
-            title: OIM Orchestrator
-            description: Orchestrator playbook description
-            target_agent: orchestrator
-            prototype: true
-            tools:
-              - call_specialist
-              - ask_clarifying_question
-            code_execution: true
-            ---
+        String md =
+                """
+                ---
+                name: oim-orchestrator
+                title: OIM Orchestrator
+                description: Orchestrator playbook description
+                target_agent: orchestrator
+                prototype: true
+                tools:
+                  - call_specialist
+                  - ask_clarifying_question
+                code_execution: true
+                ---
 
-            # You are the OIM Orchestrator
-            Welcome template text.
-            """;
+                # You are the OIM Orchestrator
+                Welcome template text.
+                """;
 
         Playbook pb = PlaybookMarkdownParser.parseMarkdown(md, "default-name");
 
@@ -45,15 +46,16 @@ class PlaybookMarkdownParserTest {
 
     @Test
     void testParseMarkdownWithMinimalFrontmatter() {
-        String md = """
-            ---
-            name: oim-access-governance
-            title: OIM Access Governance
-            description: Short description
-            ---
+        String md =
+                """
+                ---
+                name: oim-access-governance
+                title: OIM Access Governance
+                description: Short description
+                ---
 
-            # Template text
-            """;
+                # Template text
+                """;
 
         Playbook pb = PlaybookMarkdownParser.parseMarkdown(md, "oim-access-governance");
 
@@ -74,67 +76,79 @@ class PlaybookMarkdownParserTest {
      * {@code tools} accepts a comma-separated STRING as well as a YAML list — which is what a human
      * writes and what several other playbook formats use.
      *
-     * <p>
-     * Neither branch is executed by any existing test: all three cases in this class use the
-     * canonical {@code target_agent} key and a YAML list, which is exactly the pair
-     * {@code toMarkdown} produces, so the round-trip test can only ever exercise the canonical
-     * form. Drop the alias chain or the comma split and the import still SUCCEEDS — it just yields
-     * {@code targetAgent = "specialist"} and an EMPTY tool list. A playbook with no tools is not an
-     * error anywhere: the run is offered nothing, the model answers from its own weights, and the
-     * result reads as a normal (slightly confident, entirely ungrounded) answer. An orchestrator
-     * silently demoted to a specialist has the same quality: it just stops delegating.
+     * <p>Neither branch is executed by any existing test: all three cases in this class use the
+     * canonical {@code target_agent} key and a YAML list, which is exactly the pair {@code
+     * toMarkdown} produces, so the round-trip test can only ever exercise the canonical form. Drop
+     * the alias chain or the comma split and the import still SUCCEEDS — it just yields {@code
+     * targetAgent = "specialist"} and an EMPTY tool list. A playbook with no tools is not an error
+     * anywhere: the run is offered nothing, the model answers from its own weights, and the result
+     * reads as a normal (slightly confident, entirely ungrounded) answer. An orchestrator silently
+     * demoted to a specialist has the same quality: it just stops delegating.
      *
-     * <p>
-     * The spacing in the tool string is intentional — a hand-written list has ragged spaces around
-     * the commas, and an untrimmed entry would never match a registered tool name.
+     * <p>The spacing in the tool string is intentional — a hand-written list has ragged spaces
+     * around the commas, and an untrimmed entry would never match a registered tool name.
      */
     @Test
     void aliasedTargetAgentKeysAndACommaSeparatedToolStringParseLikeTheCanonicalForm() {
-        String viaRole = """
-            ---
-            name: oim-orchestrator
-            role: orchestrator
-            tools: call_specialist, ask_clarifying_question ,verify_citations
-            ---
+        String viaRole =
+                """
+                ---
+                name: oim-orchestrator
+                role: orchestrator
+                tools: call_specialist, ask_clarifying_question ,verify_citations
+                ---
 
-            # Orchestrator body
-            """;
+                # Orchestrator body
+                """;
 
         Playbook pb = PlaybookMarkdownParser.parseMarkdown(viaRole, "fallback-name");
 
         assertEquals("orchestrator", pb.targetAgent());
-        assertEquals(List.of("call_specialist", "ask_clarifying_question", "verify_citations"),
-            pb.tools());
+        assertEquals(
+                List.of("call_specialist", "ask_clarifying_question", "verify_citations"),
+                pb.tools());
 
-        String viaCamelCase = """
-            ---
-            name: oim-reviewer
-            targetAgent: reviewer
-            ---
+        String viaCamelCase =
+                """
+                ---
+                name: oim-reviewer
+                targetAgent: reviewer
+                ---
 
-            # Reviewer body
-            """;
-        assertEquals("reviewer",
-            PlaybookMarkdownParser.parseMarkdown(viaCamelCase, "fallback-name").targetAgent());
+                # Reviewer body
+                """;
+        assertEquals(
+                "reviewer",
+                PlaybookMarkdownParser.parseMarkdown(viaCamelCase, "fallback-name").targetAgent());
 
-        String viaType = """
-            ---
-            name: oim-orchestrator
-            type: orchestrator
-            ---
+        String viaType =
+                """
+                ---
+                name: oim-orchestrator
+                type: orchestrator
+                ---
 
-            # Orchestrator body
-            """;
-        assertEquals("orchestrator",
-            PlaybookMarkdownParser.parseMarkdown(viaType, "fallback-name").targetAgent());
+                # Orchestrator body
+                """;
+        assertEquals(
+                "orchestrator",
+                PlaybookMarkdownParser.parseMarkdown(viaType, "fallback-name").targetAgent());
     }
 
     @Test
     void testToMarkdownAndReParseRoundtrip() {
-        Playbook original = new Playbook("oim-orchestrator-reviewer", "OIM Orchestrator Reviewer",
-            "Reviewer playbook for validation", "# Reviewer Prompt\nCheck citations.",
-            List.of("verify_citations", "get_section", "submit_review"), false, "reviewer", true,
-            null, null);
+        Playbook original =
+                new Playbook(
+                        "oim-orchestrator-reviewer",
+                        "OIM Orchestrator Reviewer",
+                        "Reviewer playbook for validation",
+                        "# Reviewer Prompt\nCheck citations.",
+                        List.of("verify_citations", "get_section", "submit_review"),
+                        false,
+                        "reviewer",
+                        true,
+                        null,
+                        null);
 
         String md = PlaybookMarkdownParser.toMarkdown(original);
         Playbook parsed = PlaybookMarkdownParser.parseMarkdown(md, "oim-orchestrator-reviewer");
@@ -153,14 +167,17 @@ class PlaybookMarkdownParserTest {
     /** The yvoke-exports files carry each playbook's area, so it must survive a round trip. */
     @Test
     void theAreaIsReadFromTheFrontmatterAndWrittenBack() {
-        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
-            ---
-            name: pb
-            title: PB
-            area: PingID
-            ---
-            Body
-            """, null);
+        Playbook parsed =
+                PlaybookMarkdownParser.parseMarkdown(
+                        """
+                        ---
+                        name: pb
+                        title: PB
+                        area: PingID
+                        ---
+                        Body
+                        """,
+                        null);
         assertEquals("PingID", parsed.area());
 
         String md = PlaybookMarkdownParser.toMarkdown(parsed);
@@ -170,79 +187,107 @@ class PlaybookMarkdownParserTest {
 
     @Test
     void aFileWithoutAnAreaParsesWithNone() {
-        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
-            ---
-            name: pb
-            title: PB
-            ---
-            Body
-            """, null);
+        Playbook parsed =
+                PlaybookMarkdownParser.parseMarkdown(
+                        """
+                        ---
+                        name: pb
+                        title: PB
+                        ---
+                        Body
+                        """,
+                        null);
         assertNull(parsed.area());
     }
 
     @Test
     void retiredSystemPromptInFrontmatterThrowsIllegalArgumentException() {
-        IllegalArgumentException exSnake = assertThrows(IllegalArgumentException.class,
-            () -> PlaybookMarkdownParser.parseMarkdown("""
-                ---
-                name: pb
-                title: PB
-                system_prompt: coding-chat
-                ---
-                Body
-                """, null));
+        IllegalArgumentException exSnake =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                PlaybookMarkdownParser.parseMarkdown(
+                                        """
+                                        ---
+                                        name: pb
+                                        title: PB
+                                        system_prompt: coding-chat
+                                        ---
+                                        Body
+                                        """,
+                                        null));
         assertEquals(
-            "The 'system_prompt' frontmatter field is retired; inline the instructions into the playbook body.",
-            exSnake.getMessage());
+                "The 'system_prompt' frontmatter field is retired; inline the instructions into the playbook body.",
+                exSnake.getMessage());
 
-        IllegalArgumentException exCamel = assertThrows(IllegalArgumentException.class,
-            () -> PlaybookMarkdownParser.parseMarkdown("""
-                ---
-                name: pb
-                title: PB
-                systemPrompt: coding-chat
-                ---
-                Body
-                """, null));
+        IllegalArgumentException exCamel =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                PlaybookMarkdownParser.parseMarkdown(
+                                        """
+                                        ---
+                                        name: pb
+                                        title: PB
+                                        systemPrompt: coding-chat
+                                        ---
+                                        Body
+                                        """,
+                                        null));
         assertEquals(
-            "The 'system_prompt' frontmatter field is retired; inline the instructions into the playbook body.",
-            exCamel.getMessage());
+                "The 'system_prompt' frontmatter field is retired; inline the instructions into the playbook body.",
+                exCamel.getMessage());
     }
 
     @Test
     void parseMarkdownRejectsEmptyOrBlankBodyTemplateText() {
-        assertThrows(IllegalArgumentException.class, () -> PlaybookMarkdownParser.parseMarkdown("""
-            ---
-            name: pb
-            title: PB
-            ---
-            """, "fallback"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        PlaybookMarkdownParser.parseMarkdown(
+                                """
+                                ---
+                                name: pb
+                                title: PB
+                                ---
+                                """,
+                                "fallback"));
 
-        assertThrows(IllegalArgumentException.class, () -> PlaybookMarkdownParser.parseMarkdown("""
-            ---
-            name: pb
-            title: PB
-            ---
-               \n\t
-            """, "fallback"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        PlaybookMarkdownParser.parseMarkdown(
+                                """
+                                ---
+                                name: pb
+                                title: PB
+                                ---
+                                   \n\t
+                                """,
+                                "fallback"));
 
-        assertThrows(IllegalArgumentException.class,
-            () -> PlaybookMarkdownParser.parseMarkdown("", "fallback"));
-        assertThrows(IllegalArgumentException.class,
-            () -> PlaybookMarkdownParser.parseMarkdown(null, "fallback"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> PlaybookMarkdownParser.parseMarkdown("", "fallback"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> PlaybookMarkdownParser.parseMarkdown(null, "fallback"));
     }
 
     @Test
     void versionDefaultsToOneWhenOmittedAndRoundTripsWhenSet() {
-        Playbook parsed = PlaybookMarkdownParser.parseMarkdown("""
-            ---
-            name: oim-ask
-            title: OIM Ask
-            description: Ask OIM
-            version: 2
-            ---
-            Body
-            """, "oim-ask");
+        Playbook parsed =
+                PlaybookMarkdownParser.parseMarkdown(
+                        """
+                        ---
+                        name: oim-ask
+                        title: OIM Ask
+                        description: Ask OIM
+                        version: 2
+                        ---
+                        Body
+                        """,
+                        "oim-ask");
         assertEquals(2, parsed.version());
 
         String md = PlaybookMarkdownParser.toMarkdown(parsed);
@@ -252,19 +297,22 @@ class PlaybookMarkdownParserTest {
 
     @Test
     void parseMarkdownRejectsInvalidVersionValuesEvenThoughFrontmatterLoadUsesTryCatch() {
-        for (String bad : List.of("0", "-1", "abc", "1.5", "true", "false", "null", "", "\"\"",
-            "\"   \"")) {
-            String md = """
-                ---
-                name: pb
-                title: PB
-                version: %s
-                ---
-                Body
-                """.formatted(bad);
-            assertThrows(IllegalArgumentException.class,
-                () -> PlaybookMarkdownParser.parseMarkdown(md, "pb"),
-                "Expected IllegalArgumentException for version: " + bad);
+        for (String bad :
+                List.of("0", "-1", "abc", "1.5", "true", "false", "null", "", "\"\"", "\"   \"")) {
+            String md =
+                    """
+                    ---
+                    name: pb
+                    title: PB
+                    version: %s
+                    ---
+                    Body
+                    """
+                            .formatted(bad);
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> PlaybookMarkdownParser.parseMarkdown(md, "pb"),
+                    "Expected IllegalArgumentException for version: " + bad);
         }
     }
 }

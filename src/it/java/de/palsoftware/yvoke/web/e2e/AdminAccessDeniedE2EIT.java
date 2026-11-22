@@ -9,31 +9,27 @@ import org.junit.jupiter.api.Test;
 /**
  * What an authenticated-but-unauthorised person actually SEES when they hit an admin URL.
  *
- * <p>
- * There is no {@code exceptionHandling}/{@code AccessDeniedHandler} anywhere in {@code
+ * <p>There is no {@code exceptionHandling}/{@code AccessDeniedHandler} anywhere in {@code
  * src/main/java}, so this outcome is assembled entirely out of framework defaults plus two pieces
- * of project state that look unrelated to each other: Spring Security's
- * {@code AccessDeniedHandlerImpl} {@code sendError(403)}s, the container ERROR-dispatches to
- * {@code /error} (which is why {@code
- * /error} sits in {@code SecurityConfig}'s permitAll list), and {@code BasicErrorController}
- * returns the view name {@code "error"} — which resolves to the project's own
- * {@code templates/error.html} only because there is no {@code @ErrorController} and no
- * {@code templates/error/} directory for {@code DefaultErrorViewResolver} to find first. Add either
- * of those, rename the template, or set {@code server.error.whitelabel.enabled}, and a denied admin
+ * of project state that look unrelated to each other: Spring Security's {@code
+ * AccessDeniedHandlerImpl} {@code sendError(403)}s, the container ERROR-dispatches to {@code
+ * /error} (which is why {@code /error} sits in {@code SecurityConfig}'s permitAll list), and {@code
+ * BasicErrorController} returns the view name {@code "error"} — which resolves to the project's own
+ * {@code templates/error.html} only because there is no {@code @ErrorController} and no {@code
+ * templates/error/} directory for {@code DefaultErrorViewResolver} to find first. Add either of
+ * those, rename the template, or set {@code server.error.whitelabel.enabled}, and a denied admin
  * URL silently degrades to Boot's whitelabel page — a bare stack-trace-shaped page with no
  * navigation back into the app, which reads to the user as "the site is broken" rather than "you
  * may not go here".
  *
- * <p>
- * The absent Details row is the security half. {@code application.yml} carries no {@code
+ * <p>The absent Details row is the security half. {@code application.yml} carries no {@code
  * server.error.*} keys, so {@code include-message} stays at its {@code never} default and the
  * template's {@code th:if} suppresses the row. Turning it on — the obvious thing to do while
  * debugging — publishes raw exception text on a page that any signed-in user can reach by guessing
  * a URL, and exception messages in this codebase routinely carry provider detail, SQL fragments and
  * ids (SEC-17).
  *
- * <p>
- * Nothing existing can notice any of this. {@code SecurityGatingIT.testUserAccessGating} and
+ * <p>Nothing existing can notice any of this. {@code SecurityGatingIT.testUserAccessGating} and
  * {@code SecurityMockGatingIT.testUserAccessGating} assert {@code status().isForbidden()} through
  * MockMvc, which performs no ERROR dispatch at all — the body they see is empty whatever the error
  * page does — and {@code AllPagesRenderSmokeIT} only ever loads pages as a user who is allowed on
@@ -49,8 +45,9 @@ class AdminAccessDeniedE2EIT extends AbstractE2E {
         Response response = page.navigate(url("/admin/documents"));
 
         Assertions.assertThat(response.status())
-            .as("an authenticated non-admin must be refused with a real 403, not bounced to /login")
-            .isEqualTo(403);
+                .as(
+                        "an authenticated non-admin must be refused with a real 403, not bounced to /login")
+                .isEqualTo(403);
 
         assertThat(page.locator(".error-card")).isVisible();
         assertThat(page.locator(".error-code")).hasText("403");
@@ -74,7 +71,7 @@ class AdminAccessDeniedE2EIT extends AbstractE2E {
         assertThat(page.locator(".error-actions a")).hasCount(2);
 
         Assertions.assertThat(page.content())
-            .as("Boot's whitelabel page must never be what a denied user sees")
-            .doesNotContain("Whitelabel Error Page");
+                .as("Boot's whitelabel page must never be what a denied user sees")
+                .doesNotContain("Whitelabel Error Page");
     }
 }

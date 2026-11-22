@@ -18,23 +18,22 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * only detached from the tag and MUST survive; only content whose sole tag was the removed one is
  * deleted. A destructive hard-delete (the previous behaviour) would wipe multi-tagged content.
  */
-@SpringBootTest(properties = {"spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"})
+@SpringBootTest(
+        properties = {
+            "spring.flyway.enabled=true",
+            "spring.flyway.locations=filesystem:docker/db/migration"
+        })
 public class LifecycleTagRemovalIT {
 
     private static final String COLLECTION_NAME = "LIFECYCLE-TAG-REMOVAL-IT";
 
-    @Autowired
-    private LifecycleService lifecycleService;
+    @Autowired private LifecycleService lifecycleService;
 
-    @Autowired
-    private TagRepository tagRepository;
+    @Autowired private TagRepository tagRepository;
 
-    @Autowired
-    private CollectionRepository collectionRepository;
+    @Autowired private CollectionRepository collectionRepository;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private UUID collectionId;
 
@@ -43,7 +42,7 @@ public class LifecycleTagRemovalIT {
         cleanup();
         collectionRepository.create(COLLECTION_NAME, "Tag removal IT", "OIM");
         collectionId =
-            collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
+                collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
         tagRepository.addTagToCollection(collectionId, "v1");
         tagRepository.addTagToCollection(collectionId, "v2");
     }
@@ -83,7 +82,7 @@ public class LifecycleTagRemovalIT {
 
         // The tag is detached from the collection itself.
         assertThat(collectionRepository.findByName(COLLECTION_NAME).orElseThrow().tags())
-            .containsExactly("v2");
+                .containsExactly("v2");
 
         // Multi-tagged content SURVIVES and is now tagged only with the remaining tag.
         assertThat(exists("documents", docShared)).isTrue();
@@ -103,9 +102,11 @@ public class LifecycleTagRemovalIT {
         assertThat(exists("documents", docV2Only)).isTrue();
 
         // The destructive operation is now audited (previously it was not).
-        Integer audits = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM audit_log WHERE action = 'REMOVE_COLLECTION_TAG' AND target = ?",
-            Integer.class, collectionId.toString());
+        Integer audits =
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM audit_log WHERE action = 'REMOVE_COLLECTION_TAG' AND target = ?",
+                        Integer.class,
+                        collectionId.toString());
         assertThat(audits).isGreaterThanOrEqualTo(1);
     }
 
@@ -113,21 +114,19 @@ public class LifecycleTagRemovalIT {
      * Two asymmetries in the json-object half of the tag cascade, neither of them stated in the
      * javadoc of the methods that implement them.
      *
-     * <p>
-     * First, {@code JsonObjectRepository.removeTagAndPurgeOrphans} is TWO statements — a DELETE for
-     * sole-tag rows and an UPDATE that {@code array_remove}s the tag from everything else — and
-     * only the DELETE is pinned today.
-     * {@link #removeTagKeepsMultiTaggedContentAndDeletesOnlyExclusiveContent()} asserts that the
+     * <p>First, {@code JsonObjectRepository.removeTagAndPurgeOrphans} is TWO statements — a DELETE
+     * for sole-tag rows and an UPDATE that {@code array_remove}s the tag from everything else — and
+     * only the DELETE is pinned today. {@link
+     * #removeTagKeepsMultiTaggedContentAndDeletesOnlyExclusiveContent()} asserts that the
      * multi-tagged json object still EXISTS but never looks at what it is tagged with, unlike its
-     * documents/entities assertions which do check {@code tagsOf}. So copying the DELETE's
-     * {@code cardinality(tags) = 1} guard onto the UPDATE — a one-line, entirely plausible-looking
-     * tidy-up — leaves every shared row still carrying the removed tag, and the whole suite stays
-     * green. That is not cosmetic: {@code json_objects} is read with {@code :tag = ANY(tags)}, so a
-     * stale tag makes a removed product version keep answering {@code query_json_objects} and
-     * {@code get_json_schema} as if it were still installed.
+     * documents/entities assertions which do check {@code tagsOf}. So copying the DELETE's {@code
+     * cardinality(tags) = 1} guard onto the UPDATE — a one-line, entirely plausible-looking tidy-up
+     * — leaves every shared row still carrying the removed tag, and the whole suite stays green.
+     * That is not cosmetic: {@code json_objects} is read with {@code :tag = ANY(tags)}, so a stale
+     * tag makes a removed product version keep answering {@code query_json_objects} and {@code
+     * get_json_schema} as if it were still installed.
      *
-     * <p>
-     * Second, the cascade does NOT touch {@code json_schemas}, and that is easy to assume wrong
+     * <p>Second, the cascade does NOT touch {@code json_schemas}, and that is easy to assume wrong
      * because the sibling {@code deleteObjectsByCollection} DOES delete both tables. Removing a tag
      * therefore leaves the per-tag SCHEMA DECLARATION behind after every object it described is
      * gone — an orphan that {@code get_json_schema} will still hand an agent as the shape of data
@@ -149,8 +148,8 @@ public class LifecycleTagRemovalIT {
         assertThat(exists("json_objects", jsonV1Only)).isFalse();
         assertThat(exists("json_objects", jsonShared)).isTrue();
         assertThat(tagsOf("json_objects", jsonShared))
-            .as("the array_remove must run on json_objects too, not only on documents/entities")
-            .isEqualTo("v2");
+                .as("the array_remove must run on json_objects too, not only on documents/entities")
+                .isEqualTo("v2");
 
         // A row that never carried the tag is untouched — the UPDATE is scoped, not
         // collection-wide.
@@ -159,67 +158,86 @@ public class LifecycleTagRemovalIT {
 
         // Characterisation: the schema declarations are outside the cascade entirely, so the 'v1'
         // declaration outlives every 'v1' object. Change this expectation only on purpose.
-        assertThat(schemaCount("v1")).as(
-            "removeTagAndPurgeOrphans does not reach json_schemas — the declaration is orphaned")
-            .isEqualTo(1);
+        assertThat(schemaCount("v1"))
+                .as(
+                        "removeTagAndPurgeOrphans does not reach json_schemas — the declaration is orphaned")
+                .isEqualTo(1);
         assertThat(schemaCount("v2")).isEqualTo(1);
     }
 
     /** A hand-authored per-tag declaration, i.e. the kind the inference path refuses to rewrite. */
     private void insertJsonSchema(String tag) {
         jdbcTemplate.update(
-            "INSERT INTO json_schemas (id, collection_id, schema_data, source, tag) "
-                + "VALUES (?, ?, '{\"fields\":{}}'::jsonb, 'imported', ?)",
-            UUID.randomUUID(), collectionId, tag);
+                "INSERT INTO json_schemas (id, collection_id, schema_data, source, tag) "
+                        + "VALUES (?, ?, '{\"fields\":{}}'::jsonb, 'imported', ?)",
+                UUID.randomUUID(),
+                collectionId,
+                tag);
     }
 
     private int schemaCount(String tag) {
-        Integer n = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM json_schemas WHERE collection_id = ? AND tag = ?", Integer.class,
-            collectionId, tag);
+        Integer n =
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM json_schemas WHERE collection_id = ? AND tag = ?",
+                        Integer.class,
+                        collectionId,
+                        tag);
         return n == null ? 0 : n;
     }
 
     private boolean exists(String table, UUID id) {
-        Integer c = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE id = ?",
-            Integer.class, id);
+        Integer c =
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM " + table + " WHERE id = ?", Integer.class, id);
         return c != null && c > 0;
     }
 
     private String tagsOf(String table, UUID id) {
         return jdbcTemplate.queryForObject(
-            "SELECT array_to_string(tags, ',') FROM " + table + " WHERE id = ?", String.class, id);
+                "SELECT array_to_string(tags, ',') FROM " + table + " WHERE id = ?",
+                String.class,
+                id);
     }
 
     private UUID insertDocument(String title, String... tags) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO documents (id, collection_id, kind, title, tags) VALUES (?, ?, 'manual', ?, ?::text[])",
-            id, collectionId, title, tags);
+                "INSERT INTO documents (id, collection_id, kind, title, tags) VALUES (?, ?, 'manual', ?, ?::text[])",
+                id,
+                collectionId,
+                title,
+                tags);
         return id;
     }
 
     private UUID insertEntity(String name, String... tags) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO entities (id, collection_id, name, kind, tags) VALUES (?, ?, ?, 'table', ?::text[])",
-            id, collectionId, name, tags);
+                "INSERT INTO entities (id, collection_id, name, kind, tags) VALUES (?, ?, ?, 'table', ?::text[])",
+                id,
+                collectionId,
+                name,
+                tags);
         return id;
     }
 
     private UUID insertRelationship(String... tags) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO relationships (id, collection_id, subject, predicate, object, tags) VALUES (?, ?, 'A', 'rel', 'B', ?::text[])",
-            id, collectionId, tags);
+                "INSERT INTO relationships (id, collection_id, subject, predicate, object, tags) VALUES (?, ?, 'A', 'rel', 'B', ?::text[])",
+                id,
+                collectionId,
+                tags);
         return id;
     }
 
     private UUID insertJson(String... tags) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO json_objects (id, collection_id, data, tags) VALUES (?, ?, '{\"k\":\"v\"}'::jsonb, ?::text[])",
-            id, collectionId, tags);
+                "INSERT INTO json_objects (id, collection_id, data, tags) VALUES (?, ?, '{\"k\":\"v\"}'::jsonb, ?::text[])",
+                id,
+                collectionId,
+                tags);
         return id;
     }
 }

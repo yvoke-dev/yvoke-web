@@ -29,39 +29,63 @@ public class AgentRunRepository {
     /** Inserts a new run with status {@code running}. */
     public void create(UUID id, UUID conversationId, String profileName, Object config) {
         String sql =
-            """
+                """
                 INSERT INTO agent_runs (id, conversation_id, profile_name, status, config, started_at)
                 VALUES (:id, :conversationId, :profileName, 'running', :config::jsonb, CURRENT_TIMESTAMP)
                 """;
-        jdbcClient.sql(sql).param("id", id).param("conversationId", conversationId)
-            .param("profileName", profileName).param("config", toJson(config)).update();
+        jdbcClient
+                .sql(sql)
+                .param("id", id)
+                .param("conversationId", conversationId)
+                .param("profileName", profileName)
+                .param("config", toJson(config))
+                .update();
     }
 
     /** Finalises a run: links the delivered message, records verdict, tokens and finished_at. */
-    public void finish(UUID id, UUID messageId, String status, int reviewRounds,
-        Object finalVerdict, int promptTokens, int completionTokens, int totalTokens,
-        int cachedTokens, int thoughtTokens, String error) {
-        String sql = """
-            UPDATE agent_runs
-            SET message_id = :messageId,
-                status = :status,
-                review_rounds = :reviewRounds,
-                final_verdict = :finalVerdict::jsonb,
-                prompt_tokens = :promptTokens,
-                completion_tokens = :completionTokens,
-                total_tokens = :totalTokens,
-                cached_tokens = :cachedTokens,
-                thought_tokens = :thoughtTokens,
-                error = :error,
-                finished_at = CURRENT_TIMESTAMP
-            WHERE id = :id
-            """;
-        int rows = jdbcClient.sql(sql).param("id", id).param("messageId", messageId)
-            .param("status", status).param("reviewRounds", reviewRounds)
-            .param("finalVerdict", toJson(finalVerdict)).param("promptTokens", promptTokens)
-            .param("completionTokens", completionTokens).param("totalTokens", totalTokens)
-            .param("cachedTokens", cachedTokens).param("thoughtTokens", thoughtTokens)
-            .param("error", error).update();
+    public void finish(
+            UUID id,
+            UUID messageId,
+            String status,
+            int reviewRounds,
+            Object finalVerdict,
+            int promptTokens,
+            int completionTokens,
+            int totalTokens,
+            int cachedTokens,
+            int thoughtTokens,
+            String error) {
+        String sql =
+                """
+                UPDATE agent_runs
+                SET message_id = :messageId,
+                    status = :status,
+                    review_rounds = :reviewRounds,
+                    final_verdict = :finalVerdict::jsonb,
+                    prompt_tokens = :promptTokens,
+                    completion_tokens = :completionTokens,
+                    total_tokens = :totalTokens,
+                    cached_tokens = :cachedTokens,
+                    thought_tokens = :thoughtTokens,
+                    error = :error,
+                    finished_at = CURRENT_TIMESTAMP
+                WHERE id = :id
+                """;
+        int rows =
+                jdbcClient
+                        .sql(sql)
+                        .param("id", id)
+                        .param("messageId", messageId)
+                        .param("status", status)
+                        .param("reviewRounds", reviewRounds)
+                        .param("finalVerdict", toJson(finalVerdict))
+                        .param("promptTokens", promptTokens)
+                        .param("completionTokens", completionTokens)
+                        .param("totalTokens", totalTokens)
+                        .param("cachedTokens", cachedTokens)
+                        .param("thoughtTokens", thoughtTokens)
+                        .param("error", error)
+                        .update();
         if (rows == 0) {
             log.warn("finish() modified 0 rows for agent_run id: {}", id);
         }
@@ -69,17 +93,21 @@ public class AgentRunRepository {
 
     /** Links the delivered assistant message id to this run. */
     public void updateAssistantMessageId(UUID id, UUID assistantMessageId) {
-        String sql = """
-            UPDATE agent_runs
-            SET assistant_message_id = :assistantMessageId
-            WHERE id = :id
-            """;
-        jdbcClient.sql(sql).param("id", id).param("assistantMessageId", assistantMessageId)
-            .update();
+        String sql =
+                """
+                UPDATE agent_runs
+                SET assistant_message_id = :assistantMessageId
+                WHERE id = :id
+                """;
+        jdbcClient
+                .sql(sql)
+                .param("id", id)
+                .param("assistantMessageId", assistantMessageId)
+                .update();
     }
 
     private static final String SELECT_COLUMNS =
-        """
+            """
             SELECT id, conversation_id, message_id, assistant_message_id, profile_name, status, config::text AS config,
                    review_rounds, final_verdict::text AS final_verdict, prompt_tokens,
                    completion_tokens, total_tokens, cached_tokens, thought_tokens, error,
@@ -88,26 +116,42 @@ public class AgentRunRepository {
             """;
 
     private static AgentRun mapRow(ResultSet rs, int n) throws SQLException {
-        return new AgentRun(rs.getObject("id", UUID.class),
-            rs.getObject("conversation_id", UUID.class), rs.getObject("message_id", UUID.class),
-            rs.getObject("assistant_message_id", UUID.class), rs.getString("profile_name"),
-            rs.getString("status"), rs.getString("config"), rs.getInt("review_rounds"),
-            rs.getString("final_verdict"), (Integer) rs.getObject("prompt_tokens"),
-            (Integer) rs.getObject("completion_tokens"), (Integer) rs.getObject("total_tokens"),
-            (Integer) rs.getObject("cached_tokens"), (Integer) rs.getObject("thought_tokens"),
-            rs.getString("error"), JdbcMappers.toInstant(rs.getObject("started_at")),
-            JdbcMappers.toInstant(rs.getObject("finished_at")));
+        return new AgentRun(
+                rs.getObject("id", UUID.class),
+                rs.getObject("conversation_id", UUID.class),
+                rs.getObject("message_id", UUID.class),
+                rs.getObject("assistant_message_id", UUID.class),
+                rs.getString("profile_name"),
+                rs.getString("status"),
+                rs.getString("config"),
+                rs.getInt("review_rounds"),
+                rs.getString("final_verdict"),
+                (Integer) rs.getObject("prompt_tokens"),
+                (Integer) rs.getObject("completion_tokens"),
+                (Integer) rs.getObject("total_tokens"),
+                (Integer) rs.getObject("cached_tokens"),
+                (Integer) rs.getObject("thought_tokens"),
+                rs.getString("error"),
+                JdbcMappers.toInstant(rs.getObject("started_at")),
+                JdbcMappers.toInstant(rs.getObject("finished_at")));
     }
 
     public Optional<AgentRun> findById(UUID id) {
-        return jdbcClient.sql(SELECT_COLUMNS + " WHERE id = :id").param("id", id)
-            .query(AgentRunRepository::mapRow).optional();
+        return jdbcClient
+                .sql(SELECT_COLUMNS + " WHERE id = :id")
+                .param("id", id)
+                .query(AgentRunRepository::mapRow)
+                .optional();
     }
 
     public Optional<AgentRun> findByMessageId(UUID messageId) {
-        return jdbcClient.sql(SELECT_COLUMNS
-            + " WHERE assistant_message_id = :messageId OR message_id = :messageId ORDER BY started_at DESC, id DESC LIMIT 1")
-            .param("messageId", messageId).query(AgentRunRepository::mapRow).optional();
+        return jdbcClient
+                .sql(
+                        SELECT_COLUMNS
+                                + " WHERE assistant_message_id = :messageId OR message_id = :messageId ORDER BY started_at DESC, id DESC LIMIT 1")
+                .param("messageId", messageId)
+                .query(AgentRunRepository::mapRow)
+                .optional();
     }
 
     /** Most recent runs first, for the admin trace viewer. */
@@ -120,11 +164,14 @@ public class AgentRunRepository {
             return List.of();
         }
         if (allowedAreasLower == null) {
-            return jdbcClient.sql(SELECT_COLUMNS + " ORDER BY started_at DESC LIMIT :limit")
-                .param("limit", limit).query(AgentRunRepository::mapRow).list();
+            return jdbcClient
+                    .sql(SELECT_COLUMNS + " ORDER BY started_at DESC LIMIT :limit")
+                    .param("limit", limit)
+                    .query(AgentRunRepository::mapRow)
+                    .list();
         }
         String sql =
-            """
+                """
                 SELECT r.id, r.conversation_id, r.message_id, r.assistant_message_id, r.profile_name, r.status,
                        r.config::text AS config, r.review_rounds, r.final_verdict::text AS final_verdict,
                        r.prompt_tokens, r.completion_tokens, r.total_tokens, r.cached_tokens, r.thought_tokens,
@@ -136,21 +183,26 @@ public class AgentRunRepository {
                   AND LOWER(COALESCE(c.area, op.area)) IN (:allowedAreas)
                 ORDER BY r.started_at DESC LIMIT :limit
                 """;
-        return jdbcClient.sql(sql).param("limit", limit).param("allowedAreas", allowedAreasLower)
-            .query(AgentRunRepository::mapRow).list();
+        return jdbcClient
+                .sql(sql)
+                .param("limit", limit)
+                .param("allowedAreas", allowedAreasLower)
+                .query(AgentRunRepository::mapRow)
+                .list();
     }
 
     public Optional<String> findRunArea(UUID id) {
         if (id == null) {
             return Optional.empty();
         }
-        String sql = """
-            SELECT COALESCE(c.area, op.area)
-            FROM agent_runs r
-            LEFT JOIN conversations c ON r.conversation_id = c.id
-            LEFT JOIN orchestrator_profiles op ON r.profile_name = op.name
-            WHERE r.id = :id
-            """;
+        String sql =
+                """
+                SELECT COALESCE(c.area, op.area)
+                FROM agent_runs r
+                LEFT JOIN conversations c ON r.conversation_id = c.id
+                LEFT JOIN orchestrator_profiles op ON r.profile_name = op.name
+                WHERE r.id = :id
+                """;
         return jdbcClient.sql(sql).param("id", id).query(String.class).optional();
     }
 
