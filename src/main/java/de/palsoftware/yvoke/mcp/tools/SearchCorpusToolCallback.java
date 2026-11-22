@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.ai.tool.definition.ToolDefinition;
 
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class SearchCorpusToolCallback implements ContextAwareToolCallback {
 
     private final SearchCorpusTool tool;

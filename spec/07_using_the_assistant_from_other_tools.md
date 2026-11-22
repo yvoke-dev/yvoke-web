@@ -44,8 +44,9 @@ running corpus scripts and the evaluation harness.
   rather than a generic tool failure.
 - **MCP tools advertise standard read-only/idempotent hints.** All knowledge-base lookup tools declare
   `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, and `openWorldHint: false`;
-  `submit_feedback` declares `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`,
-  and `openWorldHint: false`.
+  `submit_feedback` declares `readOnlyHint: false`, `destructiveHint: true` (re-rating a turn
+  overwrites the earlier rating and comment in place), `idempotentHint: true`, and
+  `openWorldHint: false`.
 - **On a local development server with sign-in switched off (mock mode), the Claude Code plugin's dev
   switch counts as a sign-in.** Anywhere else the switch is ignored and only a real sign-in works.
 - **AI clients are read-only over the knowledge base.** Nothing reachable over that connection can add, change

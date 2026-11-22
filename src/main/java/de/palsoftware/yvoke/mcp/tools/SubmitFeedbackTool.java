@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.chat.core.service.PluginFeedbackService.PluginFeedba
 import de.palsoftware.yvoke.chat.core.service.PluginFeedbackService.PluginFeedbackResult;
 import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import java.util.List;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Component;
  * and comments from the Yvoke plugin for Claude Code.
  */
 @ClientOnlyTools
+@McpToolHints(readOnly = false, destructive = true, idempotent = true)
 @Component
 public class SubmitFeedbackTool {
 

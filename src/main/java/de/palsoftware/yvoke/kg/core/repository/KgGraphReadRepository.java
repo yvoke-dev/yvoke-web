@@ -742,7 +742,11 @@ public class KgGraphReadRepository {
     public static final int MAX_LISTED_PREDICATES = 50;
 
     public List<String> listPredicates(String collection) {
-        if (collection == null || collection.isBlank()) {
+        return listPredicates(collection, MAX_LISTED_PREDICATES);
+    }
+
+    public List<String> listPredicates(String collection, int limit) {
+        if (collection == null || collection.isBlank() || limit <= 0) {
             return List.of();
         }
         UUID collectionId = findCollectionId(collection);
@@ -752,16 +756,16 @@ public class KgGraphReadRepository {
         return jdbcClient
                 .sql(
                         """
-                        SELECT DISTINCT r.predicate
+                        SELECT DISTINCT ON (lower(btrim(r.predicate))) btrim(r.predicate) AS predicate
                         FROM relationships r
                         WHERE r.collection_id = :collectionId
                           AND r.predicate IS NOT NULL
-                          AND r.predicate <> ''
-                        ORDER BY r.predicate ASC
+                          AND btrim(r.predicate) <> ''
+                        ORDER BY lower(btrim(r.predicate)) ASC, btrim(r.predicate) ASC
                         LIMIT :limit
                         """)
                 .param("collectionId", collectionId)
-                .param("limit", MAX_LISTED_PREDICATES)
+                .param("limit", limit)
                 .query(String.class)
                 .list();
     }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.ai.tool.definition.ToolDefinition;
 
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class VerifyCitationsToolCallback implements ContextAwareToolCallback {
 
     private final VerifyCitationsTool tool;

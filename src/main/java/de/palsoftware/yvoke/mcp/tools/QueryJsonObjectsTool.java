@@ -8,6 +8,7 @@ import de.palsoftware.yvoke.jsonobject.core.repository.JsonObjectRepository;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import jakarta.annotation.Nullable;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
 
 @Component
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class QueryJsonObjectsTool {
 
     private static final Logger log = LoggerFactory.getLogger(QueryJsonObjectsTool.class);
@@ -71,7 +73,11 @@ public class QueryJsonObjectsTool {
                     String fields,
             @ToolParam(
                             description =
-                                    "Max results (1–500). When nothing is specified 500 is used.",
+                                    "Max results (1–"
+                                            + JsonObjectRepository.MAX_LIMIT
+                                            + "). When nothing is specified "
+                                            + JsonObjectRepository.MAX_LIMIT
+                                            + " is used.",
                             required = false)
                     @Nullable
                     Integer limit,
@@ -89,7 +95,9 @@ public class QueryJsonObjectsTool {
                     Boolean countOnly,
             @ToolParam(
                             description =
-                                    "When countOnly is true, this optionally groups the counts by the specified top-level JSON field (e.g. 'module' or 'op'). Returns up to 100 groups ordered by count descending as a markdown table.",
+                                    "When countOnly is true, this optionally groups the counts by the specified top-level JSON field (e.g. 'module' or 'op'). Returns up to "
+                                            + JsonObjectRepository.MAX_GROUPS
+                                            + " groups ordered by count descending as a markdown table.",
                             required = false)
                     @Nullable
                     String groupBy) {

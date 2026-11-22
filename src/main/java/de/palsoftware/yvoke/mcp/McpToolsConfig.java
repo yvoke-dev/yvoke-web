@@ -10,10 +10,13 @@ import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
 import de.palsoftware.yvoke.mcp.tools.VerifyCitationsTool;
 import de.palsoftware.yvoke.mcp.tools.VerifyCitationsToolCallback;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -26,6 +29,7 @@ import org.springframework.ai.mcp.server.webmvc.transport.WebMvcStreamableServer
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -97,6 +101,7 @@ public class McpToolsConfig {
                                 objectMapper));
 
         for (ToolCallback callback : handRegistered) {
+            requireClassHints(callback.getClass(), callback.getToolDefinition().name());
             registerUnique(callback, registeredNames, callbacksList, "hand-registered");
         }
 
@@ -211,14 +216,52 @@ public class McpToolsConfig {
         log.info("Registered {} MCP tool callback: {}", source, name);
     }
 
-    private static void registerBeanTools(
+    static void registerBeanTools(
             ApplicationContext applicationContext,
             Class<?> clazz,
             Set<String> registeredNames,
             List<ToolCallback> callbacksList) {
         Object bean = applicationContext.getBean(clazz);
         for (ToolCallback callback : ToolCallbacks.from(bean)) {
-            registerUnique(callback, registeredNames, callbacksList, clazz.getSimpleName());
+            String toolName = callback.getToolDefinition().name();
+            McpSchema.ToolAnnotations annotations =
+                    McpSyncToolAdapter.fromHints(requireToolHints(clazz, toolName));
+            registerUnique(
+                    McpSyncToolAdapter.wrapWithHints(callback, annotations),
+                    registeredNames,
+                    callbacksList,
+                    clazz.getSimpleName());
         }
+    }
+
+    static McpToolHints requireClassHints(Class<?> clazz, String toolName) {
+        McpToolHints hints = clazz.getAnnotation(McpToolHints.class);
+        if (hints == null) {
+            throw new IllegalStateException(
+                    "MCP tool '"
+                            + toolName
+                            + "' ("
+                            + clazz.getSimpleName()
+                            + ") must declare @McpToolHints");
+        }
+        return hints;
+    }
+
+    static McpToolHints requireToolHints(Class<?> clazz, String toolName) {
+        for (Method method : clazz.getDeclaredMethods()) {
+            Tool toolAnn = method.getAnnotation(Tool.class);
+            if (toolAnn == null) {
+                continue;
+            }
+            String declaredName = toolAnn.name().isBlank() ? method.getName() : toolAnn.name();
+            if (declaredName.equals(toolName)) {
+                McpToolHints methodHints = method.getAnnotation(McpToolHints.class);
+                if (methodHints != null) {
+                    return methodHints;
+                }
+                break;
+            }
+        }
+        return requireClassHints(clazz, toolName);
     }
 }

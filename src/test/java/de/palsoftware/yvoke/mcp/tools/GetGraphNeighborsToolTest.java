@@ -919,10 +919,64 @@ public class GetGraphNeighborsToolTest {
     }
 
     @Test
+    public void colonEntityWithExplicitKindMatchingPrefixResolvesVerbatimBeforeStripping() {
+        KgNeighborEdges.Edge verbatimEdge =
+                edge(
+                        "table:Person",
+                        "fk_to",
+                        "VerbatimTarget",
+                        "real colon-named table edge",
+                        KgNeighborEdges.Direction.OUTGOING,
+                        "VerbatimTarget",
+                        "table");
+        KgNeighborEdges.Edge plainEdge =
+                edge(
+                        "Person",
+                        "fk_to",
+                        "PlainPersonTarget",
+                        "different plain Person table edge",
+                        KgNeighborEdges.Direction.OUTGOING,
+                        "PlainPersonTarget",
+                        "table");
+        when(kgRepository.listKinds(eq("OIM - DB"), eq("9.3")))
+                .thenReturn(List.of("table", "process"));
+        when(kgRepository.getEntityRelationships(
+                        eq("table:Person"),
+                        eq("table"),
+                        eq("9.3"),
+                        eq("OIM - DB"),
+                        isNull(),
+                        eq("both"),
+                        anyInt()))
+                .thenReturn(new KgNeighborEdges(List.of("table"), List.of(verbatimEdge)));
+        when(kgRepository.getEntityRelationships(
+                        eq("Person"),
+                        eq("table"),
+                        eq("9.3"),
+                        eq("OIM - DB"),
+                        isNull(),
+                        eq("both"),
+                        anyInt()))
+                .thenReturn(new KgNeighborEdges(List.of("table"), List.of(plainEdge)));
+
+        String output =
+                getGraphNeighborsTool.getGraphNeighbors(
+                        "table:Person", "OIM - DB", "9.3", null, "both", "table");
+
+        assertTrue(output.contains("Connections for 'table:Person'"), output);
+        assertTrue(output.contains("VerbatimTarget"), output);
+        assertFalse(output.contains("PlainPersonTarget"), output);
+        verify(kgRepository, never())
+                .getEntityRelationships(
+                        eq("Person"), any(), any(), anyString(), any(), anyString(), anyInt());
+    }
+
+    @Test
     public void unknownRelationTypeListsValidPredicatesInCollection() {
         when(kgRepository.relationshipPredicateExists(eq("bogus_rel"), eq(List.of("OIM - DB"))))
                 .thenReturn(false);
-        when(kgRepository.listPredicates(eq("OIM - DB")))
+        when(kgRepository.listPredicates(
+                        eq("OIM - DB"), eq(KgGraphReadRepository.MAX_LISTED_PREDICATES + 1)))
                 .thenReturn(List.of("calls", "fk_to", "references_table"));
 
         String output =
@@ -938,5 +992,33 @@ public class GetGraphNeighborsToolTest {
                         && output.contains("fk_to")
                         && output.contains("references_table"),
                 "unknown relation_type error should list valid predicates: " + output);
+        assertFalse(output.contains("more exist"), output);
+    }
+
+    @Test
+    public void unknownRelationTypeSignalsWhenPredicateListIsCapped() {
+        when(kgRepository.relationshipPredicateExists(eq("bogus_rel"), eq(List.of("OIM - DB"))))
+                .thenReturn(false);
+        List<String> overCap = new ArrayList<>();
+        for (int i = 1; i <= KgGraphReadRepository.MAX_LISTED_PREDICATES + 1; i++) {
+            overCap.add(String.format("pred_%02d", i));
+        }
+        when(kgRepository.listPredicates(
+                        eq("OIM - DB"), eq(KgGraphReadRepository.MAX_LISTED_PREDICATES + 1)))
+                .thenReturn(overCap);
+
+        String output =
+                getGraphNeighborsTool.getGraphNeighbors(
+                        "ADSAccount", "OIM - DB", "9.3", "bogus_rel", "both", "table");
+
+        assertTrue(output.contains("pred_01"), output);
+        assertTrue(output.contains("pred_50"), output);
+        assertFalse(output.contains("pred_51"), output);
+        assertTrue(
+                output.contains(
+                        "showing first "
+                                + KgGraphReadRepository.MAX_LISTED_PREDICATES
+                                + ", more exist"),
+                output);
     }
 }

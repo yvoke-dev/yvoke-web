@@ -3,8 +3,10 @@ package de.palsoftware.yvoke.mcp;
 import static org.springframework.ai.mcp.McpToolUtils.toSyncToolSpecification;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
+import jakarta.annotation.Nullable;
 import java.util.List;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
@@ -30,6 +32,54 @@ public final class McpSyncToolAdapter {
 
     private McpSyncToolAdapter() {}
 
+    /**
+     * Carries {@link McpSchema.ToolAnnotations} resolved from {@link McpToolHints} on bean-scanned
+     * {@code @Tool} methods whose Spring AI {@code MethodToolCallback} does not expose its
+     * declaring class.
+     */
+    interface AnnotatedToolCallback extends ToolCallback {
+        McpSchema.ToolAnnotations toolAnnotations();
+    }
+
+    static ToolCallback wrapWithHints(
+            ToolCallback delegate, McpSchema.ToolAnnotations annotations) {
+        return new AnnotatedToolCallback() {
+            @Override
+            public McpSchema.ToolAnnotations toolAnnotations() {
+                return annotations;
+            }
+
+            @Override
+            public ToolDefinition getToolDefinition() {
+                return delegate.getToolDefinition();
+            }
+
+            @Override
+            public ToolMetadata getToolMetadata() {
+                return delegate.getToolMetadata();
+            }
+
+            @Override
+            public String call(String toolInput) {
+                return delegate.call(toolInput);
+            }
+
+            @Override
+            public String call(String toolInput, ToolContext toolContext) {
+                return delegate.call(toolInput, toolContext);
+            }
+        };
+    }
+
+    static McpSchema.ToolAnnotations fromHints(McpToolHints hints) {
+        return McpSchema.ToolAnnotations.builder()
+                .readOnlyHint(hints.readOnly())
+                .destructiveHint(hints.destructive())
+                .idempotentHint(hints.idempotent())
+                .openWorldHint(hints.openWorld())
+                .build();
+    }
+
     public static List<McpServerFeatures.SyncToolSpecification> adaptAll(
             List<ToolCallback> callbacks) {
         return callbacks.stream().map(McpSyncToolAdapter::adapt).toList();
@@ -37,6 +87,7 @@ public final class McpSyncToolAdapter {
 
     public static McpServerFeatures.SyncToolSpecification adapt(ToolCallback callback) {
         String toolName = callback.getToolDefinition().name();
+        McpSchema.ToolAnnotations annotations = resolveAnnotations(callback);
         ToolCallback guarded =
                 new ToolCallback() {
                     @Override
@@ -61,11 +112,9 @@ public final class McpSyncToolAdapter {
                                     ? callback.call(toolInput, toolContext)
                                     : callback.call(toolInput);
                         } catch (Exception e) {
-                            if (e instanceof JsonProcessingException
-                                    || e.getCause() instanceof JsonProcessingException) {
-                                Throwable cause =
-                                        e instanceof JsonProcessingException ? e : e.getCause();
-                                return McpToolUtils.invalidArgumentsError(toolName, cause);
+                            JsonProcessingException jpe = findJsonCause(e);
+                            if (jpe != null) {
+                                return McpToolUtils.invalidArgumentsError(toolName, jpe);
                             }
                             return McpToolUtils.toolError(toolName, e);
                         }
@@ -80,7 +129,7 @@ public final class McpSyncToolAdapter {
                         baseTool.description(),
                         baseTool.inputSchema(),
                         baseTool.outputSchema(),
-                        annotationsFor(toolName),
+                        annotations,
                         baseTool.meta(),
                         baseTool.icons());
         return McpServerFeatures.SyncToolSpecification.builder()
@@ -90,14 +139,37 @@ public final class McpSyncToolAdapter {
                 .build();
     }
 
-    static McpSchema.ToolAnnotations annotationsFor(String toolName) {
-        boolean readOnly = !"submit_feedback".equals(toolName);
+    /**
+     * Resolves {@link McpSchema.ToolAnnotations} from a declared {@link McpToolHints} marker. When
+     * a standalone callback carries no marker (e.g. a bare test stub), falls back to conservative
+     * MCP defaults ({@code readOnlyHint=false, destructiveHint=true, idempotentHint=false}) — never
+     * assuming read-only by default.
+     */
+    static McpSchema.ToolAnnotations resolveAnnotations(ToolCallback callback) {
+        if (callback instanceof AnnotatedToolCallback annotated) {
+            return annotated.toolAnnotations();
+        }
+        McpToolHints hints = callback.getClass().getAnnotation(McpToolHints.class);
+        if (hints != null) {
+            return fromHints(hints);
+        }
         return McpSchema.ToolAnnotations.builder()
-                .readOnlyHint(readOnly)
-                .destructiveHint(false)
-                .idempotentHint(true)
+                .readOnlyHint(false)
+                .destructiveHint(true)
+                .idempotentHint(false)
                 .openWorldHint(false)
                 .build();
+    }
+
+    @Nullable
+    private static JsonProcessingException findJsonCause(@Nullable Throwable e) {
+        Throwable cur = e;
+        for (int depth = 0; cur != null && depth < 8; depth++, cur = cur.getCause()) {
+            if (cur instanceof JsonProcessingException jpe) {
+                return jpe;
+            }
+        }
+        return null;
     }
 
     static McpSchema.CallToolResult markErrorIfNeeded(McpSchema.CallToolResult result) {

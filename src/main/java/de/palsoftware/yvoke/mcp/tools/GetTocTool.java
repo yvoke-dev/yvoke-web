@@ -8,6 +8,7 @@ import de.palsoftware.yvoke.document.core.model.TocNode;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.service.TocService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,9 +17,12 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 @Component
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class GetTocTool {
 
     private static final Logger log = LoggerFactory.getLogger(GetTocTool.class);
+
+    public static final int MAX_LINES = 400;
 
     private final DocumentRepository documentRepository;
     private final TocService tocService;
@@ -37,7 +41,9 @@ public class GetTocTool {
             "Table of contents of a document with section summaries — top-down navigation. Only works "
                     + "for hierarchical document types (e.g. kind='hierarchical', kind='confluence'). "
                     + "Document IDs (full UUIDs) can be discovered using the 'list_documents' tool or from "
-                    + "'search_corpus' hits. Returns an indented markdown list (capped at 400 lines) where "
+                    + "'search_corpus' hits. Returns an indented markdown list (capped at "
+                    + MAX_LINES
+                    + " lines) where "
                     + "each entry shows the section name, its size in chunks and characters, and a one-line "
                     + "summary. Pass heading_path to see the two levels BELOW that section instead of the "
                     + "top of the document — that is how you navigate into a large section without reading it.";
@@ -117,10 +123,9 @@ public class GetTocTool {
                             nodes.size() == 1 ? "y" : "ies"));
             out.add("");
 
-            int lineCap = 400;
             int truncated = 0;
             for (int i = 0; i < nodes.size(); i++) {
-                if (out.size() - 3 >= lineCap) {
+                if (out.size() - 3 >= MAX_LINES) {
                     truncated = nodes.size() - i;
                     break;
                 }

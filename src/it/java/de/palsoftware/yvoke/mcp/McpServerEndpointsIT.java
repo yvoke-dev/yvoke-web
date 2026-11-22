@@ -414,7 +414,7 @@ public class McpServerEndpointsIT {
                         .isEqualTo(expectedReadOnly);
                 assertThat(annotations.path("destructiveHint").asBoolean())
                         .as("destructiveHint for '%s'", toolName)
-                        .isFalse();
+                        .isEqualTo(!expectedReadOnly);
                 assertThat(annotations.path("idempotentHint").asBoolean())
                         .as("idempotentHint for '%s'", toolName)
                         .isTrue();

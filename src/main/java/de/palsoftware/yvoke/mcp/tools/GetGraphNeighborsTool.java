@@ -6,6 +6,7 @@ import de.palsoftware.yvoke.kg.core.model.KgNeighborEdges;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import org.slf4j.Logger;
@@ -15,12 +16,13 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 @Component
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class GetGraphNeighborsTool {
 
     private static final Logger log = LoggerFactory.getLogger(GetGraphNeighborsTool.class);
 
     /** Cap on returned edges — keeps hub nodes from flooding the DB query and the MCP response. */
-    private static final int MAX_EDGES = 200;
+    public static final int MAX_EDGES = 200;
 
     private final KgGraphReadRepository kgRepository;
     private final CollectionService collectionService;
@@ -34,7 +36,9 @@ public class GetGraphNeighborsTool {
     @Tool(
             name = "get_graph_neighbors",
             description =
-                    "Query connections (edges) for a starting node/entity in the knowledge graph (returns up to 200 edges; narrow with relation_type/direction if capped). A knowledge graph is scoped to a collection and an optional tag. Node/entity names can be retrieved via 'search_graph_entities'. When several entities share a name (e.g. a table and a process both named 'ADS') they are DIFFERENT objects: calling without 'kind' returns the candidate kinds with their edge counts instead of edges — re-run with 'kind' (or the name prefixed as '<kind>:<name>') to get the edges of the one you mean. 'tag' is REQUIRED when the collection has tags: results must come from exactly one product version, and the error lists the valid values. Returns a markdown table with columns: counterpart (the connected node/entity), kind (the counterpart's kind), relation (the predicate), direction, and description.")
+                    "Query connections (edges) for a starting node/entity in the knowledge graph (returns up to "
+                            + MAX_EDGES
+                            + " edges; narrow with relation_type/direction if capped). A knowledge graph is scoped to a collection and an optional tag. Node/entity names can be retrieved via 'search_graph_entities'. When several entities share a name (e.g. a table and a process both named 'ADS') they are DIFFERENT objects: calling without 'kind' returns the candidate kinds with their edge counts instead of edges — re-run with 'kind' (or the name prefixed as '<kind>:<name>') to get the edges of the one you mean. 'tag' is REQUIRED when the collection has tags: results must come from exactly one product version, and the error lists the valid values. Returns a markdown table with columns: counterpart (the connected node/entity), kind (the counterpart's kind), relation (the predicate), direction, and description.")
     public String getGraphNeighbors(
             @ToolParam(
                             description = "Exact name of the node/entity (case-insensitive).",
@@ -124,13 +128,30 @@ public class GetGraphNeighborsTool {
             // Validate relation_type (optional)
             if (relType != null) {
                 if (!kgRepository.relationshipPredicateExists(relation_type, List.of(colName))) {
-                    List<String> validPredicates = kgRepository.listPredicates(colName);
-                    String validSuffix =
-                            (validPredicates != null && !validPredicates.isEmpty())
-                                    ? " Valid relation types in this collection: "
-                                            + String.join(", ", validPredicates)
-                                            + "."
-                                    : "";
+                    List<String> validPredicates =
+                            kgRepository.listPredicates(
+                                    colName, KgGraphReadRepository.MAX_LISTED_PREDICATES + 1);
+                    String validSuffix = "";
+                    if (validPredicates != null && !validPredicates.isEmpty()) {
+                        boolean moreExist =
+                                validPredicates.size()
+                                        > KgGraphReadRepository.MAX_LISTED_PREDICATES;
+                        List<String> shown =
+                                moreExist
+                                        ? validPredicates.subList(
+                                                0, KgGraphReadRepository.MAX_LISTED_PREDICATES)
+                                        : validPredicates;
+                        validSuffix =
+                                " Valid relation types in this collection: "
+                                        + String.join(", ", shown)
+                                        + (moreExist
+                                                ? ", … (showing first "
+                                                        + KgGraphReadRepository
+                                                                .MAX_LISTED_PREDICATES
+                                                        + ", more exist)"
+                                                : "")
+                                        + ".";
+                    }
                     return "Error: Relation type '"
                             + relation_type
                             + "' does not exist in collection '"

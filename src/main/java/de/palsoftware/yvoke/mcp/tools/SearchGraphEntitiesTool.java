@@ -5,6 +5,7 @@ import de.palsoftware.yvoke.kg.core.model.KgEntity;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import org.slf4j.Logger;
@@ -14,9 +15,12 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 @Component
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class SearchGraphEntitiesTool {
 
     private static final Logger log = LoggerFactory.getLogger(SearchGraphEntitiesTool.class);
+
+    public static final int DEFAULT_LIMIT = 20;
 
     private final KgGraphReadRepository kgRepository;
     private final CollectionService collectionService;
@@ -57,7 +61,11 @@ public class SearchGraphEntitiesTool {
                     String kind,
             @ToolParam(
                             description =
-                                    "Max matches to return. When nothing is specified 20 is used. Max is 200.",
+                                    "Max matches to return. When nothing is specified "
+                                            + DEFAULT_LIMIT
+                                            + " is used. Max is "
+                                            + KgGraphReadRepository.MAX_LIMIT
+                                            + ".",
                             required = false)
                     @Nullable
                     Integer limit) {
@@ -76,7 +84,10 @@ public class SearchGraphEntitiesTool {
         // below miss every over-cap request (200 rows returned for a requested 500 is truncated).
         int lim =
                 Math.max(
-                        1, Math.min((limit != null) ? limit : 20, KgGraphReadRepository.MAX_LIMIT));
+                        1,
+                        Math.min(
+                                (limit != null) ? limit : DEFAULT_LIMIT,
+                                KgGraphReadRepository.MAX_LIMIT));
         try {
             CollectionResolution resolution =
                     McpToolUtils.resolveReadableCollection(

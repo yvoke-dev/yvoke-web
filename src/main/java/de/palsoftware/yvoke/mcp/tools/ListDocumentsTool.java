@@ -18,6 +18,9 @@ public class ListDocumentsTool {
 
     private static final Logger log = LoggerFactory.getLogger(ListDocumentsTool.class);
 
+    public static final int DEFAULT_LIMIT = 100;
+    public static final int MAX_LIMIT = 500;
+
     private final DocumentRepository documentRepository;
     private final CollectionService collectionService;
 
@@ -43,7 +46,7 @@ public class ListDocumentsTool {
 
         String knd = (kind != null && !kind.isBlank()) ? kind.trim() : null;
         String parsedTag = (tag != null && !tag.isBlank()) ? tag.trim() : null;
-        int lim = Math.max(1, Math.min((limit != null) ? limit : 100, 500));
+        int lim = Math.max(1, Math.min((limit != null) ? limit : DEFAULT_LIMIT, MAX_LIMIT));
         int off = Math.max(0, (offset != null) ? offset : 0);
         String fuzzyQuery = (query != null && !query.isBlank()) ? query.trim() : null;
 

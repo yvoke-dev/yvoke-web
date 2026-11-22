@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.chat.core.tool;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.definition.ToolDefinition;
 
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class AskClarifyingQuestionToolCallback implements ContextAwareToolCallback {
 
     private static final Logger log =
@@ -72,15 +74,23 @@ public class AskClarifyingQuestionToolCallback implements ContextAwareToolCallba
     public String callWithContext(String jsonArguments, AgenticChatContext context) {
         String question;
         List<String> options;
+        String currentField = null;
         try {
             Map<String, Object> args = objectMapper.readValue(jsonArguments, Map.class);
             if (args == null) {
                 return "Error parsing arguments: expected a JSON object.";
             }
+            currentField = "question";
             question = (String) args.get("question");
+            currentField = "options";
             options = (List<String>) args.get("options");
         } catch (JsonProcessingException | ClassCastException | IllegalArgumentException e) {
             log.warn("Failed to parse arguments for ask_clarifying_question: {}", e.getMessage());
+            if (currentField != null) {
+                return "Error parsing arguments: invalid value for field '"
+                        + currentField
+                        + "'; check the tool schema.";
+            }
             return "Error parsing arguments: invalid JSON or argument types; check the tool schema.";
         }
 

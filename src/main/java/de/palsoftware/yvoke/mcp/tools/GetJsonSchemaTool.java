@@ -7,6 +7,7 @@ import de.palsoftware.yvoke.jsonobject.core.model.JsonSchema;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import jakarta.annotation.Nullable;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -16,6 +17,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 @Component
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class GetJsonSchemaTool {
 
     private static final Logger log = LoggerFactory.getLogger(GetJsonSchemaTool.class);
@@ -36,7 +38,7 @@ public class GetJsonSchemaTool {
     @Tool(
             name = "get_json_schema",
             description =
-                    "Read the inferred or manual JSON schema for a specific collection of JSON objects. Use this to understand the structure, available fields, and data types before querying a collection with 'query_json_objects'. A JSON schema is scoped to a collection and optional tag. Returns a JSON Schema representation.")
+                    "Read the JSON schema (inferred, manual, or imported) for a specific collection of JSON objects. Use this to understand the structure, available fields, and data types before querying a collection with 'query_json_objects'. A JSON schema is scoped to a collection and optional tag. Returns a JSON Schema representation.")
     public String getJsonSchema(
             @ToolParam(
                             description =

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import java.util.Map;
 import org.springframework.ai.tool.definition.ToolDefinition;
@@ -24,6 +25,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
  * {@code SearchCorpusToolCallback}, {@code ListDocumentsToolCallback} and {@code
  * VerifyCitationsToolCallback} make, enforced by {@code McpToolCatalogueParityTest}.
  */
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class GetSectionToolCallback implements ContextAwareToolCallback {
 
     private final GetSectionTool tool;

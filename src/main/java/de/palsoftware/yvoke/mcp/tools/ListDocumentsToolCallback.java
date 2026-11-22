@@ -4,10 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import java.util.Map;
 import org.springframework.ai.tool.definition.ToolDefinition;
 
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 public class ListDocumentsToolCallback implements ContextAwareToolCallback {
 
     private final ListDocumentsTool tool;
@@ -49,7 +51,7 @@ public class ListDocumentsToolCallback implements ContextAwareToolCallback {
                             },
                             "limit": {
                               "type": "integer",
-                              "description": "Max documents to return (1–500). When nothing is specified 100 is used."
+                              "description": "Max documents to return (1–%d). When nothing is specified %d is used."
                             },
                             "offset": {
                               "type": "integer",
@@ -62,7 +64,10 @@ public class ListDocumentsToolCallback implements ContextAwareToolCallback {
                           },
                           "required": ["collection"]
                         }
-                        """;
+                        """
+                                .formatted(
+                                        ListDocumentsTool.MAX_LIMIT,
+                                        ListDocumentsTool.DEFAULT_LIMIT);
                     }
                 };
     }

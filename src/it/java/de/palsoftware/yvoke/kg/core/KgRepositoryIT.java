@@ -359,8 +359,33 @@ public class KgRepositoryIT {
 
     @Test
     public void testListPredicates() {
-        assertThat(kgRepository.listPredicates(COLLECTION))
+        // Insert mixed-case / whitespace variants to verify case-insensitive deduplication.
+        insertRelationship(
+                UUID.randomUUID(),
+                COLLECTION,
+                "ProcX",
+                "CALLS",
+                "ProcY",
+                procXId,
+                procYId,
+                "9.3",
+                "Duplicate predicate in uppercase");
+        insertRelationship(
+                UUID.randomUUID(),
+                COLLECTION,
+                "TableA",
+                "  FK_TO  ",
+                "TableB",
+                tableAId,
+                tableBId,
+                "9.3",
+                "Duplicate predicate with whitespace and uppercase");
+
+        List<String> predicates = kgRepository.listPredicates(COLLECTION);
+        assertThat(predicates).hasSize(3);
+        assertThat(predicates.stream().map(String::toLowerCase).toList())
                 .containsExactly("calls", "fk_to", "references_table");
+        assertThat(kgRepository.listPredicates(COLLECTION, 2)).hasSize(2);
         assertThat(kgRepository.listPredicates("NO-SUCH-COLLECTION")).isEmpty();
         assertThat(kgRepository.listPredicates("")).isEmpty();
     }

@@ -5,6 +5,7 @@ import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.area.core.AreaWithMembers;
 import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.rag.core.McpToolHints;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
 import org.springframework.ai.tool.annotation.Tool;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Component;
  * AreaWithMembers}); anything else would start a session on an item the setup band does not list.
  */
 @ClientOnlyTools
+@McpToolHints(readOnly = true, destructive = false, idempotent = true)
 @Component
 public class AreaTools {
 
