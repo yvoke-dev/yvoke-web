@@ -85,17 +85,12 @@ class ToolCallAccumulatorTest {
     // ------------------------------------------------------------------------
 
     /**
-     * The exact delta stream {@code AzureOpenAiLlmClient} produces for two parallel tool calls.
+     * Reassembly of index-less ({@code index = -1}) parallel tool-call deltas.
      *
-     * <p>{@code ChatCompletionsFunctionToolCall}'s deserializer discards the wire-level {@code
-     * index}, so the client emits {@code index = -1} and reassembly falls back to: an id-bearing
-     * fragment opens (or finds) a call, an id-less fragment appends to the MOST RECENTLY OPENED
-     * one. That is correct only while the service keeps each call's fragments contiguous.
-     *
-     * <p>The counterpart in {@code AzureOpenAiLlmClientTest} asserts that the client really emits
-     * this sequence; this test owns what the sequence reassembles into. Splitting it that way is
-     * deliberate — the two classes are in different packages, and the delta stream IS the contract
-     * between them, so each side pins its own half rather than one side re-implementing the other.
+     * <p>When a provider omits wire-level tool-call indices, the client emits {@code index = -1}
+     * and reassembly falls back to: an id-bearing fragment opens (or finds) a call, an id-less
+     * fragment appends to the MOST RECENTLY OPENED one. That is correct while each call's fragments
+     * arrive contiguously.
      */
     @Test
     void theAzureParallelShapeReassemblesIntoTwoDistinctCalls() {

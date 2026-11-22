@@ -172,8 +172,9 @@ in-depth profiles, and can inspect any search or trace.
 - **An answer where the AI thinks and then says nothing is asked for once more.** All three AI services
   (Gemini, Azure OpenAI Responses, OpenRouter) behave the same way here, and they try once more only when the
   service reported that it finished normally. A turn cut short by its own length limit is not asked again —
-  it would simply run out again — and neither is one where the connection dropped. In either of those cases
-  the user sees the generic error notice rather than a blank message.
+  it would simply run out again — and neither is one where the connection dropped without a terminal signal.
+  When a stream drops mid-answer or finishes empty without recovering, the user sees the generic error notice
+  rather than a silently truncated or blank message.
 - **The admin search console can search across all versions at once**, which the assistant itself is
   forbidden to do — so it does not exactly reproduce what a user's answer saw.
 - **Which AI service answers is decided per model.** An operator maps individual models to a service

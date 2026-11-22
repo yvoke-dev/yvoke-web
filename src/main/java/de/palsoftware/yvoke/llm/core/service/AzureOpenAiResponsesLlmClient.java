@@ -27,7 +27,6 @@ import com.openai.models.responses.ResponseStreamEvent;
 import com.openai.models.responses.ResponseTextConfig;
 import com.openai.models.responses.ResponseUsage;
 import com.openai.models.responses.Tool;
-import de.palsoftware.yvoke.llm.core.EmptyTurnRetry;
 import de.palsoftware.yvoke.llm.core.LlmRetry;
 import de.palsoftware.yvoke.llm.core.model.LlmCallFailedException;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
@@ -49,7 +48,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -60,13 +58,13 @@ import org.slf4j.LoggerFactory;
  * {@link LlmClient} backed by Azure OpenAI's <b>Responses</b> API via {@code
  * com.openai:openai-java}.
  *
- * <p>This exists because {@code AzureOpenAiLlmClient} cannot ask a reasoning model to think hard
- * while it holds tools: chat completions answers that pair with {@code "Function tools with
- * reasoning_effort are not supported for this model in /v1/chat/completions. Please use
- * /v1/responses instead."} — measured on {@code gpt-5.6-luna} at every api-version from {@code
- * 2024-10-21} to {@code 2025-04-01-preview}, so it is the service's rule and not a version or a
- * client defect. Every agentic turn carries tools, so on that surface the configured thinking level
- * is dropped from every answer that matters. Here both travel together.
+ * <p>This uses the Responses surface rather than {@code /v1/chat/completions} because Azure's chat
+ * completions endpoint refuses function tools together with {@code reasoning_effort} ({@code
+ * "Function tools with reasoning_effort are not supported for this model in /v1/chat/completions.
+ * Please use /v1/responses instead."} — measured on {@code gpt-5.6-luna} across api-versions {@code
+ * 2024-10-21} through {@code 2025-04-01-preview}). Every agentic turn carries tools, so chat
+ * completions forced dropping the configured thinking level on every answer that matters. Here both
+ * travel together.
  *
  * <p>Two deliberate choices about the SDK. It is <b>openai-java</b> rather than {@code
  * com.azure:azure-ai-openai}, which does have a Responses client but cannot reach the reasoning
@@ -78,16 +76,15 @@ import org.slf4j.LoggerFactory;
  * serves Responses with no {@code api-version} at all; openai-java's own {@code
  * azureServiceVersion} builds a path this endpoint answers {@code 404} for.
  *
- * <p>Unlike the chat-completions client this one <i>does</i> populate {@link
- * LlmResponseChunk#reasoning()}, from the model's streamed reasoning summary. {@link
- * LlmResponseChunk#parts()} stays {@code null} — that carries Gemini thought signatures, and this
- * provider has no equivalent.
+ * <p>Populates {@link LlmResponseChunk#reasoning()} from the model's streamed reasoning summary.
+ * {@link LlmResponseChunk#parts()} stays {@code null} — that carries Gemini thought signatures, and
+ * this provider has no equivalent.
  */
 public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(AzureOpenAiResponsesLlmClient.class);
 
-    /** Matches the 300s the Gemini, OpenRouter and chat-completions clients allow. */
-    static final Duration HTTP_TIMEOUT = Duration.ofSeconds(300);
+    /** Per-read/write socket silence timeout (300 s); whole-call timeout is disabled for SSE. */
+    static final Duration HTTP_TIMEOUT = OpenAiHttpTimeouts.READ_TIMEOUT;
 
     /**
      * Azure serves Responses at {@code {resource-root}/openai/v1/responses}, unversioned. The
@@ -95,19 +92,17 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
      */
     static final String V1_SUFFIX = "/openai/v1";
 
-    /** Same detection as {@code AzureOpenAiLlmClient}; see that field for why it is shaped so. */
+    /**
+     * Default heuristic for identifying reasoning models when {@code reasoningModels} is not
+     * configured explicitly. Non-alphanumeric boundaries around {@code o[1345]} match {@code o1},
+     * {@code o3}, {@code o4-mini}, and {@code o5} deployments without false-matching models such as
+     * {@code gpt-4o} or names containing {@code o1} mid-word.
+     */
     private static final Pattern REASONING_MODEL_PATTERN =
             Pattern.compile("(?:^|[^a-z0-9])o[1345](?:[^a-z0-9]|$)|gpt-5|reasoning");
 
     private static final List<String> VALID_THINKING_LEVELS =
             List.of("minimal", "low", "medium", "high");
-
-    /**
-     * One re-request for an empty turn, and no more. An empty turn that repeats is systematic
-     * rather than a glitch, and re-sending a large prompt a third time to discover the same nothing
-     * costs more than the round the retry exists to save.
-     */
-    private static final int EMPTY_TURN_ATTEMPTS = 2;
 
     private final OpenAIClient client;
     private final boolean enableThinking;
@@ -137,9 +132,10 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
     }
 
     private static OpenAIClient buildClient(String endpoint, String apiKey) {
-        log.info("Initializing AzureOpenAiResponsesLlmClient with endpoint={}", endpoint);
+        String resolvedUrl = baseUrl(endpoint);
+        log.info("Initializing AzureOpenAiResponsesLlmClient with endpoint={}", resolvedUrl);
         return OpenAIOkHttpClient.builder()
-                .baseUrl(baseUrl(endpoint))
+                .baseUrl(resolvedUrl)
                 .credential(AzureApiKeyCredential.create(apiKey))
                 // LlmRetry is the single retry authority, as for every other provider here: leaving
                 // the
@@ -147,7 +143,7 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
                 // the
                 // quota that just rejected it.
                 .maxRetries(0)
-                .timeout(HTTP_TIMEOUT)
+                .timeout(OpenAiHttpTimeouts.forReadTimeout(HTTP_TIMEOUT))
                 .build();
     }
 
@@ -155,8 +151,8 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
      * Turns a resource root into the Responses base URL.
      *
      * <p>A blank endpoint is fatal rather than defaulted: openai-java falls back to {@code
-     * api.openai.com}, so it would ship the Azure key to a third party instead of merely failing —
-     * the same trap {@code AzureOpenAiLlmClient} guards against.
+     * api.openai.com}, so it would ship the Azure key to a third party instead of merely failing.
+     * Non-HTTPS endpoints (other than loopback) are rejected so the key never travels in cleartext.
      */
     static String baseUrl(String endpoint) {
         if (endpoint == null || endpoint.isBlank()) {
@@ -169,13 +165,14 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
         while (trimmed.endsWith("/")) {
             trimmed = trimmed.substring(0, trimmed.length() - 1);
         }
-        return trimmed.endsWith(V1_SUFFIX) ? trimmed : trimmed + V1_SUFFIX;
+        String validated =
+                ProviderEndpointValidator.requireHttpsOrLoopback(trimmed, "Azure OpenAI Responses");
+        return validated.endsWith(V1_SUFFIX) ? validated : validated + V1_SUFFIX;
     }
 
     /**
-     * Releases the OkHttp connection pool. Spring calls this on context shutdown because the client
-     * is a singleton bean. Unlike {@code AzureOpenAiLlmClient} — whose azure-core transport really
-     * does have nothing to release — {@code OpenAIClient} owns a pool, so this is not a no-op.
+     * Releases the underlying OkHttp connection pool owned by {@link OpenAIClient}. Spring calls
+     * this on context shutdown because the client is registered as a singleton bean.
      */
     @Override
     @PreDestroy
@@ -202,15 +199,11 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
                     Response response = client.responses().create(params);
                     LlmUsage usage = usageOf(response.usage().orElse(null));
                     // The same verdict the streaming path takes, for the same reason: a Response
-                    // carries a
-                    // terminal status, and reading only the completed shape returns a failed or
-                    // truncated
-                    // turn as though it had finished. Truncation stays benign — the partial answer
-                    // is
-                    // delivered, matching AzureOpenAiLlmClient's BENIGN_FINISH_REASONS — while a
-                    // failure
-                    // throws with the usage attached, so the accounting seam still records what it
-                    // cost.
+                    // carries a terminal status, and reading only the completed shape returns a
+                    // failed or truncated turn as though it had finished. Output-budget truncation
+                    // stays benign across all providers so usable partial answers are delivered,
+                    // while a failure throws with usage attached so accounting still records what
+                    // it cost.
                     String failure = describeFailure(response);
                     if (failure != null) {
                         throw new LlmCallFailedException(failure, null, usage);
@@ -243,148 +236,58 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
         log.info("Sending streaming Responses request: model={}", request.model());
         ResponseCreateParams params = buildParams(request);
 
-        // Whether a turn that produced nothing is worth re-requesting is decided by EmptyTurnRetry,
-        // shared with GeminiLlmClient. It cannot be expressed as an LlmRetry classification: the
-        // verdict is taken here while consuming, outside the withRetry that wraps establishment.
-        EmptyTurnRetry.run(
+        StreamingLlmExecution.<ResponseStreamEvent>run(
                 "Azure OpenAI Responses",
+                "AzureOpenAiResponses.generateStream",
                 request.model(),
+                "status",
+                onChunk,
                 attempt -> {
-                    StreamOutcome outcome = new StreamOutcome();
-
                     // Responses numbers every output item — a reasoning item is typically 0 and the
-                    // first
-                    // tool call 1 — while ToolCallAccumulator treats the index as a list position
-                    // and pads
-                    // with empty builders up to it. Densifying to 0,1,2… in order of first
-                    // appearance keeps
-                    // a leading reasoning item from minting a phantom tool call. Per ATTEMPT, or a
-                    // re-request would resume numbering after the abandoned turn's items.
+                    // first tool call 1 — while ToolCallAccumulator treats the index as a list
+                    // position and pads with empty builders up to it. Densifying to 0,1,2… in order
+                    // of first appearance keeps a leading reasoning item from minting a phantom
+                    // tool call. Per ATTEMPT, or a re-request would resume numbering after the
+                    // abandoned turn's items.
                     Map<Long, Integer> toolIndexes = new HashMap<>();
+                    return new StreamingLlmExecution.StreamAttempt<>() {
+                        @Override
+                        public StreamingLlmExecution.StreamSource<ResponseStreamEvent> establish() {
+                            StreamResponse<ResponseStreamEvent> stream =
+                                    client.responses().createStreaming(params);
+                            return new StreamingLlmExecution.StreamSource<>() {
+                                @Override
+                                public void forEach(Consumer<ResponseStreamEvent> action) {
+                                    stream.stream().forEach(action);
+                                }
 
-                    // Retry ONLY establishment. createStreaming blocks until the response headers
-                    // arrive,
-                    // so a transient failure here throws before any chunk reaches the caller and a
-                    // retry
-                    // cannot replay rendered output; a mid-stream failure could, so it is left
-                    // alone. Same
-                    // split as GeminiLlmClient and AzureOpenAiLlmClient.
-                    StreamResponse<ResponseStreamEvent> established =
-                            LlmRetry.withRetry(
-                                    "AzureOpenAiResponses.generateStream",
-                                    3,
-                                    () -> client.responses().createStreaming(params));
-
-                    try (StreamResponse<ResponseStreamEvent> stream = established) {
-                        stream.stream()
-                                .forEach(event -> {
-                                    if (Thread.currentThread().isInterrupted()) {
-                                        throw new CancellationException(
-                                                "Azure OpenAI Responses stream interrupted");
-                                    }
-                                    LlmResponseChunk chunk = toChunk(event, toolIndexes, outcome);
-                                    if (chunk != null) {
-                                        if (chunk.usage() != null) {
-                                            outcome.usage = chunk.usage();
-                                        }
-                                        onChunk.accept(chunk);
-                                    }
-                                });
-                    } catch (RuntimeException e) {
-                        if (Thread.currentThread().isInterrupted()
-                                || e instanceof CancellationException
-                                || e.getCause() instanceof InterruptedException
-                                || e.getCause() instanceof CancellationException) {
-                            log.info("Azure OpenAI Responses stream cancelled/interrupted");
-                            throw new CancellationException(
-                                    "Azure OpenAI Responses stream interrupted");
+                                @Override
+                                public void close() {
+                                    stream.close();
+                                }
+                            };
                         }
-                        log.error("Azure OpenAI Responses streaming call failed", e);
-                        throw e;
-                    }
 
-                    // Closes this HTTP call for accounting BEFORE any verdict is taken: an
-                    // abandoned
-                    // attempt was billed just as a winning one is, and gets its own llm_call_logs
-                    // row
-                    // rather than being summed onto whichever attempt happened to succeed. Emitted
-                    // after
-                    // the stream drains, so the terminal event's usage has already been read.
-                    onChunk.accept(LlmResponseChunk.endOfCall(outcome.usage, null));
-
-                    // Not re-requested — a refused or errored turn repeats.
-                    if (outcome.failure != null) {
-                        throw new LlmCallFailedException(outcome.failure, null, outcome.usage);
-                    }
-
-                    return new EmptyTurnRetry.Turn(
-                            !outcome.isEmpty(),
-                            outcome.cleanlyCompleted(),
-                            outcome.usage,
-                            outcome.describe());
+                        @Override
+                        public void onEvent(
+                                ResponseStreamEvent event,
+                                StreamingLlmExecution.StreamOutcome outcome,
+                                Consumer<LlmResponseChunk> emit) {
+                            LlmResponseChunk chunk = toChunk(event, toolIndexes, outcome);
+                            if (chunk != null) {
+                                emit.accept(chunk);
+                            }
+                        }
+                    };
                 });
-    }
-
-    /**
-     * What a stream actually produced, so an empty one can say why rather than being reported as a
-     * success the caller then has to guess about.
-     */
-    private static final class StreamOutcome {
-        private boolean sawContent;
-        private boolean sawToolCall;
-        private String status;
-        private String failure;
-        private int events;
-        private LlmUsage usage;
-
-        /**
-         * Whether this turn finished cleanly and produced nothing a caller can use.
-         *
-         * <p>The {@code completed} requirement is what separates the two ways of ending with no
-         * answer, and only one of them is worth re-requesting. A stream that was <b>cut short</b>
-         * leaves {@code status} null — a transport fault, where a second attempt is a guess about
-         * the network rather than about the model — and an {@code incomplete} turn ran out of its
-         * output budget, which a re-request will simply do again. {@code failed} and {@code error}
-         * never reach here; they throw.
-         *
-         * <p>Note the honest limit of "nothing reached the caller": the reasoning summary DID, and
-         * it is re-emitted on the second attempt. That is accepted, because the alternative is
-         * handing the user a blank answer; what must never be duplicated is answer content, and by
-         * construction there was none.
-         */
-        boolean isEmpty() {
-            return !sawContent && !sawToolCall;
-        }
-
-        boolean cleanlyCompleted() {
-            return "completed".equals(status);
-        }
-
-        String describe() {
-            StringBuilder out = new StringBuilder();
-            out.append("status=").append(status == null ? "none" : status);
-            out.append(", events=").append(events);
-            if (usage != null) {
-                out.append(", completionTokens=")
-                        .append(usage.completionTokens())
-                        .append(" of which reasoning=")
-                        .append(usage.thoughtTokens());
-            }
-            if (status == null) {
-                out.append(
-                        " — the stream ended without a terminal event, which means it was cut "
-                                + "short rather than completed");
-            }
-            return out.toString();
-        }
     }
 
     /**
      * Describes a terminal turn that should fail the call, or {@code null} when it may stand.
      *
-     * <p>Truncation is deliberately NOT a failure: {@code AzureOpenAiLlmClient} lists {@code
-     * TOKEN_LIMIT_REACHED} among its benign finish reasons and delivers the partial answer, so
-     * raising here would make one provider stricter than the rest for the same outcome.
+     * <p>Output-budget truncation is deliberately NOT a failure: all providers treat length limits
+     * ({@code MAX_TOKENS} / {@code incomplete} / {@code length}) as benign when output was produced
+     * and deliver the partial answer.
      */
     private static String describeFailure(Response response) {
         boolean failed =
@@ -418,7 +321,7 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
         }
         log.warn(
                 "Azure OpenAI Responses turn is incomplete (reason={}); the answer is truncated "
-                        + "but is delivered as-is, matching the chat-completions client.",
+                        + "but is delivered as-is.",
                 response.incompleteDetails()
                         .flatMap(details -> details.reason())
                         .map(Object::toString)
@@ -430,11 +333,12 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
      * recording along the way whether this turn produced anything at all.
      */
     private LlmResponseChunk toChunk(
-            ResponseStreamEvent event, Map<Long, Integer> toolIndexes, StreamOutcome outcome) {
-        outcome.events++;
+            ResponseStreamEvent event,
+            Map<Long, Integer> toolIndexes,
+            StreamingLlmExecution.StreamOutcome outcome) {
         Optional<String> text = event.outputTextDelta().map(delta -> delta.delta());
         if (text.isPresent()) {
-            outcome.sawContent = true;
+            outcome.markContent();
             return new LlmResponseChunk(text.get(), null, null, null);
         }
         // A refusal is the model declining, out loud. It arrives on its own event rather than as
@@ -443,7 +347,7 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
         // though nothing had been said and then reported as a producing-nothing failure.
         Optional<String> refusal = event.refusalDelta().map(delta -> delta.delta());
         if (refusal.isPresent()) {
-            outcome.sawContent = true;
+            outcome.markContent();
             return new LlmResponseChunk(refusal.get(), null, null, null);
         }
         // The reasoning summary, which chat completions cannot emit at all. Deliberately does NOT
@@ -459,7 +363,7 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
             return added.item()
                     .functionCall()
                     .map(call -> {
-                        outcome.sawToolCall = true;
+                        outcome.markToolCall();
                         return toolChunk(
                                 denseIndex(toolIndexes, added.outputIndex()),
                                 call.callId(),
@@ -479,7 +383,7 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
         // opening a fence in one chunk and hoping to close it in another.
         Optional<String> code = event.codeInterpreterCallCodeDone().map(done -> done.code());
         if (code.isPresent()) {
-            outcome.sawContent = true;
+            outcome.markContent();
             return new LlmResponseChunk(
                     codeExecutionBlock("```python\n" + code.get() + "\n```"), null, null, null);
         }
@@ -496,28 +400,28 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
         // reading only `completed` left them with no llm_call_logs row at all.
         if (event.incomplete().isPresent()) {
             Response response = event.incomplete().get().response();
-            outcome.status = "incomplete";
+            outcome.recordTerminal("incomplete", false);
             warnIfIncomplete(response);
             return usageChunk(response);
         }
         if (event.failed().isPresent()) {
             Response response = event.failed().get().response();
-            outcome.status = "failed";
-            outcome.failure = failureText(response);
+            outcome.recordTerminal("failed", false);
+            outcome.fail(failureText(response));
             return usageChunk(response);
         }
         if (event.error().isPresent()) {
-            outcome.status = "error";
-            outcome.failure =
+            outcome.recordTerminal("error", false);
+            outcome.fail(
                     "Azure OpenAI Responses stream error: "
                             + event.error().get().code()
                             + " "
-                            + event.error().get().message();
+                            + event.error().get().message());
             return null;
         }
         return event.completed()
                 .map(done -> {
-                    outcome.status = "completed";
+                    outcome.recordTerminal("completed", true);
                     return usageChunk(done.response());
                 })
                 .orElse(null);
@@ -828,7 +732,11 @@ public class AzureOpenAiResponsesLlmClient implements LlmClient, AutoCloseable {
         return ReasoningEffort.of(normalized);
     }
 
-    /** See {@code isReasoningModel(String)} — the same rule, same reasons. */
+    /**
+     * Checks whether {@code model} is a reasoning model. An explicit {@code reasoningModels}
+     * allow-list overrides the default {@link #REASONING_MODEL_PATTERN} heuristic so operators can
+     * name deployments arbitrarily.
+     */
     boolean isReasoningModel(String model) {
         if (model == null) {
             return false;

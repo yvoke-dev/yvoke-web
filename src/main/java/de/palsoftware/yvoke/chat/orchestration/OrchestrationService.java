@@ -1021,11 +1021,10 @@ public class OrchestrationService {
      * model makes. Gemini separates reasoning properly — 45,508 thought tokens over 630 production
      * calls, delivered as {@code LlmPart("thought")} which {@link #extractAnswerText} already
      * ignores — and still writes a deliberate lead-in into the answer itself (<i>"The reviewer
-     * approved. Here is the final answer."</i>, live in production). Azure chat completions emits
-     * <b>no reasoning text at all</b> (see {@code AzureOpenAiLlmClient}'s own javadoc; this
-     * deployment reports 0 reasoning tokens at {@code thinking_level: high}), so a reasoning model
-     * there streams its chain-of-thought AS content. A prompt can address the first and cannot
-     * address the second, so the split has to be one the model marks rather than one we infer.
+     * approved. Here is the final answer."</i>, live in production). Providers or surfaces that
+     * emit <b>no separate reasoning channel</b> stream chain-of-thought directly AS content. A
+     * prompt can address the first and cannot address the second, so the split has to be one the
+     * model marks rather than one we infer.
      *
      * <p>Deliberately not a stripper: "drop everything before the first heading" would also delete
      * a legitimate opening sentence, and CLAUDE.md § 6 records three separate incidents here where

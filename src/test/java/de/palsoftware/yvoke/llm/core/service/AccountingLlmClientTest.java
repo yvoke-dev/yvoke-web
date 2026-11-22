@@ -512,4 +512,77 @@ class AccountingLlmClientTest {
         assertEquals(1, published.size());
         assertEquals(11, published.get(0).totalTokens());
     }
+
+    /**
+     * If a streaming delegate fails with {@link LlmCallFailedException} carrying billed usage
+     * without having emitted an {@code endOfCall} marker (e.g. a single-chunk safety block),
+     * accounting must still record that usage rather than dropping the ledger row.
+     */
+    @Test
+    void testStreamRecordsUsageCarriedOnFailedExceptionWhenNoEndOfCallMarkerArrived() {
+        LlmUsage billed = new LlmUsage(216_667, 40, 216_707, 0, 12);
+        LlmCallFailedException blocked =
+                new LlmCallFailedException("stream blocked: SAFETY", null, billed);
+
+        LlmCallFailedException thrown =
+                assertThrows(
+                        LlmCallFailedException.class,
+                        () ->
+                                clientFor(streamingChunks(List.of(), blocked))
+                                        .generateStream(REQUEST, c -> {}));
+
+        assertSame(blocked, thrown);
+        assertEquals(1, published.size(), "a failed stream with billed usage must leave one row");
+        assertEquals(216_667, published.get(0).promptTokens());
+        assertEquals(216_707, published.get(0).totalTokens());
+    }
+
+    /**
+     * When a streaming delegate closes the HTTP call with {@code endOfCall} and then throws {@link
+     * LlmCallFailedException} carrying the same usage, accounting must publish once, never twice.
+     */
+    @Test
+    void testStreamDoesNotDoublePublishWhenEndOfCallPrecedesFailedException() {
+        LlmUsage billed = new LlmUsage(216_667, 40, 216_707, 0, 12);
+        LlmCallFailedException blocked =
+                new LlmCallFailedException("stream blocked: SAFETY", null, billed);
+
+        assertThrows(
+                LlmCallFailedException.class,
+                () ->
+                        clientFor(
+                                        streamingChunks(
+                                                List.of(LlmResponseChunk.endOfCall(billed, null)),
+                                                blocked))
+                                .generateStream(REQUEST, c -> {}));
+
+        assertEquals(
+                1,
+                published.size(),
+                "endOfCall already accounted for the call; catching LlmCallFailedException must not bill twice");
+        assertEquals(216_667, published.get(0).promptTokens());
+    }
+
+    /**
+     * When an earlier chunk reported a partial usage snapshot and the terminal {@link
+     * LlmCallFailedException} carries a newer whole-call snapshot without an {@code endOfCall}
+     * marker, the exception's final usage must win so the call is not under-counted.
+     */
+    @Test
+    void testStreamPrefersFailedExceptionUsageOverStaleEarlierChunkSnapshot() {
+        LlmUsage earlier = new LlmUsage(100, 5, 105, 0, 0);
+        LlmUsage finalBilled = new LlmUsage(100, 40, 140, 0, 12);
+        LlmCallFailedException blocked =
+                new LlmCallFailedException("stream blocked: SAFETY", null, finalBilled);
+
+        assertThrows(
+                LlmCallFailedException.class,
+                () ->
+                        clientFor(streamingChunks(List.of(chunk("partial", earlier)), blocked))
+                                .generateStream(REQUEST, c -> {}));
+
+        assertEquals(1, published.size());
+        assertEquals(40, published.get(0).completionTokens());
+        assertEquals(140, published.get(0).totalTokens());
+    }
 }

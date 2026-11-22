@@ -25,6 +25,7 @@
         <revision>0.0.0-SNAPSHOT</revision>
         <java.version>25</java.version>
         <spring-ai.version>2.0.0-RC1</spring-ai.version>
+        <openai-java.version>4.41.0</openai-java.version>
         <skipUnitTests>false</skipUnitTests>
         <!-- Node test tier for the browser-side chat scripts (see exec-maven-plugin below). -->
         <skipJsTests>false</skipJsTests>
@@ -120,10 +121,18 @@
         <!-- Spring AI. NOTE: the OpenAI model starter's chat/embedding autoconfig is unused (chat goes
              through the custom LlmClient, embeddings through the Voyage-backed EmbeddingService), but it
              transitively provides the victools jsonschema library that ToolCallbacks/MCP tool-schema
-             generation requires — do not remove it without adding com.github.victools explicitly. -->
+             generation requires — do not remove it without adding com.github.victools explicitly.
+             openai-java-core is excluded here and pinned in <dependencyManagement> so spring-ai-openai's
+             older transitive core does not shadow the openai-java version declared below. -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-openai</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.openai</groupId>
+                    <artifactId>openai-java-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.google.genai</groupId>
@@ -133,7 +142,7 @@
         <dependency>
             <groupId>com.openai</groupId>
             <artifactId>openai-java</artifactId>
-            <version>4.41.0</version>
+            <version>${openai-java.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.ai</groupId>
@@ -183,6 +192,18 @@
                 <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- Keep all com.openai:openai-java-* modules aligned at ${openai-java.version};
+                 openai-java releases its modules together and mixing core/client versions is unsupported. -->
+            <dependency>
+                <groupId>com.openai</groupId>
+                <artifactId>openai-java-core</artifactId>
+                <version>${openai-java.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.openai</groupId>
+                <artifactId>openai-java-client-okhttp</artifactId>
+                <version>${openai-java.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

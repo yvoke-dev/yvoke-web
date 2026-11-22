@@ -659,7 +659,7 @@ class GeminiLlmClientTest {
                         respondSse(
                                 exchange,
                                 """
-                                {"candidates":[{"content":{"parts":[{"functionCall":{"name":"search_kb","args":{"query":"test"},"id":"call_999"}}],"role":"model"}}]}\
+                                {"candidates":[{"content":{"parts":[{"functionCall":{"name":"search_kb","args":{"query":"test"},"id":"call_999"}}],"role":"model"},"finishReason":"STOP"}]}\
                                 """),
                 client -> {
                     List<LlmResponseChunk> chunks = new ArrayList<>();
@@ -819,8 +819,7 @@ class GeminiLlmClientTest {
      * ends with {@code shouldContinue=false}, {@code ChatMessageService} persists the message with
      * status {@code done}, and the UI hides {@code <think>} — so the user is shown a **blank
      * message with no error at all**, and an orchestrated run hands the reviewer an empty draft.
-     * {@code AzureOpenAiLlmClient} implements this delegated duty via {@code StreamOutcome}; this
-     * client never did.
+     * {@link StreamingLlmExecution} enforces this guard uniformly across all providers.
      *
      * <p>Re-requested once first, via {@link de.palsoftware.yvoke.llm.core.EmptyTurnRetry} — this
      * fixture answers identically both times, so the failure still arrives, and says so. This
@@ -1488,5 +1487,21 @@ class GeminiLlmClientTest {
      */
     private static long delivered(List<LlmResponseChunk> chunks) {
         return chunks.stream().filter(c -> !c.endOfCall()).count();
+    }
+
+    @Test
+    void plainHttpNonLoopbackBaseUrlIsRejectedSoApiKeyNeverTravelsInCleartext() {
+        IllegalArgumentException ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                new GeminiLlmClient(
+                                        "super-secret-gemini-key",
+                                        new ObjectMapper(),
+                                        false,
+                                        "low",
+                                        "http://generativelanguage.googleapis.com"));
+        assertTrue(ex.getMessage().contains("HTTPS"));
+        assertFalse(ex.getMessage().contains("super-secret-gemini-key"));
     }
 }

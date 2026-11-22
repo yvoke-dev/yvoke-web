@@ -6,7 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openai.core.JsonField;
+import com.openai.models.completions.CompletionUsage;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -21,12 +22,14 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import okhttp3.OkHttpClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
@@ -236,7 +239,8 @@ class OpenRouterLlmClientTest {
                         respondSse(
                                 exchange,
                                 chunkJson(null, "thinking hard", null, false),
-                                chunkJson("answer", null, null, false)),
+                                chunkJson("answer", null, null, false),
+                                finalChunkJson(5, 2, 7)),
                 client -> {
                     List<LlmResponseChunk> chunks = new ArrayList<>();
                     client.generateStream(userRequest("hi"), chunks::add);
@@ -256,7 +260,15 @@ class OpenRouterLlmClientTest {
     @Test
     void testGenerateStreamParsesToolCallDeltas() throws Exception {
         withMockServer(
-                exchange -> respondSse(exchange, chunkJson(null, null, "search_kb", true)),
+                exchange ->
+                        respondSse(
+                                exchange,
+                                chunkJson(null, null, "search_kb", true),
+                                """
+                                {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,
+                                 "model":"deepseek/deepseek-chat",
+                                 "choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\
+                                """),
                 client -> {
                     List<LlmResponseChunk> chunks = new ArrayList<>();
                     client.generateStream(userRequest("hi"), chunks::add);
@@ -664,6 +676,107 @@ class OpenRouterLlmClientTest {
     }
 
     @Test
+    void plainHttpNonLoopbackBaseUrlIsRejectedSoApiKeyNeverTravelsInCleartext() {
+        IllegalArgumentException ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> OpenRouterLlmClient.resolveBaseUrl("http://openrouter.ai/api/v1"));
+        assertTrue(ex.getMessage().contains("HTTPS"));
+        IllegalArgumentException ctorEx =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () ->
+                                new OpenRouterLlmClient(
+                                        "http://openrouter.ai/api/v1",
+                                        "super-secret-openrouter-key"));
+        assertFalse(ctorEx.getMessage().contains("super-secret-openrouter-key"));
+    }
+
+    @Test
+    void transportTimeoutsUseReadTimeoutWithNoWholeCallCapSoLongStreamsSurvive() {
+        try (OpenRouterLlmClient built =
+                new OpenRouterLlmClient("https://openrouter.ai/api/v1", "test-key")) {
+            var timeout = OpenAiTransportTestSupport.timeoutOf(built);
+            assertEquals(Duration.ofSeconds(10), timeout.connect());
+            assertEquals(OpenRouterLlmClient.HTTP_TIMEOUT, timeout.read());
+            assertEquals(OpenRouterLlmClient.HTTP_TIMEOUT, timeout.write());
+            assertEquals(Duration.ZERO, timeout.request());
+
+            OkHttpClient okHttp = OpenAiTransportTestSupport.okHttpClientOf(built);
+            assertEquals(10_000, okHttp.connectTimeoutMillis());
+            assertEquals(300_000, okHttp.readTimeoutMillis());
+            assertEquals(300_000, okHttp.writeTimeoutMillis());
+            assertEquals(
+                    0,
+                    okHttp.callTimeoutMillis(),
+                    "callTimeout must be 0 so healthy SSE streams are not killed at 5 minutes");
+        }
+    }
+
+    @Test
+    void usageOfHandlesNullDetailFieldsDirectlyWithoutJsonRoundTrip() {
+        CompletionUsage sdkUsage =
+                CompletionUsage.builder()
+                        .promptTokens(10)
+                        .completionTokens(5)
+                        .totalTokens(15)
+                        .promptTokensDetails(
+                                CompletionUsage.PromptTokensDetails.builder()
+                                        .cachedTokens(JsonField.ofNullable(null))
+                                        .build())
+                        .completionTokensDetails(
+                                CompletionUsage.CompletionTokensDetails.builder()
+                                        .reasoningTokens(3L)
+                                        .build())
+                        .build();
+
+        var parsed = OpenRouterLlmClient.usageOf(sdkUsage);
+        assertNotNull(parsed);
+        assertEquals(10, parsed.promptTokens());
+        assertEquals(5, parsed.completionTokens());
+        assertEquals(15, parsed.totalTokens());
+        assertEquals(0, parsed.cachedTokens());
+        assertEquals(3, parsed.thoughtTokens());
+    }
+
+    @Test
+    void usageParsingSurvivesNullDetailFieldsWithoutDroppingSubsequentTokenCounts()
+            throws Exception {
+        withMockServer(
+                exchange ->
+                        respondJson(
+                                exchange,
+                                200,
+                                """
+                                {
+                                  "id": "chatcmpl-1", "object": "chat.completion", "created": 1,
+                                  "model": "deepseek/deepseek-chat",
+                                  "choices": [
+                                    {"index": 0, "message": {"role": "assistant", "content": "ok"},
+                                     "finish_reason": "stop"}
+                                  ],
+                                  "usage": {
+                                    "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15,
+                                    "prompt_tokens_details": {"cached_tokens": null},
+                                    "completion_tokens_details": {"reasoning_tokens": 3}
+                                  }
+                                }
+                                """),
+                client -> {
+                    LlmResponse response = client.generate(userRequest("hi"));
+
+                    assertEquals(10, response.usage().promptTokens());
+                    assertEquals(5, response.usage().completionTokens());
+                    assertEquals(15, response.usage().totalTokens());
+                    assertEquals(0, response.usage().cachedTokens());
+                    assertEquals(
+                            3,
+                            response.usage().thoughtTokens(),
+                            "a null cached_tokens field must not abort parsing before reasoning_tokens");
+                });
+    }
+
+    @Test
     void attributionHeadersAreSent() throws Exception {
         AtomicReference<Map<String, List<String>>> headersRef = new AtomicReference<>();
         withMockServer(
@@ -852,9 +965,9 @@ class OpenRouterLlmClientTest {
         server.start();
         try {
             String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-            OpenRouterLlmClient client =
-                    new OpenRouterLlmClient(baseUrl, "mock-api-key", new ObjectMapper());
-            test.accept(client);
+            try (OpenRouterLlmClient client = new OpenRouterLlmClient(baseUrl, "mock-api-key")) {
+                test.accept(client);
+            }
         } finally {
             server.stop(0);
         }

@@ -149,7 +149,6 @@ public class LlmConfig {
                             yield new OpenRouterLlmClient(
                                     baseUrl,
                                     apiKey,
-                                    objectMapper,
                                     openrouterEnableThinking,
                                     openrouterThinkingLevel,
                                     openrouterReasoningModels);
@@ -172,9 +171,9 @@ public class LlmConfig {
      * grounds that a typo must not take a running deployment down. A typo never worked; these two
      * did, so a deployment can still be carrying one — and answering it with Gemini, on a Gemini
      * key, having logged the operator's own spelling back at them, is the silent substitution that
-     * fallback's own rationale warns about. Both classes remain in the tree with their tests, and
-     * their {@code app.ai.*} settings remain in {@code application.yml}, so re-enabling either of
-     * them is a branch here and an entry in {@link LlmRouteId}.
+     * fallback's own rationale warns about. Both retired client classes and their tests were
+     * deleted (recoverable from git history); their {@code app.ai.*} settings remain in {@code
+     * application.yml} only so existing environment files stay inert.
      *
      * <p>Case-insensitive, matching the selection. An exact match would let {@code Azure-OpenAI} —
      * the natural spelling in a hand-written manifest — miss this guard and reach the Gemini

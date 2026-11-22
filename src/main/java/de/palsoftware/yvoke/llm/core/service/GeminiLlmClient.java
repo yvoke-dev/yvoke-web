@@ -8,7 +8,6 @@ import com.google.genai.ResponseStream;
 import com.google.genai.types.*;
 import com.google.genai.types.ClientOptions;
 import com.google.genai.types.HttpResponse;
-import de.palsoftware.yvoke.llm.core.EmptyTurnRetry;
 import de.palsoftware.yvoke.llm.core.LlmRetry;
 import de.palsoftware.yvoke.llm.core.model.LlmCallFailedException;
 import de.palsoftware.yvoke.llm.core.model.LlmGatewayInfo;
@@ -24,7 +23,6 @@ import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 import okhttp3.OkHttpClient;
 import org.slf4j.Logger;
@@ -39,7 +37,7 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
      */
     static final int HTTP_TIMEOUT_MS = 300_000;
 
-    /** TCP/TLS only, matching {@code AzureOpenAiLlmClient}. */
+    /** TCP/TLS handshake timeout. */
     static final int CONNECT_TIMEOUT_MS = 10_000;
 
     /**
@@ -157,15 +155,16 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                         .retryOptions(
                                 HttpRetryOptions.builder().attempts(SDK_HTTP_ATTEMPTS).build());
         if (baseUrl != null && !baseUrl.isBlank()) {
-            httpOptionsBuilder.baseUrl(baseUrl);
+            String validatedBaseUrl =
+                    ProviderEndpointValidator.requireHttpsOrLoopback(baseUrl.trim(), "Gemini");
+            httpOptionsBuilder.baseUrl(validatedBaseUrl);
         }
         if (headers != null && !headers.isEmpty()) {
             httpOptionsBuilder.headers(headers);
         }
 
         // A ClientOptions is ALWAYS supplied, so the SDK's own transport branch — the one that
-        // applies a callTimeout — is never taken. Both this client and CloudflareGeminiLlmClient
-        // therefore get their timeouts from httpClientBuilder and cannot diverge.
+        // applies a callTimeout — is never taken; timeouts come strictly from httpClientBuilder.
         ClientOptions resolvedOptions =
                 clientOptions != null
                         ? clientOptions
@@ -331,142 +330,51 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         }
         GenerateContentConfig config = buildConfig(request);
 
-        // A turn that ends having produced neither text nor a tool call is a failure, not a quiet
-        // success. Only this client can tell: by the time the turn reaches RagService the evidence
-        // is a `thought` part like any other, its parts-keyed guard passes, the loop ends, the
-        // message is persisted `done`, and the UI hides <think> — so the user is shown a blank
-        // message with no error at all.
-        //
-        // Whether such a turn is worth re-requesting is decided by EmptyTurnRetry, shared with
-        // AzureOpenAiResponsesLlmClient. It used to be decided here, differently, from the same
-        // fact: both clients stream reasoning, both noted a retry replays it, and this one called
-        // that disqualifying while the other called it an acceptable price. One of them had to be
-        // wrong, and nothing made them answer together.
-        EmptyTurnRetry.run(
+        StreamingLlmExecution.<GenerateContentResponse>run(
                 "Gemini",
+                "Gemini.generateStream",
                 request.model(),
+                "finishReason",
+                onChunk,
                 attempt -> {
                     String streamId = UUID.randomUUID().toString().substring(0, 8);
-                    log.info(
-                            "Sending streaming request to Gemini: model={}, streamId={}, attempt={}",
-                            request.model(),
-                            streamId,
-                            attempt);
+                    return new StreamingLlmExecution.StreamAttempt<>() {
+                        @Override
+                        public StreamingLlmExecution.StreamSource<GenerateContentResponse>
+                                establish() {
+                            log.info(
+                                    "Sending streaming request to Gemini: model={}, streamId={}, attempt={}",
+                                    request.model(),
+                                    streamId,
+                                    attempt);
+                            ResponseStream<GenerateContentResponse> stream =
+                                    client.models.generateContentStream(
+                                            request.model(), contents, config);
+                            return new StreamingLlmExecution.StreamSource<>() {
+                                @Override
+                                public void forEach(Consumer<GenerateContentResponse> action) {
+                                    for (GenerateContentResponse res : stream) {
+                                        action.accept(res);
+                                    }
+                                }
 
-                    // Retry only the stream establishment; a transient failure here throws before
-                    // any chunk
-                    // is emitted, so retrying cannot duplicate already-streamed output. Mid-stream
-                    // failures
-                    // are intentionally NOT retried (they cannot be safely resumed). Blocks on the
-                    // calling
-                    // thread.
-                    ResponseStream<GenerateContentResponse> stream =
-                            LlmRetry.withRetry(
-                                    "Gemini.generateStream",
-                                    3,
-                                    () ->
-                                            client.models.generateContentStream(
-                                                    request.model(), contents, config));
-                    StreamOutcome outcome = new StreamOutcome();
-                    try {
-                        for (GenerateContentResponse res : stream) {
-                            if (Thread.currentThread().isInterrupted()) {
-                                log.info(
-                                        "Gemini stream interrupted, stopping chunk processing (streamId={})",
-                                        streamId);
-                                throw new CancellationException("Gemini stream interrupted");
-                            }
-                            onChunk.accept(parseChunk(res, streamId, outcome));
+                                @Override
+                                public void close() {
+                                    stream.close();
+                                }
+                            };
                         }
-                    } catch (RuntimeException e) {
-                        if (Thread.currentThread().isInterrupted()
-                                || e instanceof CancellationException
-                                || e.getCause() instanceof InterruptedException
-                                || e.getCause() instanceof CancellationException) {
-                            log.info("Gemini stream cancelled/interrupted (streamId={})", streamId);
-                            throw new CancellationException("Gemini stream interrupted");
-                        }
-                        log.error(
-                                "Gemini stream error for model={}, streamId={}",
-                                request.model(),
-                                streamId,
-                                e);
-                        throw e;
-                    } finally {
-                        try {
-                            stream.close();
-                        } catch (Exception e) {
-                            log.warn("Failed to close response stream (streamId={})", streamId, e);
-                        }
-                    }
 
-                    // Closes this HTTP call for accounting BEFORE the verdict is taken: an
-                    // abandoned
-                    // attempt was billed just as the winning one was, and gets its own
-                    // llm_call_logs row
-                    // rather than being summed onto whichever attempt happened to succeed.
-                    onChunk.accept(LlmResponseChunk.endOfCall(outcome.usage, null));
-
-                    return new EmptyTurnRetry.Turn(
-                            !outcome.isEmpty(),
-                            outcome.cleanlyCompleted(),
-                            outcome.usage,
-                            outcome.describe());
+                        @Override
+                        public void onEvent(
+                                GenerateContentResponse res,
+                                StreamingLlmExecution.StreamOutcome outcome,
+                                Consumer<LlmResponseChunk> emit) {
+                            handleStreamEvent(res, streamId, outcome, emit);
+                        }
+                    };
                 });
         log.info("Gemini stream completed successfully for model={}", request.model());
-    }
-
-    /**
-     * What a stream actually produced, so an empty one can say why instead of being reported as a
-     * success the caller then has to guess about. Mirrors {@code
-     * AzureOpenAiLlmClient.StreamOutcome} — the two clients answer the same question and must
-     * answer it the same way.
-     */
-    private static final class StreamOutcome {
-        private boolean sawContent;
-        private boolean sawToolCall;
-        private String finishReason;
-        private int events;
-        private LlmUsage usage;
-
-        /**
-         * A thought part is deliberately not content. A turn that only thought produced nothing the
-         * caller can use, and that is precisely the condition being detected — counting reasoning
-         * here would make the check unable to fire on the one case it exists for.
-         */
-        boolean isEmpty() {
-            return !sawContent && !sawToolCall;
-        }
-
-        /**
-         * The provider reported a normal end of turn. Only this shape is worth re-requesting: a
-         * MAX_TOKENS turn exhausts its budget again, and a stream with no finish reason at all was
-         * cut short rather than completed, which is a transport question {@link LlmRetry} owns.
-         * Deliberately narrower than {@link #BENIGN_FINISH_REASONS}, which answers "was this
-         * abnormal" rather than "did this finish".
-         */
-        boolean cleanlyCompleted() {
-            return finishReason != null
-                    && "STOP".equals(finishReason.trim().toUpperCase(Locale.ROOT));
-        }
-
-        String describe() {
-            StringBuilder out = new StringBuilder();
-            out.append("finishReason=").append(finishReason == null ? "none" : finishReason);
-            out.append(", events=").append(events);
-            if (usage != null) {
-                out.append(", completionTokens=")
-                        .append(usage.completionTokens())
-                        .append(" of which reasoning=")
-                        .append(usage.thoughtTokens());
-            }
-            if (finishReason == null) {
-                out.append(
-                        " — the stream ended without a finish reason, which means it was cut "
-                                + "short rather than completed");
-            }
-            return out.toString();
-        }
     }
 
     /**
@@ -487,20 +395,22 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                 .orElse(null);
     }
 
-    private LlmResponseChunk parseChunk(
-            GenerateContentResponse res, String streamId, StreamOutcome outcome) {
-        outcome.events++;
+    private void handleStreamEvent(
+            GenerateContentResponse res,
+            String streamId,
+            StreamingLlmExecution.StreamOutcome outcome,
+            Consumer<LlmResponseChunk> emit) {
         StringBuilder contentBuilder = new StringBuilder();
         StringBuilder reasoningBuilder = new StringBuilder();
         List<LlmToolCallDelta> toolDeltas = null;
         LlmUsage usage = null;
+        LlmGatewayInfo gateway = gatewayInfo(res);
+        outcome.recordGateway(gateway);
         List<LlmPart> chunkParts = new ArrayList<>();
 
-        // Read FIRST, before anything below can throw. A blocked or otherwise abnormal turn still
-        // burned the whole prompt, and the finish-reason check further down is a throw site — with
-        // the read left at the bottom those tokens reached neither a chunk nor the exception, so
-        // AccountingLlmClient's null guard skipped the write and the call left no llm_call_logs
-        // row.
+        // Read FIRST, before finishReason can mark a fatal outcome: a blocked or otherwise
+        // abnormal turn still burned the whole prompt, and StreamingLlmExecution emits endOfCall
+        // with outcome.usage() before throwing LlmCallFailedException.
         // Gemini reports an absolute whole-request snapshot on every event that carries usage,
         // never a per-event delta, so the last one seen is the total for the call.
         if (res.usageMetadata().isPresent()) {
@@ -512,7 +422,7 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                             metadata.totalTokenCount().orElse(0),
                             metadata.cachedContentTokenCount().orElse(0),
                             metadata.thoughtsTokenCount().orElse(0));
-            outcome.usage = usage;
+            outcome.recordUsage(usage);
         }
 
         // A prompt-side block arrives with promptFeedback and NO candidates, so the branch below
@@ -622,33 +532,27 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
                 }
             }
 
-            candidate
-                    .finishReason()
-                    .ifPresent(finishReason -> {
-                        // Recorded before the abnormality check so an empty turn can name the
-                        // reason that
-                        // made it look like a success.
-                        outcome.finishReason = finishReason.toString();
-                        if (!isBenignFinishReason(finishReason)) {
-                            log.warn(
-                                    "Gemini stream finished abnormally: finishReason={}, streamId={}",
-                                    finishReason,
-                                    streamId);
-                            // LlmCallFailedException, not a bare RuntimeException: this turn was
-                            // billed and
-                            // the usage read above is the only thing that can still report it. A
-                            // bare
-                            // RuntimeException has nowhere to put the tokens, which is how the
-                            // ordering
-                            // defect stayed invisible — the type made the loss unrepairable at the
-                            // throw.
-                            throw new LlmCallFailedException(
-                                    "Gemini stream finished abnormally: finishReason="
-                                            + finishReason,
-                                    null,
-                                    outcome.usage);
-                        }
-                    });
+            Optional<FinishReason> finishReasonOpt = candidate.finishReason();
+            if (finishReasonOpt.isPresent()) {
+                FinishReason finishReason = finishReasonOpt.get();
+                String rawReason = finishReason.toString();
+                boolean cleanStop =
+                        rawReason != null
+                                && "STOP".equals(rawReason.trim().toUpperCase(Locale.ROOT));
+                outcome.recordTerminal(rawReason, cleanStop);
+                if (!isBenignFinishReason(finishReason)) {
+                    log.warn(
+                            "Gemini stream finished abnormally: finishReason={}, streamId={}",
+                            finishReason,
+                            streamId);
+                    // Record the failure and return without emitting blocked chunk text.
+                    // StreamingLlmExecution will emit endOfCall(outcome.usage(), outcome.gateway())
+                    // and then throw LlmCallFailedException with outcome.usage() so the billed
+                    // tokens are always recorded in llm_call_logs.
+                    outcome.fail("Gemini stream finished abnormally: finishReason=" + finishReason);
+                    return;
+                }
+            }
         }
 
         String content = contentBuilder.length() > 0 ? contentBuilder.toString() : null;
@@ -657,13 +561,13 @@ public class GeminiLlmClient implements LlmClient, AutoCloseable {
         // Read off the finished values rather than flagged inside the part loop, so executable code
         // and its result — which append to contentBuilder — count as content by construction.
         if (content != null) {
-            outcome.sawContent = true;
+            outcome.markContent();
         }
         if (toolDeltas != null && !toolDeltas.isEmpty()) {
-            outcome.sawToolCall = true;
+            outcome.markToolCall();
         }
-        return new LlmResponseChunk(
-                content, reasoning, toolDeltas, usage, chunkParts, gatewayInfo(res));
+        emit.accept(
+                new LlmResponseChunk(content, reasoning, toolDeltas, usage, chunkParts, gateway));
     }
 
     @SuppressWarnings("unchecked")
