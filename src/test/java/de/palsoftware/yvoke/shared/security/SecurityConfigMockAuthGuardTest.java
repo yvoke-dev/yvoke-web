@@ -383,7 +383,7 @@ class SecurityConfigMockAuthGuardTest {
                 "api://oim-kb/mcp.read",
                 "https://example/keys",
                 "https://example/issuer",
-                "http://localhost:8080/mcp",
+                "https://example.com/mcp",
                 true,
                 120,
                 60L);
@@ -893,5 +893,69 @@ class SecurityConfigMockAuthGuardTest {
                     .as("chat/layout.html must not load vulnerable %s", vulnerable)
                     .doesNotContain(vulnerable);
         }
+    }
+
+    @Test
+    void nonDevStartupRefusesLocalhostOrBlankMcpResourceUrl() {
+        for (String badUrl :
+                List.of(
+                        "http://localhost:8080/mcp",
+                        "https://localhost/mcp",
+                        "http://127.0.0.1:8080/mcp",
+                        "http://[::1]:8080/mcp",
+                        "   ")) {
+            MockEnvironment prodEnv = new MockEnvironment();
+            prodEnv.setActiveProfiles("prod");
+            assertThatThrownBy(() ->
+                            new SecurityConfig(
+                                    mock(UserService.class),
+                                    prodEnv,
+                                    false,
+                                    "dev-key-12345",
+                                    "",
+                                    "Admin",
+                                    "User",
+                                    "api://oim-kb",
+                                    "api://oim-kb/mcp.read",
+                                    "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/discovery/v2.0/keys",
+                                    "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0",
+                                    badUrl,
+                                    true,
+                                    120,
+                                    60L))
+                    .as("non-dev startup must reject MCP resource URL '%s'", badUrl)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("APP_SECURITY_MCP_RESOURCE_URL");
+        }
+    }
+
+    @Test
+    void mockJwtDecoderParsesScopedAndZeroRoleTokens() {
+        SecurityConfig config = build(true, "test");
+        var decoder = config.jwtDecoder();
+
+        Jwt defaultJwt = decoder.decode("mock-jwt-token");
+        assertThat(defaultJwt.getClaimAsStringList("roles")).containsExactly("User");
+
+        Jwt singleArea = decoder.decode("mock-roles--OIM.User");
+        assertThat(singleArea.getClaimAsStringList("roles")).containsExactly("OIM.User");
+
+        Jwt multiArea = decoder.decode("mock-roles--OIM.User+PingID.Admin");
+        assertThat(multiArea.getClaimAsStringList("roles"))
+                .containsExactly("OIM.User", "PingID.Admin");
+
+        Jwt zeroArea = decoder.decode("mock-roles--");
+        assertThat(zeroArea.getClaimAsStringList("roles")).isEmpty();
+        assertThat(zeroArea.getClaimAsStringList("scp")).contains("api://oim-kb/mcp.read");
+    }
+
+    @Test
+    void resolveResourceMetadataUrlUsesUriResolutionRatherThanStringReplace() {
+        assertThat(SecurityConfig.resolveResourceMetadataUrl("https://mcp.example.com/mcp"))
+                .isEqualTo("https://mcp.example.com/.well-known/oauth-protected-resource");
+        assertThat(SecurityConfig.resolveResourceMetadataUrl("https://app.yvoke.dev/mcp"))
+                .isEqualTo("https://app.yvoke.dev/.well-known/oauth-protected-resource");
+        assertThat(SecurityConfig.resolveResourceMetadataUrl("http://localhost:8080/mcp"))
+                .isEqualTo("http://localhost:8080/.well-known/oauth-protected-resource");
     }
 }

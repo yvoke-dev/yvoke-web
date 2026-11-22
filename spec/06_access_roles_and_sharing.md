@@ -64,11 +64,11 @@ areas, and automation or AI coding tools connecting on a company account or a ma
   preflight checks. When full the user is asked to retry before a generation starts.
 - **All automation shares one machine key**, therefore one send budget and one identity. A busy script can
   rate-limit every other integration, and reporting cannot tell them apart.
-- **Every signed-in user can read how the assistant is configured.** The playbook library and the
-  specialist profiles are readable by any account holding an access token —
-  the desktop app and connected AI clients need them — with no administrator check. So how Yvoke works
-  is visible to everyone who can sign in, not only what it knows. The machine key, by contrast, cannot
-  reach them at all: it is confined to importing, jobs and documents.
+- **Every signed-in user can read how the assistant is configured in their authorized areas.** The
+  playbook library and the specialist profiles for a user's authorized areas are readable by any account
+  holding an access token — the desktop app and connected AI clients need them — with no administrator
+  check. So how Yvoke works in those areas is visible to every authorized user, not only what it knows.
+  The machine key, by contrast, cannot reach them at all: it is confined to importing, jobs and documents.
 - **The offered models, the chat on/off switch, the per-user question limit, the capacity ceiling and the
   number of simultaneous imports are set when the system is deployed** — not editable by an administrator
   in the product. Changing any of them is a deployment change.

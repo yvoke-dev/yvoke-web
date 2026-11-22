@@ -1,6 +1,8 @@
 package de.palsoftware.yvoke.mcp.tools;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import java.util.Map;
@@ -77,18 +79,31 @@ public class ListDocumentsToolCallback implements ContextAwareToolCallback {
 
     @Override
     public String callWithContext(String jsonArguments, AgenticChatContext context) {
+        String collection;
+        String kind;
+        String tag;
+        Integer limit;
+        Integer offset;
+        String query;
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> args = objectMapper.readValue(jsonArguments, Map.class);
-            String collection = asString(args.get("collection"));
-            String kind = asString(args.get("kind"));
-            String tag = asString(args.get("tag"));
-            Integer limit = (args.get("limit") instanceof Number n) ? n.intValue() : null;
-            Integer offset = (args.get("offset") instanceof Number n) ? n.intValue() : null;
-            String query = asString(args.get("query"));
+            if (args == null) {
+                return "Error parsing arguments: expected a JSON object.";
+            }
+            collection = asString(args.get("collection"));
+            kind = asString(args.get("kind"));
+            tag = asString(args.get("tag"));
+            limit = (args.get("limit") instanceof Number n) ? n.intValue() : null;
+            offset = (args.get("offset") instanceof Number n) ? n.intValue() : null;
+            query = asString(args.get("query"));
+        } catch (JsonProcessingException | ClassCastException | IllegalArgumentException e) {
+            return "Error parsing arguments: " + e.getMessage();
+        }
+        try {
             return tool.listDocuments(collection, kind, tag, limit, offset, query, context);
         } catch (Exception e) {
-            return "Error parsing arguments: " + e.getMessage();
+            return McpToolUtils.toolError("list_documents", e);
         }
     }
 

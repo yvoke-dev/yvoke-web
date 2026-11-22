@@ -7,8 +7,6 @@ import de.palsoftware.yvoke.chat.core.service.PluginFeedbackService.PluginFeedba
 import de.palsoftware.yvoke.mcp.ClientOnlyTools;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
 import java.util.List;
-import org.springframework.ai.mcp.annotation.McpTool;
-import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -69,51 +67,23 @@ public class SubmitFeedbackTool {
         this.objectMapper = objectMapper;
     }
 
-    @McpTool(name = "submit_feedback", description = DESCRIPTION)
     @Tool(name = "submit_feedback", description = DESCRIPTION)
     public String submitFeedback(
-            @McpToolParam(description = TURN_ID_PARAM, required = true)
-                    @ToolParam(description = TURN_ID_PARAM, required = true)
-                    String turnId,
-            @McpToolParam(description = RATING_PARAM, required = true)
-                    @ToolParam(description = RATING_PARAM, required = true)
-                    Integer rating,
-            @McpToolParam(description = COMMENT_PARAM, required = false)
-                    @ToolParam(description = COMMENT_PARAM, required = false)
-                    String comment,
-            @McpToolParam(description = QUESTION_PARAM, required = true)
-                    @ToolParam(description = QUESTION_PARAM, required = true)
-                    String question,
-            @McpToolParam(description = ANSWER_PARAM, required = true)
-                    @ToolParam(description = ANSWER_PARAM, required = true)
-                    String answer,
-            @McpToolParam(description = AREA_PARAM, required = false)
-                    @ToolParam(description = AREA_PARAM, required = false)
-                    String area,
-            @McpToolParam(description = MODE_PARAM, required = false)
-                    @ToolParam(description = MODE_PARAM, required = false)
-                    String mode,
-            @McpToolParam(description = PLAYBOOK_PARAM, required = false)
-                    @ToolParam(description = PLAYBOOK_PARAM, required = false)
-                    String playbook,
-            @McpToolParam(description = PLAYBOOK_VERSION_PARAM, required = false)
-                    @ToolParam(description = PLAYBOOK_VERSION_PARAM, required = false)
+            @ToolParam(description = TURN_ID_PARAM, required = true) String turnId,
+            @ToolParam(description = RATING_PARAM, required = true) Integer rating,
+            @ToolParam(description = COMMENT_PARAM, required = false) String comment,
+            @ToolParam(description = QUESTION_PARAM, required = true) String question,
+            @ToolParam(description = ANSWER_PARAM, required = true) String answer,
+            @ToolParam(description = AREA_PARAM, required = false) String area,
+            @ToolParam(description = MODE_PARAM, required = false) String mode,
+            @ToolParam(description = PLAYBOOK_PARAM, required = false) String playbook,
+            @ToolParam(description = PLAYBOOK_VERSION_PARAM, required = false)
                     Integer playbookVersion,
-            @McpToolParam(description = PROFILE_PARAM, required = false)
-                    @ToolParam(description = PROFILE_PARAM, required = false)
-                    String profile,
-            @McpToolParam(description = CITED_IDS_PARAM, required = false)
-                    @ToolParam(description = CITED_IDS_PARAM, required = false)
-                    List<String> citedIds,
-            @McpToolParam(description = MODEL_PARAM, required = false)
-                    @ToolParam(description = MODEL_PARAM, required = false)
-                    String model,
-            @McpToolParam(description = CLIENT_PARAM, required = false)
-                    @ToolParam(description = CLIENT_PARAM, required = false)
-                    String client,
-            @McpToolParam(description = PLUGIN_VERSION_PARAM, required = false)
-                    @ToolParam(description = PLUGIN_VERSION_PARAM, required = false)
-                    String pluginVersion) {
+            @ToolParam(description = PROFILE_PARAM, required = false) String profile,
+            @ToolParam(description = CITED_IDS_PARAM, required = false) List<String> citedIds,
+            @ToolParam(description = MODEL_PARAM, required = false) String model,
+            @ToolParam(description = CLIENT_PARAM, required = false) String client,
+            @ToolParam(description = PLUGIN_VERSION_PARAM, required = false) String pluginVersion) {
         try {
             PluginFeedbackResult result =
                     pluginFeedbackService.submitFeedback(

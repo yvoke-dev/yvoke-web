@@ -21,7 +21,7 @@ running corpus scripts and the evaluation harness.
 | **Follow connections** | Ask what a named thing connects to and get its connections back: the counterpart, the kind of connection and the direction. Optional filters narrow to one type or direction. |
 | **Query structured records** | Read the declared field structure first, then filter records, pick fields, count matches, or group counts by a field. |
 | **Check citations in a draft** | Submit citations and get each one back marked real, unverified or fabricated. This catches invented source ids before an answer reaches a person. |
-| **Use the shared playbook library** | Every playbook appears in the connected client as a ready-made prompt — **including the internal orchestrator and reviewer ones**, which the chat picker hides but this surface does not. Editing a playbook in the admin screens changes what clients receive, with no release needed. |
+| **Use the shared playbook library** | Playbooks belonging to the caller's authorized areas appear in the connected client as ready-made prompts — **including the internal orchestrator and reviewer ones** within those areas, which the chat picker hides but this surface does not. Requesting a prompt outside the caller's authorized areas returns *not found*. Editing or deleting a playbook in the admin screens takes effect for connected clients immediately, with no release or restart needed. |
 | **Fetch playbooks as tools** | Two tools hand a client the playbook library directly, for clients that cannot read prompts (the Yvoke plugin for Claude) or whose playbook skills tell the model to fetch the playbook first (Claude Chat and Cowork). One lists the playbooks a user can pick, with each one's version number, tools, code execution, target agent and prototype flag, leaving out the orchestrator and reviewer ones as the chat picker does. The list is strictly filtered to the user's authorized areas. The other returns one playbook's full text and details by name; requesting a playbook from an unauthorized area returns *not found*. Both read the library on every call, so a new, edited or deleted playbook shows at once. |
 | **Fetch in-depth profiles as tools** | Two tools (`list_profiles` and `get_profile`) hand a client the in-depth profile library directly so clients running orchestration locally (such as the Yvoke plugin for Claude) can list and resolve multi-agent profiles. One lists the profiles in the caller's authorized areas (optionally narrowed to one area), including prototype profiles (`prototype = true` so the client controls prototype visibility and locked-session preservation), each profile's orchestrator, reviewer and specialist playbooks, and its effective review-round and specialist-call limits (server-side model and thinking bindings are omitted, just as on the desktop profile endpoint). The other returns one profile by name; requesting a profile outside the caller's authorized areas returns *not found*. Both read the table on every call, so a new, edited or deleted profile shows at once. |
 | **Keep desktop conversations in the account** | The desktop app creates conversations (recording the desktop release version that created the thread), appends each turn (including the playbook name and version the client ran when a playbook was used), retitles, changes settings and deletes. They appear in the web sidebar marked *Desktop*, and show the recorded desktop release version (`desktop <version>`) in the conversation header and administrator conversation register. Ratings are stored too and appear in the same feedback screens. |
@@ -53,14 +53,16 @@ running corpus scripts and the evaluation harness.
   access only to areas where the user holds `<Area>.User`, `<Area>.Admin`, or global `User`/`Admin`. A
   token carrying only the OAuth scope (`SCOPE_mcp.read` / `desktop`) with no recognized Entra app role
   clears transport authentication so the MCP handshake and tool discovery succeed, but holds access to
-  zero areas (every area-scoped list is empty and every area-scoped lookup returns *not found*). All
-  tools (`search_corpus`, `list_documents`, `get_toc`, `get_section`, `search_graph_entities`,
-  `get_graph_neighbors`, `get_json_schema`, `query_json_objects`, `verify_citations`, `list_areas`,
-  `list_playbooks`, `get_playbook`, `list_profiles`, `get_profile`, `submit_feedback`) enforce this
-  boundary.
-- **Unauthorized access returns opaque refusal.** Requesting an area, document, chunk, playbook, or
-  in-depth profile outside the caller's authorized areas returns an opaque *not found* error, never
-  confirming whether the resource exists in another area.
+  zero areas (every area-scoped list is empty and every area-scoped lookup returns *not found*). Both
+  MCP prompts (`prompts/list`, `prompts/get`) and all tools (`search_corpus`, `list_documents`,
+  `get_toc`, `get_section`, `search_graph_entities`, `get_graph_neighbors`, `get_json_schema`,
+  `query_json_objects`, `verify_citations`, `list_areas`, `list_playbooks`, `get_playbook`,
+  `list_profiles`, `get_profile`, `submit_feedback`) enforce this boundary.
+- **Unauthorized access returns opaque refusal, and tool failures signal protocol-level errors.**
+  Requesting an area, document, chunk, playbook, or in-depth profile outside the caller's authorized
+  areas returns an opaque *not found* error, never confirming whether the resource exists in another
+  area. Tool errors (validation errors, opaque refusals, and internal failures) set MCP `isError: true`
+  and never expose raw backend stack or database detail.
 - **Desktop sync endpoint filtering.** `/api/chat/v1/areas` returns only authorized areas, and
   `/api/chat/v1/areas/{area}/package` returns `404 Not Found` if the caller lacks user access to `{area}`.
 - **When a name matches several different things, the client is handed the candidates** to choose between
@@ -112,8 +114,9 @@ running corpus scripts and the evaluation harness.
   rather than a specific complaint, so that one client-side mistake looks like an outage. Everything
   else is reported properly: a malformed request body names the field it rejected, and a rejected or
   not-found import comes back with its own reason.
-- **Graph lookups return at most 200 rows and grouped counts at most 100 groups**; the passage cap is the
-  same one chapter 2 states, and is owned there. Graph name search cannot be paged at all.
+- **Structured-record queries return at most 500 rows per page, graph lookups at most 200 rows, and
+  grouped counts at most 100 groups**; the passage cap is the same one chapter 2 states, and is owned
+  there. Graph name search cannot be paged at all.
 - **Following connections needs a thing's exact name**; an approximate name returns "nothing found" with
   no suggestion.
 - **A kind-of-thing filter on a graph lookup is not checked.** Unlike a document kind, a graph kind that
@@ -123,9 +126,6 @@ running corpus scripts and the evaluation harness.
 - **The document listing used by scripts is unpaged** — it returns every document for an area and version
   in one response. On the OIM corpus that is tens of thousands of entries.
 - **Replaying the same batch of desktop messages creates duplicates**; there is no replay protection.
-- **Deleting a playbook does not remove it from already-connected clients' prompts.** It stays listed, and
-  still hands back its old text, until the service is restarted. The playbook tools do not have this
-  limit.
 - **Progress streams stop after 30 minutes**; clients must ask again.
 - **Per-area API key callers cannot query other areas.** Scripts using a per-area key receive `404 Not Found`
   if attempting to access collections, documents, or jobs belonging to a different area.

@@ -14,6 +14,7 @@ import de.palsoftware.yvoke.rag.core.model.SeenChunks;
 import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -79,7 +80,18 @@ public class GetSectionTool {
                 if (!isDocumentAreaAllowed(trimmedDocId, context)) {
                     return "Error: Document not found: " + trimmedDocId;
                 }
-                section = sectionService.getSectionChunksByDocumentId(trimmedDocId, heading_path);
+                try {
+                    section =
+                            sectionService.getSectionChunksByDocumentId(trimmedDocId, heading_path);
+                } catch (NoSuchElementException e) {
+                    if (e.getMessage() != null
+                            && e.getMessage().startsWith("(no section matched")) {
+                        return "Error: " + e.getMessage();
+                    }
+                    return "Error: Document not found: " + trimmedDocId;
+                } catch (IllegalArgumentException e) {
+                    return "Error: Invalid 'document_id': " + e.getMessage();
+                }
             } else if (chunk_id != null && !chunk_id.isBlank()) {
                 String trimmedChunkId = chunk_id.trim();
                 ChunkAccessCheck accessCheck = checkChunkAreaAccess(trimmedChunkId, context);
@@ -90,11 +102,21 @@ public class GetSectionTool {
                         accessCheck.resolvedChunkId() != null
                                 ? accessCheck.resolvedChunkId().toString()
                                 : trimmedChunkId;
-                section =
-                        context != null
-                                ? sectionService.getSectionChunksByChunkId(
-                                        targetChunkId, context.getAllowedAreasLower())
-                                : sectionService.getSectionChunksByChunkId(targetChunkId);
+                try {
+                    section =
+                            context != null
+                                    ? sectionService.getSectionChunksByChunkId(
+                                            targetChunkId, context.getAllowedAreasLower())
+                                    : sectionService.getSectionChunksByChunkId(targetChunkId);
+                } catch (NoSuchElementException e) {
+                    if (e.getMessage() != null
+                            && e.getMessage().startsWith("(no section matched")) {
+                        return "Error: " + e.getMessage();
+                    }
+                    return "Error: Chunk not found: " + trimmedChunkId;
+                } catch (IllegalArgumentException e) {
+                    return "Error: Invalid 'chunk_id': " + e.getMessage();
+                }
             } else {
                 return "Error: Either 'document_id' or 'chunk_id' must be provided.";
             }
@@ -122,7 +144,7 @@ public class GetSectionTool {
         if (colOpt.isEmpty()) {
             return true;
         }
-        return isAreaAllowed(colOpt.get().area(), context);
+        return McpToolUtils.isAreaAllowed(colOpt.get().area(), context);
     }
 
     private static boolean hasAuthenticatedCaller() {
@@ -185,24 +207,10 @@ public class GetSectionTool {
         if (colOpt.isEmpty()) {
             return new ChunkAccessCheck(null, chunkOpt.get().id());
         }
-        if (!isAreaAllowed(colOpt.get().area(), context)) {
+        if (!McpToolUtils.isAreaAllowed(colOpt.get().area(), context)) {
             return new ChunkAccessCheck("Error: Chunk not found: " + chunkIdStr, null);
         }
         return new ChunkAccessCheck(null, chunkOpt.get().id());
-    }
-
-    private static boolean isAreaAllowed(
-            @Nullable String area, @Nullable AgenticChatContext context) {
-        if (context != null) {
-            return context.isAreaAllowed(area);
-        }
-        if (!hasAuthenticatedCaller()) {
-            return false;
-        }
-        if (area == null || area.isBlank()) {
-            return AreaAccessContext.hasAllUserAreas();
-        }
-        return AreaAccessContext.canAccessUserArea(area);
     }
 
     /**

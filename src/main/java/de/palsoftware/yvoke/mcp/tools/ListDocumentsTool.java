@@ -5,8 +5,8 @@ import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.core.model.DocumentDetails;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
-import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.*;
 import org.slf4j.Logger;
@@ -51,20 +51,20 @@ public class ListDocumentsTool {
             if (context == null) {
                 return "Error: 'collection' parameter is required.";
             }
-            List<Collection> allowed =
-                    collectionService.listCollections().stream()
-                            .filter(c -> context.isAreaAllowed(c.area()))
-                            .toList();
-            if (allowed.isEmpty()) {
-                return "(no documents in **all allowed collections**"
-                        + (knd != null ? " of kind '" + knd + "'" : "")
-                        + ")";
-            }
-            String tagError = McpToolUtils.requireAreaTag(allowed, parsedTag);
-            if (tagError != null) {
-                return tagError;
-            }
             try {
+                List<Collection> allowed =
+                        collectionService.listCollections().stream()
+                                .filter(c -> context.isAreaAllowed(c.area()))
+                                .toList();
+                if (allowed.isEmpty()) {
+                    return "(no documents in **all allowed collections**"
+                            + (knd != null ? " of kind '" + knd + "'" : "")
+                            + ")";
+                }
+                String tagError = McpToolUtils.requireAreaTag(allowed, parsedTag);
+                if (tagError != null) {
+                    return tagError;
+                }
                 Set<String> allowedAreasLower =
                         context.isAllAreas() ? null : context.getAllowedAreasLower();
                 String colLabel =
@@ -118,37 +118,20 @@ public class ListDocumentsTool {
         }
 
         String col = collection.trim();
-
-        List<Collection> allCols = collectionService.listCollections();
-        Collection matchedCol =
-                allCols.stream()
-                        .filter(c -> c.name().equalsIgnoreCase(col))
-                        .findFirst()
-                        .orElse(null);
-        if (matchedCol == null) {
-            return "Error: Collection '" + col + "' does not exist.";
-        }
-        if (!isAreaAllowed(matchedCol.area(), context)) {
-            return "Error: Collection '" + col + "' does not exist.";
-        }
-
-        // A tag-scoped collection must be read at exactly one tag: untagged reads either
-        // duplicate every hit across product versions or merge unrelated datasets, and
-        // neither failure is visible in the result. Conditional on the collection, so an
-        // untagged collection exempts itself.
-        String tagRequired = McpToolUtils.requireTag(matchedCol, parsedTag);
-        if (tagRequired != null) {
-            return tagRequired;
-        }
-        if (parsedTag != null) {
-            if (matchedCol.tags() == null || !matchedCol.tags().contains(parsedTag)) {
-                return "Error: Tag '" + parsedTag + "' does not exist in collection '" + col + "'.";
-            }
-        }
-
         try {
+            CollectionResolution resolution =
+                    McpToolUtils.resolveReadableCollection(
+                            collectionService, collection, tag, context);
+            if (resolution instanceof CollectionResolution.Refused refused) {
+                return refused.errorMessage();
+            }
+            CollectionResolution.Allowed allowed = (CollectionResolution.Allowed) resolution;
+            String storedCol = allowed.collection().name();
+            parsedTag = allowed.tag();
+
             if (knd != null) {
-                List<String> validKinds = documentRepository.findDistinctKindsInCollection(col);
+                List<String> validKinds =
+                        documentRepository.findDistinctKindsInCollection(storedCol);
                 if (!validKinds.isEmpty()) {
                     // Adopt the stored casing: validation is case-insensitive but the filter is
                     // `AND d.kind = :kind` (case-sensitive), so forwarding the caller's spelling
@@ -173,9 +156,10 @@ public class ListDocumentsTool {
 
             List<DocumentDetails> docs =
                     documentRepository.listDocuments(
-                            col, lim, off, knd, parsedTag, null, null, fuzzyQuery);
+                            storedCol, lim, off, knd, parsedTag, null, null, fuzzyQuery);
             long total =
-                    documentRepository.countDocuments(col, knd, parsedTag, null, null, fuzzyQuery);
+                    documentRepository.countDocuments(
+                            storedCol, knd, parsedTag, null, null, fuzzyQuery);
 
             if (docs.isEmpty()) {
                 return "(no documents in **"
@@ -222,16 +206,5 @@ public class ListDocumentsTool {
                 + "\n\n"
                 + McpToolUtils.formatTableRows(
                         rows, List.of("document_id", "kind", "title", "chunk count"));
-    }
-
-    private static boolean isAreaAllowed(
-            @Nullable String area, @Nullable AgenticChatContext context) {
-        if (context != null) {
-            return context.isAreaAllowed(area);
-        }
-        if (area == null || area.isBlank()) {
-            return true;
-        }
-        return AreaAccessContext.canAccessUserArea(area);
     }
 }

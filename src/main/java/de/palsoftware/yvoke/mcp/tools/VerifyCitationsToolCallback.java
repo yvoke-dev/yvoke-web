@@ -1,6 +1,8 @@
 package de.palsoftware.yvoke.mcp.tools;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import java.util.ArrayList;
@@ -63,13 +65,21 @@ public class VerifyCitationsToolCallback implements ContextAwareToolCallback {
 
     @Override
     public String callWithContext(String jsonArguments, AgenticChatContext context) {
+        List<String> citations;
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> args = objectMapper.readValue(jsonArguments, Map.class);
-            List<String> citations = extractCitations(args.get("citations"));
+            if (args == null) {
+                return "Error parsing arguments: expected a JSON object.";
+            }
+            citations = extractCitations(args.get("citations"));
+        } catch (JsonProcessingException | ClassCastException | IllegalArgumentException e) {
+            return "Error parsing arguments: " + e.getMessage();
+        }
+        try {
             return tool.verifyCitations(citations, context);
         } catch (Exception e) {
-            return "Error parsing arguments: " + e.getMessage();
+            return McpToolUtils.toolError("verify_citations", e);
         }
     }
 

@@ -201,6 +201,19 @@ class K8sManifestContractTest {
                 .contains("-XX:MaxRAMPercentage=");
     }
 
+    @Test
+    void configMapSetsNonLocalhostHttpsMcpResourceUrl() {
+        String resourceUrl = configMap.get("APP_SECURITY_MCP_RESOURCE_URL");
+        assertThat(resourceUrl)
+                .as(
+                        "k8s ConfigMap must set APP_SECURITY_MCP_RESOURCE_URL; omitting it leaves "
+                                + "production OAuth discovery advertising http://localhost:8080/mcp")
+                .isNotBlank()
+                .startsWith("https://")
+                .doesNotContain("localhost")
+                .doesNotContain("127.0.0.1");
+    }
+
     /** The {@code data} / {@code stringData} block of a manifest, or an empty map. */
     private static Object section(Path file, String key) throws Exception {
         Map<String, Object> doc = new Yaml().load(Files.readString(file, StandardCharsets.UTF_8));

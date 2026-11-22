@@ -3,6 +3,7 @@ package de.palsoftware.yvoke.mcp.tools;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
+import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.SeenChunks;
 import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
@@ -10,7 +11,6 @@ import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.SearchOptions;
 import de.palsoftware.yvoke.rag.retrieval.SearchWithId;
-import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import jakarta.annotation.Nullable;
 import java.util.List;
 import org.slf4j.Logger;
@@ -67,79 +67,53 @@ public class SearchCorpusTool {
             return "Error: 'query' parameter is required for search_corpus. If you wanted to list documents or modules in a collection (e.g. by kind), please use the 'list_documents' tool instead.";
         }
 
-        String parsedTag = (tag != null && !tag.isBlank()) ? tag.trim() : null;
-        List<String> cols;
-        String colLabel;
-
-        if (collection == null || collection.isBlank()) {
-            if (context == null) {
-                return "Error: 'collection' parameter is required.";
-            }
-            List<Collection> allowed =
-                    collectionService.listCollections().stream()
-                            .filter(c -> context.isAreaAllowed(c.area()))
-                            .toList();
-            if (allowed.isEmpty()) {
-                return "No relevant documents found.";
-            }
-            String tagError = McpToolUtils.requireAreaTag(allowed, parsedTag);
-            if (tagError != null) {
-                return tagError;
-            }
-            cols = allowed.stream().map(Collection::name).toList();
-            colLabel = String.join(", ", cols);
-        } else {
-            String col = collection.trim();
-            List<Collection> allCols = collectionService.listCollections();
-            Collection matchedCol =
-                    allCols.stream()
-                            .filter(c -> c.name().equalsIgnoreCase(col))
-                            .findFirst()
-                            .orElse(null);
-            if (matchedCol == null) {
-                return "Error: Collection '" + col + "' does not exist.";
-            }
-            if (!isAreaAllowed(matchedCol.area(), context)) {
-                return "Error: Collection '" + col + "' does not exist.";
-            }
-
-            // A tag-scoped collection must be read at exactly one tag: untagged reads either
-            // duplicate every hit across product versions or merge unrelated datasets, and
-            // neither failure is visible in the result. Conditional on the collection, so an
-            // untagged collection exempts itself.
-            String tagRequired = McpToolUtils.requireTag(matchedCol, parsedTag);
-            if (tagRequired != null) {
-                return tagRequired;
-            }
-            if (parsedTag != null) {
-                if (matchedCol.tags() == null || !matchedCol.tags().contains(parsedTag)) {
-                    return "Error: Tag '"
-                            + parsedTag
-                            + "' does not exist in collection '"
-                            + col
-                            + "'.";
-                }
-            }
-
-            // The stored name, not the caller's spelling: the match above is case-insensitive but
-            // ChunkRepository.resolveCollectionIds is `WHERE name IN (:names)` (case-sensitive), so
-            // forwarding `col` would resolve to zero ids and search an existing collection for
-            // nothing.
-            cols = List.of(matchedCol.name());
-            colLabel = col;
-        }
-
-        List<String> tagList = (parsedTag != null) ? List.of(parsedTag) : List.of();
-        boolean rrk = true;
         boolean omitCollection = collection == null || collection.isBlank();
-
-        Integer effectiveOptLimit = limit;
-        if (omitCollection && limit != null) {
-            effectiveOptLimit = Math.max(1, Math.min(limit, maxLimit));
+        if (omitCollection && context == null) {
+            return "Error: 'collection' parameter is required.";
         }
-        SearchOptions opts =
-                new SearchOptions(cols, effectiveOptLimit, null, null, 0, rrk, tagList);
+
         try {
+            String parsedTag = (tag != null && !tag.isBlank()) ? tag.trim() : null;
+            List<String> cols;
+            String colLabel;
+
+            if (omitCollection) {
+                List<Collection> allowed =
+                        collectionService.listCollections().stream()
+                                .filter(c -> context.isAreaAllowed(c.area()))
+                                .toList();
+                if (allowed.isEmpty()) {
+                    return "No relevant documents found.";
+                }
+                String tagError = McpToolUtils.requireAreaTag(allowed, parsedTag);
+                if (tagError != null) {
+                    return tagError;
+                }
+                cols = allowed.stream().map(Collection::name).toList();
+                colLabel = String.join(", ", cols);
+            } else {
+                CollectionResolution resolution =
+                        McpToolUtils.resolveReadableCollection(
+                                collectionService, collection, tag, context);
+                if (resolution instanceof CollectionResolution.Refused refused) {
+                    return refused.errorMessage();
+                }
+                CollectionResolution.Allowed allowed = (CollectionResolution.Allowed) resolution;
+                parsedTag = allowed.tag();
+                // Stored spelling, never the caller's raw casing (ChunkRepository matches exact).
+                cols = List.of(allowed.collection().name());
+                colLabel = collection.trim();
+            }
+
+            List<String> tagList = (parsedTag != null) ? List.of(parsedTag) : List.of();
+            boolean rrk = true;
+
+            Integer effectiveOptLimit = limit;
+            if (omitCollection && limit != null) {
+                effectiveOptLimit = Math.max(1, Math.min(limit, maxLimit));
+            }
+            SearchOptions opts =
+                    new SearchOptions(cols, effectiveOptLimit, null, null, 0, rrk, tagList);
             String effectiveQuery = omitCollection ? query.trim() : query;
             SearchWithId result = hybridSearch.searchWithId(effectiveQuery, opts);
             if (result == null) {
@@ -202,16 +176,5 @@ public class SearchCorpusTool {
         } catch (Exception e) {
             return McpToolUtils.toolError("search_corpus", e);
         }
-    }
-
-    private static boolean isAreaAllowed(
-            @Nullable String area, @Nullable AgenticChatContext context) {
-        if (context != null) {
-            return context.isAreaAllowed(area);
-        }
-        if (area == null || area.isBlank()) {
-            return true;
-        }
-        return AreaAccessContext.canAccessUserArea(area);
     }
 }

@@ -7,7 +7,7 @@ import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
 import de.palsoftware.yvoke.jsonobject.core.repository.JsonObjectRepository;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
-import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.mcp.McpToolUtils.CollectionResolution;
 import jakarta.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,8 +16,6 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.mcp.annotation.McpTool;
-import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -40,81 +38,49 @@ public class QueryJsonObjectsTool {
         this.objectMapper = objectMapper;
     }
 
-    @McpTool(
-            name = "query_json_objects",
-            description =
-                    "Query structured JSON objects stored in a collection. Use this tool when the collection contains structured/tabular data (e.g. sensor readings, configuration records, metadata entries) rather than prose documents — for prose, use 'search_corpus' instead. Supports PostgreSQL jsonpath filter expressions and field projection. Returns a markdown table with columns matching the requested fields. Set countOnly=true to get just the count without fetching rows.")
     @Tool(
             name = "query_json_objects",
             description =
                     "Query structured JSON objects stored in a collection. Use this tool when the collection contains structured/tabular data (e.g. sensor readings, configuration records, metadata entries) rather than prose documents — for prose, use 'search_corpus' instead. Supports PostgreSQL jsonpath filter expressions and field projection. Returns a markdown table with columns matching the requested fields. Set countOnly=true to get just the count without fetching rows.")
     public String queryJsonObjects(
-            @McpToolParam(description = "The collection to query.", required = true)
-                    @ToolParam(description = "The collection to query.", required = true)
-                    String collection,
-            @McpToolParam(
-                            description =
-                                    "PostgreSQL jsonpath filter expression, e.g. '$.sensors[*] ? (@.temperature > 30)'. Uses SQL/JSON path syntax (not JQ or XPath). Use 'get_json_schema' first to discover available fields. When nothing is specified all objects are returned.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(description = "The collection to query.", required = true) String collection,
+            @ToolParam(
                             description =
                                     "PostgreSQL jsonpath filter expression, e.g. '$.sensors[*] ? (@.temperature > 30)'. Uses SQL/JSON path syntax (not JQ or XPath). Use 'get_json_schema' first to discover available fields. When nothing is specified all objects are returned.",
                             required = false)
                     @Nullable
                     String jsonPath,
-            @McpToolParam(
-                            description =
-                                    "Scope to a single tag. REQUIRED when the collection has tags — results must come from exactly one tag; the error lists the valid values. Omit it only for a collection that has no tags.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "Scope to a single tag. REQUIRED when the collection has tags — results must come from exactly one tag; the error lists the valid values. Omit it only for a collection that has no tags.",
                             required = false)
                     @Nullable
                     String tag,
-            @McpToolParam(
-                            description =
-                                    "Comma-separated list of JSON keys/paths to retrieve (e.g. 'name,address.city'). At least one field path must be specified unless countOnly is true. Use 'get_json_schema' to find valid field paths. The output table columns will match these paths.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "Comma-separated list of JSON keys/paths to retrieve (e.g. 'name,address.city'). At least one field path must be specified unless countOnly is true. Use 'get_json_schema' to find valid field paths. The output table columns will match these paths.",
                             required = false)
                     @Nullable
                     String fields,
-            @McpToolParam(
-                            description = "Max results. When nothing is specified 500 is used.",
-                            required = false)
-                    @ToolParam(
-                            description = "Max results. When nothing is specified 500 is used.",
+            @ToolParam(
+                            description =
+                                    "Max results (1–500). When nothing is specified 500 is used.",
                             required = false)
                     @Nullable
                     Integer limit,
-            @McpToolParam(
-                            description =
-                                    "Pagination offset. When nothing is specified 0 is used. To fetch subsequent pages, set offset to (offset + limit) of the previous request.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "Pagination offset. When nothing is specified 0 is used. To fetch subsequent pages, set offset to (offset + limit) of the previous request.",
                             required = false)
                     @Nullable
                     Integer offset,
-            @McpToolParam(
-                            description =
-                                    "When true, return only the count of matching objects instead of the actual rows. Use this to get summary counts before deciding whether to fetch all rows. The 'fields' parameter is ignored when this is true.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "When true, return only the count of matching objects instead of the actual rows. Use this to get summary counts before deciding whether to fetch all rows. The 'fields' parameter is ignored when this is true.",
                             required = false)
                     @Nullable
                     Boolean countOnly,
-            @McpToolParam(
-                            description =
-                                    "When countOnly is true, this optionally groups the counts by the specified top-level JSON field (e.g. 'module' or 'op'). Returns a markdown table of counts per distinct value.",
-                            required = false)
-                    @ToolParam(
+            @ToolParam(
                             description =
                                     "When countOnly is true, this optionally groups the counts by the specified top-level JSON field (e.g. 'module' or 'op'). Returns a markdown table of counts per distinct value.",
                             required = false)
@@ -137,38 +103,15 @@ public class QueryJsonObjectsTool {
         }
 
         try {
-            List<Collection> allCols = collectionService.listCollections();
-            Collection matchedCol =
-                    allCols.stream()
-                            .filter(c -> c.name().equalsIgnoreCase(col))
-                            .findFirst()
-                            .orElse(null);
-            if (matchedCol == null) {
-                return "Error: Collection '" + col + "' does not exist.";
+            CollectionResolution resolution =
+                    McpToolUtils.resolveReadableCollection(
+                            collectionService, collection, tag, null);
+            if (resolution instanceof CollectionResolution.Refused refused) {
+                return refused.errorMessage();
             }
-            if (!AreaAccessContext.canAccessEffectiveUserArea(matchedCol.area())) {
-                return "Error: Collection '" + col + "' does not exist.";
-            }
-
-            // Validate tag (optional)
-            String parsedTag = (tag != null && !tag.isBlank()) ? tag.trim() : null;
-            // A tag-scoped collection must be read at exactly one tag: untagged reads either
-            // duplicate every hit across product versions or merge unrelated datasets, and
-            // neither failure is visible in the result. Conditional on the collection, so an
-            // untagged collection exempts itself.
-            String tagRequired = McpToolUtils.requireTag(matchedCol, parsedTag);
-            if (tagRequired != null) {
-                return tagRequired;
-            }
-            if (parsedTag != null) {
-                if (matchedCol.tags() == null || !matchedCol.tags().contains(parsedTag)) {
-                    return "Error: Tag '"
-                            + parsedTag
-                            + "' does not exist in collection '"
-                            + col
-                            + "'.";
-                }
-            }
+            CollectionResolution.Allowed allowed = (CollectionResolution.Allowed) resolution;
+            Collection matchedCol = allowed.collection();
+            String parsedTag = allowed.tag();
 
             List<String> tagList = (parsedTag != null) ? List.of(parsedTag) : List.of();
             // Count-only mode: return just the count without fetching rows
@@ -263,7 +206,15 @@ public class QueryJsonObjectsTool {
                 }
             }
 
-            int lim = limit != null ? limit : 500;
+            if (offset != null && offset < 0) {
+                return "Error: 'offset' must be 0 or greater.";
+            }
+            int lim =
+                    Math.max(
+                            1,
+                            Math.min(
+                                    limit != null ? limit : JsonObjectRepository.MAX_LIMIT,
+                                    JsonObjectRepository.MAX_LIMIT));
             int off = offset != null ? offset : 0;
 
             List<JsonObject> results;

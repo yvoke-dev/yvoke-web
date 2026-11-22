@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.chat.core.tool;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
@@ -69,32 +70,37 @@ public class AskClarifyingQuestionToolCallback implements ContextAwareToolCallba
     @Override
     @SuppressWarnings("unchecked")
     public String callWithContext(String jsonArguments, AgenticChatContext context) {
+        String question;
+        List<String> options;
         try {
             Map<String, Object> args = objectMapper.readValue(jsonArguments, Map.class);
-            String question = (String) args.get("question");
-            List<String> options = (List<String>) args.get("options");
-
-            log.info(
-                    "Executing tool ask_clarifying_question: question='{}', options={}",
-                    question,
-                    options);
-
-            if (context == null) {
-                // An MCP tools/call. Clients that ask their own user intercept the call before it
-                // gets here, so reaching this line means nobody saw the question — and claiming
-                // success made the model wait for an answer that would never come.
-                return "Nobody was asked: the question was not shown to the user. "
-                        + "Ask the question in your reply and wait for the user's answer.";
+            if (args == null) {
+                return "Error parsing arguments: expected a JSON object.";
             }
-            context.setClarifyingQuestion(question);
-            context.setClarifyingOptions(options);
-
-            // Exact text matters: yvoke-desktop compares synced web history against it.
-            return "Clarifying question asked successfully. Waiting for user's response.";
-        } catch (Exception e) {
+            question = (String) args.get("question");
+            options = (List<String>) args.get("options");
+        } catch (JsonProcessingException | ClassCastException | IllegalArgumentException e) {
             log.error(
                     "Failed to parse arguments for ask_clarifying_question: {}", jsonArguments, e);
             return "Error parsing arguments: " + e.getMessage();
         }
+
+        log.info(
+                "Executing tool ask_clarifying_question: question='{}', options={}",
+                question,
+                options);
+
+        if (context == null) {
+            // An MCP tools/call. Clients that ask their own user intercept the call before it
+            // gets here, so reaching this line means nobody saw the question — and claiming
+            // success made the model wait for an answer that would never come.
+            return "Nobody was asked: the question was not shown to the user. "
+                    + "Ask the question in your reply and wait for the user's answer.";
+        }
+        context.setClarifyingQuestion(question);
+        context.setClarifyingOptions(options);
+
+        // Exact text matters: yvoke-desktop compares synced web history against it.
+        return "Clarifying question asked successfully. Waiting for user's response.";
     }
 }

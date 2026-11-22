@@ -33,6 +33,21 @@ public class JsonObjectRepository {
      */
     public static final int MAX_GROUPS = 100;
 
+    /**
+     * Hard per-page row ceiling for paged JSON-object reads, bounding heap materialization and
+     * query time. Public so tools and tests compute pagination and next-page offsets from the same
+     * ceiling the repository enforces.
+     */
+    public static final int MAX_LIMIT = 500;
+
+    private static int clampLimit(int limit) {
+        return Math.max(1, Math.min(limit, MAX_LIMIT));
+    }
+
+    private static int clampOffset(int offset) {
+        return Math.max(0, offset);
+    }
+
     private final JdbcClient jdbcClient;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -234,8 +249,8 @@ public class JsonObjectRepository {
                 jdbcClient
                         .sql(querySql)
                         .param("collectionId", collectionId)
-                        .param("limit", limit)
-                        .param("offset", offset);
+                        .param("limit", clampLimit(limit))
+                        .param("offset", clampOffset(offset));
         if (tags != null && !tags.isEmpty()) {
             client = client.param("tags", tags.toArray(new String[0]));
         }
@@ -298,8 +313,8 @@ public class JsonObjectRepository {
                         .sql(querySql)
                         .param("collectionId", collectionId)
                         .param("searchText", "%" + searchText + "%")
-                        .param("limit", limit)
-                        .param("offset", offset);
+                        .param("limit", clampLimit(limit))
+                        .param("offset", clampOffset(offset));
         if (tags != null && !tags.isEmpty()) {
             client = client.param("tags", tags.toArray(new String[0]));
         }
@@ -373,8 +388,8 @@ public class JsonObjectRepository {
                         .sql(querySql)
                         .param("collectionId", collectionId)
                         .param("jsonPath", jsonPath)
-                        .param("limit", limit)
-                        .param("offset", offset);
+                        .param("limit", clampLimit(limit))
+                        .param("offset", clampOffset(offset));
         if (tags != null && !tags.isEmpty()) {
             client = client.param("tags", tags.toArray(new String[0]));
         }

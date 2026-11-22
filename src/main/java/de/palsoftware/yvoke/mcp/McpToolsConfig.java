@@ -10,23 +10,31 @@ import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
 import de.palsoftware.yvoke.mcp.tools.VerifyCitationsTool;
 import de.palsoftware.yvoke.mcp.tools.VerifyCitationsToolCallback;
+import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
+import de.palsoftware.yvoke.shared.user.service.UserService;
+import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.mcp.server.webmvc.transport.WebMvcStreamableServerTransportProvider;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.stereotype.Component;
 
@@ -69,12 +77,14 @@ public class McpToolsConfig {
         }
 
         ObjectMapper objectMapper = applicationContext.getBean(ObjectMapper.class);
+        UserService userService = applicationContext.getBean(UserService.class);
         List<ToolCallback> handRegistered =
                 List.of(
                         new SearchCorpusToolCallback(
                                 applicationContext.getBean(SearchCorpusTool.class),
                                 objectMapper,
-                                maxLimit),
+                                maxLimit,
+                                userService),
                         new AskClarifyingQuestionToolCallback(objectMapper),
                         new GetSectionToolCallback(
                                 applicationContext.getBean(GetSectionTool.class), objectMapper),
@@ -119,6 +129,46 @@ public class McpToolsConfig {
         }
         log.info("Total client-only MCP Server Tools registered: {}", callbacksList.size());
         return ToolCallbackProvider.from(callbacksList);
+    }
+
+    /**
+     * Converts both tool catalogues into MCP {@link McpServerFeatures.SyncToolSpecification}s via
+     * {@link McpSyncToolAdapter} so error responses set {@code isError = true} on the wire while
+     * {@code RagService} continues receiving the exact {@code sharedToolCallbacks} instances.
+     * Replaces Spring AI's {@code ToolCallbackConverterAutoConfiguration} ({@code
+     * spring.ai.mcp.server.tool-callback-converter=false}).
+     */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "spring.ai.mcp.server",
+            name = "enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    public List<McpServerFeatures.SyncToolSpecification> mcpSyncToolSpecifications(
+            @Qualifier("sharedToolCallbacks") List<ToolCallback> sharedToolCallbacks,
+            @Qualifier("clientOnlyToolCallbacks") ToolCallbackProvider clientOnlyToolCallbacks) {
+        List<ToolCallback> all = new ArrayList<>(sharedToolCallbacks);
+        all.addAll(Arrays.asList(clientOnlyToolCallbacks.getToolCallbacks()));
+        return McpSyncToolAdapter.adaptAll(all);
+    }
+
+    /**
+     * Wraps the auto-configured {@link WebMvcStreamableServerTransportProvider} so {@code
+     * prompts/list} responses are filtered per caller against {@code AreaAccessContext} and the
+     * live {@link PlaybookRepository}. {@code destroyMethod = ""} avoids double-closing the
+     * underlying delegate bean on shutdown.
+     */
+    @Bean(destroyMethod = "")
+    @Primary
+    @ConditionalOnProperty(
+            prefix = "spring.ai.mcp.server",
+            name = "enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    public McpStreamableServerTransportProvider areaScopedMcpStreamableTransportProvider(
+            WebMvcStreamableServerTransportProvider delegate,
+            PlaybookRepository playbookRepository) {
+        return new AreaScopedMcpStreamableTransportProvider(delegate, playbookRepository);
     }
 
     // Classpath scanning rather than getBeansWithAnnotation on the entire ApplicationContext,

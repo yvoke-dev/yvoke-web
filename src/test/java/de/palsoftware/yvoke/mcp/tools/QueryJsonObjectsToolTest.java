@@ -567,4 +567,68 @@ public class QueryJsonObjectsToolTest {
         assertEquals("Error: Collection 'Ping - JSON' does not exist.", output);
         verifyNoInteractions(jsonObjectService);
     }
+
+    @Test
+    public void testLimitAboveMaxIsClampedAndNextPageUsesClampedLimit() {
+        UUID colId = UUID.randomUUID();
+        List<JsonObject> fullPage = new ArrayList<>();
+        for (int i = 0; i < 500; i++) {
+            fullPage.add(
+                    new JsonObject(
+                            UUID.randomUUID(),
+                            colId,
+                            "JSON-Col-1",
+                            Map.of("role", "user"),
+                            "f.json",
+                            List.of("v1"),
+                            OffsetDateTime.now()));
+        }
+        when(jsonObjectService.listObjectsByOffset(any(), any(), anyInt(), anyInt()))
+                .thenReturn(fullPage);
+
+        String output =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", null, "v1", "role", 10_000_000, 10, null, null);
+
+        verify(jsonObjectService).listObjectsByOffset(any(), any(), eq(500), eq(10));
+        assertTrue(output.contains("limit=500"), "output must report clamped limit: " + output);
+        assertTrue(
+                output.contains("offset=510"),
+                "next page offset must use clamped limit: " + output);
+    }
+
+    @Test
+    public void testZeroAndNegativeLimitAreFlooredAtOne() {
+        UUID colId = UUID.randomUUID();
+        JsonObject oneRow =
+                new JsonObject(
+                        UUID.randomUUID(),
+                        colId,
+                        "JSON-Col-1",
+                        Map.of("role", "admin"),
+                        "f.json",
+                        List.of("v1"),
+                        OffsetDateTime.now());
+        when(jsonObjectService.listObjectsByOffset(any(), any(), anyInt(), anyInt()))
+                .thenReturn(List.of(oneRow));
+
+        String zeroOut =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", null, "v1", "role", 0, 0, null, null);
+        verify(jsonObjectService).listObjectsByOffset(any(), any(), eq(1), eq(0));
+        assertTrue(zeroOut.contains("admin"), "limit=0 must floor to 1, not return empty");
+
+        queryJsonObjectsTool.queryJsonObjects("JSON-Col-1", null, "v1", "role", -5, 0, null, null);
+        verify(jsonObjectService, times(2)).listObjectsByOffset(any(), any(), eq(1), eq(0));
+    }
+
+    @Test
+    public void testNegativeOffsetReturnsActionableErrorWithoutQuerying() {
+        String output =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", null, "v1", "role", 10, -1, null, null);
+
+        assertEquals("Error: 'offset' must be 0 or greater.", output);
+        verifyNoInteractions(jsonObjectService);
+    }
 }

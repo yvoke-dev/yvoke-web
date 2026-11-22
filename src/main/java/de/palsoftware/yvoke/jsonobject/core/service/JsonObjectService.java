@@ -297,12 +297,19 @@ public class JsonObjectService {
         }
 
         List<String> tagList = (normalizedTag != null) ? List.of(normalizedTag) : null;
-        List<JsonObject> objects =
-                jsonObjectRepository.findByCollectionId(
-                        collectionId, tagList, Integer.MAX_VALUE, 0);
-        List<Map<String, Object>> data = new ArrayList<>(objects.size());
-        for (JsonObject obj : objects) {
-            data.add(obj.data());
+        List<Map<String, Object>> data = new ArrayList<>();
+        int offset = 0;
+        while (true) {
+            List<JsonObject> batch =
+                    jsonObjectRepository.findByCollectionId(
+                            collectionId, tagList, JsonObjectRepository.MAX_LIMIT, offset);
+            for (JsonObject obj : batch) {
+                data.add(obj.data());
+            }
+            if (batch.size() < JsonObjectRepository.MAX_LIMIT) {
+                break;
+            }
+            offset += batch.size();
         }
 
         Map<String, Object> schema = schemaExtractor.extractSchema(data);

@@ -3,9 +3,11 @@ package de.palsoftware.yvoke.rag.prompt;
 import de.palsoftware.yvoke.area.core.Area;
 import de.palsoftware.yvoke.area.core.AreaService;
 import de.palsoftware.yvoke.shared.config.CacheConfig;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.validation.SlugNames;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
+import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.HashMap;
 import java.util.List;
@@ -196,16 +198,17 @@ public class PlaybookService {
             throw new IllegalArgumentException("Playbook name cannot be empty.");
         }
 
-        playbookRepository.delete(name.trim());
+        String trimmed = name.trim();
+        playbookRepository.delete(trimmed);
         McpSyncServer server = mcpSyncServer.getIfAvailable();
         if (server != null) {
             try {
-                server.notifyPromptsListChanged();
-                log.info("Deleted playbook and notified MCP: {}", name);
+                server.removePrompt(trimmed);
+                log.info("Deleted playbook and removed MCP prompt: {}", trimmed);
             } catch (Exception e) {
                 log.warn(
-                        "Failed to notify prompt changes after delete for {}: {}",
-                        name,
+                        "Failed to remove MCP prompt after delete for {}: {}",
+                        trimmed,
                         e.getMessage());
             }
         }
@@ -265,8 +268,21 @@ public class PlaybookService {
                 new McpServerFeatures.SyncPromptSpecification(
                         promptSpec,
                         (exchange, request) -> {
-                            // Dynamic lookup on execution to support live database template updates
-                            Playbook current = getPlaybook(playbook.name()).orElse(playbook);
+                            // Live database lookup on every execution (uncached) so edits and
+                            // deletions across replicas apply immediately, and enforce per-area
+                            // authorization fail-closed with the exact opaque error the MCP SDK
+                            // emits for unknown prompt names.
+                            Optional<Playbook> currentOpt =
+                                    playbookRepository.findByName(playbook.name());
+                            if (currentOpt.isEmpty()
+                                    || !AreaAccessContext.canAccessUserArea(
+                                            currentOpt.get().area())) {
+                                throw McpError.builder(McpSchema.ErrorCodes.INVALID_PARAMS)
+                                        .message("Invalid prompt name")
+                                        .data("Prompt not found: " + request.name())
+                                        .build();
+                            }
+                            Playbook current = currentOpt.get();
                             Map<String, Object> execMeta = buildMcpMetadata(current);
                             return McpSchema.GetPromptResult.builder(
                                             List.of(

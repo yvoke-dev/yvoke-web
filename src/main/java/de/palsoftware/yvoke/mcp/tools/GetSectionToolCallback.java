@@ -1,6 +1,8 @@
 package de.palsoftware.yvoke.mcp.tools;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.mcp.McpToolUtils;
 import de.palsoftware.yvoke.rag.core.ContextAwareToolCallback;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import java.util.Map;
@@ -17,11 +19,10 @@ import org.springframework.ai.tool.definition.ToolDefinition;
  * per remaining turn rather than once.
  *
  * <p>Because this replaces the scanned registration ({@code GetSectionTool} is listed in {@code
- * McpToolsConfig.CALLBACK_PUBLISHED}), {@code GetSectionTool} carries no
- * {@code @McpTool}/{@code @Tool} annotations any more and the schema below is the single
- * description both catalogues read — the same trade {@code SearchCorpusToolCallback}, {@code
- * ListDocumentsToolCallback} and {@code VerifyCitationsToolCallback} make, enforced by {@code
- * McpToolCatalogueParityTest}.
+ * McpToolsConfig.CALLBACK_PUBLISHED}), {@code GetSectionTool} carries no {@code @Tool} annotations
+ * any more and the schema below is the single description both catalogues read — the same trade
+ * {@code SearchCorpusToolCallback}, {@code ListDocumentsToolCallback} and {@code
+ * VerifyCitationsToolCallback} make, enforced by {@code McpToolCatalogueParityTest}.
  */
 public class GetSectionToolCallback implements ContextAwareToolCallback {
 
@@ -86,18 +87,27 @@ public class GetSectionToolCallback implements ContextAwareToolCallback {
 
     @Override
     public String callWithContext(String jsonArguments, AgenticChatContext context) {
+        String documentId;
+        String headingPath;
+        String chunkId;
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> args = objectMapper.readValue(jsonArguments, Map.class);
-            return tool.getSection(
-                    asString(args.get("document_id")),
-                    asString(args.get("heading_path")),
-                    asString(args.get("chunk_id")),
-                    context);
-        } catch (Exception e) {
+            if (args == null) {
+                return "Error parsing arguments: expected a JSON object.";
+            }
+            documentId = asString(args.get("document_id"));
+            headingPath = asString(args.get("heading_path"));
+            chunkId = asString(args.get("chunk_id"));
+        } catch (JsonProcessingException | ClassCastException | IllegalArgumentException e) {
             // A parse failure is the model's to correct, so it comes back as a tool result rather
             // than an exception — the model can fix its own arguments (CLAUDE.md § 6).
             return "Error parsing arguments: " + e.getMessage();
+        }
+        try {
+            return tool.getSection(documentId, headingPath, chunkId, context);
+        } catch (Exception e) {
+            return McpToolUtils.toolError("get_section", e);
         }
     }
 

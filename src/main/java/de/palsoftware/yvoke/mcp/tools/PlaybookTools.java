@@ -12,8 +12,6 @@ import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
-import org.springframework.ai.mcp.annotation.McpTool;
-import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -96,12 +94,9 @@ public class PlaybookTools {
         this.objectMapper = objectMapper;
     }
 
-    @McpTool(name = "list_playbooks", description = LIST_DESCRIPTION)
     @Tool(name = "list_playbooks", description = LIST_DESCRIPTION)
     public String listPlaybooks(
-            @McpToolParam(description = AREA_PARAM, required = false)
-                    @ToolParam(description = AREA_PARAM, required = false)
-                    String area) {
+            @ToolParam(description = AREA_PARAM, required = false) String area) {
         try {
             Predicate<Playbook> inArea = McpToolUtils.inArea(areaService, area, Playbook::area);
             List<Playbook> list =
@@ -114,12 +109,8 @@ public class PlaybookTools {
         }
     }
 
-    @McpTool(name = "get_playbook", description = GET_DESCRIPTION)
     @Tool(name = "get_playbook", description = GET_DESCRIPTION)
-    public String getPlaybook(
-            @McpToolParam(description = NAME_PARAM, required = true)
-                    @ToolParam(description = NAME_PARAM, required = true)
-                    String name) {
+    public String getPlaybook(@ToolParam(description = NAME_PARAM, required = true) String name) {
         if (name == null || name.isBlank()) {
             return "ERROR: 'name' is required for get_playbook.";
         }
@@ -132,9 +123,7 @@ public class PlaybookTools {
                 return "ERROR: playbook '" + trimmed + "' not found.";
             }
             Playbook pb = playbook.get();
-            if (pb.area() != null
-                    && !pb.area().isBlank()
-                    && !AreaAccessContext.canAccessUserArea(pb.area())) {
+            if (!AreaAccessContext.canAccessUserArea(pb.area())) {
                 return "ERROR: playbook '" + trimmed + "' not found.";
             }
             return objectMapper.writeValueAsString(PlaybookWithText.from(pb));

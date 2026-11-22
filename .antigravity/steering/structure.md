@@ -92,8 +92,7 @@ yvoke/
 │   │   │   │       ├── model/ # LLM request/response/log domain models
 │   │   │   │       ├── repository/ # LLM call log database repository (LlmCallLogRepository)
 │   │   │   │       └── service/ # LLM generation services
-│   │   │   ├── mcp/        # Model Context Protocol server tools and prompts
-│   │   │   │   ├── prompts/ # MCP prompt services
+│   │   │   ├── mcp/        # Model Context Protocol server tools, sync error adapter, and area-scoped prompt transport
 │   │   │   │   └── tools/  # Corpus, KG, JSON, citation, and client-only area/playbook/profile/feedback MCP tools (incl. ProfileTools)
 │   │   │   ├── rag/        # RAG pipeline, retrieval, and prompt generation
 │   │   │   │   ├── core/   # RAG service, context, request, and result models
