@@ -3,12 +3,10 @@ package de.palsoftware.yvoke.chat.core.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
-import de.palsoftware.yvoke.chat.core.model.ModelPricing;
 import de.palsoftware.yvoke.chat.core.repository.CostQueryRepository;
 import de.palsoftware.yvoke.chat.core.repository.ModelPricingRepository;
 import de.palsoftware.yvoke.chat.core.service.CostCalculationService.CostReport;
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

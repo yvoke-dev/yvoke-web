@@ -1,7 +1,6 @@
 package de.palsoftware.yvoke.shared.user.repository;
 
 import de.palsoftware.yvoke.shared.user.model.*;
-
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;

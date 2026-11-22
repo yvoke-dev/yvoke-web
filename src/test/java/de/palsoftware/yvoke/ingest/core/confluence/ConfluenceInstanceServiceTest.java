@@ -6,27 +6,27 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.times;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
+import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
+import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
+import de.palsoftware.yvoke.shared.jobengine.model.ProgressEvent;
 import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import de.palsoftware.yvoke.shared.jobengine.service.JobProgressBroker;
 import de.palsoftware.yvoke.shared.security.SecretCipher;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DuplicateKeyException;
-import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
-import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
-import de.palsoftware.yvoke.shared.jobengine.model.ProgressEvent;
-import java.time.OffsetDateTime;
-import java.util.stream.IntStream;
 
 class ConfluenceInstanceServiceTest {
 

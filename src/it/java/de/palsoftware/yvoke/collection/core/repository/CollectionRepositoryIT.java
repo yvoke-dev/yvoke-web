@@ -15,9 +15,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /**
  * Pins {@link CollectionRepository}'s SQL and, in particular, its {@code TEXT[]} tags row-mapper
  * ({@code JdbcMappers.arrayToStringList}) against a real Postgres (MNT-22). The mapper is exercised
- * on every read path ({@code findAll}/{@code findByName}/{@code findById}); before this IT it had no
- * direct coverage, so a regression in array unmarshalling (nulls, empty arrays, ordering) would have
- * gone unnoticed.
+ * on every read path ({@code findAll}/{@code findByName}/{@code findById}); before this IT it had
+ * no direct coverage, so a regression in array unmarshalling (nulls, empty arrays, ordering) would
+ * have gone unnoticed.
  */
 @SpringBootTest(properties = {"spring.flyway.enabled=true",
     "spring.flyway.locations=filesystem:docker/db/migration"})
@@ -45,12 +45,15 @@ public class CollectionRepositoryIT {
         jdbcTemplate.update("DELETE FROM collections WHERE name LIKE ?", PREFIX + "%");
     }
 
-    /** Inserts a collection with a literal {@code TEXT[]} so the tags row-mapper has real elements. */
+    /**
+     * Inserts a collection with a literal {@code TEXT[]} so the tags row-mapper has real elements.
+     */
     private UUID insertWithTags(String name, String tagsLiteral) {
         UUID id = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO collections (id, name, description, created_at, tags) "
-            + "VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?::TEXT[])", id, name, "desc for " + name,
-            tagsLiteral);
+        jdbcTemplate.update(
+            "INSERT INTO collections (id, name, description, created_at, tags) "
+                + "VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?::TEXT[])",
+            id, name, "desc for " + name, tagsLiteral);
         return id;
     }
 
@@ -94,12 +97,11 @@ public class CollectionRepositoryIT {
         insertWithTags(PREFIX + "ZZZ", "{z1}");
         insertWithTags(PREFIX + "AAA", "{a1,a2}");
 
-        List<Collection> ours = repository.findAll().stream()
-            .filter(c -> c.name().startsWith(PREFIX))
-            .toList();
+        List<Collection> ours =
+            repository.findAll().stream().filter(c -> c.name().startsWith(PREFIX)).toList();
 
-        assertThat(ours).extracting(Collection::name)
-            .containsExactly(PREFIX + "AAA", PREFIX + "ZZZ");
+        assertThat(ours).extracting(Collection::name).containsExactly(PREFIX + "AAA",
+            PREFIX + "ZZZ");
         assertThat(ours.get(0).tags()).containsExactly("a1", "a2");
         assertThat(ours.get(1).tags()).containsExactly("z1");
     }
@@ -124,8 +126,7 @@ public class CollectionRepositoryIT {
         insertWithTags(PREFIX + "UNTAGGED", "{}");
 
         List<String> ours = repository.findAllTagNames().stream()
-            .filter(t -> List.of("10.0", "9.3.1", "content").contains(t))
-            .toList();
+            .filter(t -> List.of("10.0", "9.3.1", "content").contains(t)).toList();
 
         // De-duplicated across collections, sorted case-insensitively, no empty-array artefact.
         assertThat(ours).containsExactly("10.0", "9.3.1", "content");

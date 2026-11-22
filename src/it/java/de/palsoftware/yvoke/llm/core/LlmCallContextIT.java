@@ -1,5 +1,9 @@
 package de.palsoftware.yvoke.llm.core;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.Message;
@@ -12,6 +16,12 @@ import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,21 +29,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
-import java.time.Instant;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class LlmCallContextIT {
 
     @Autowired
@@ -69,11 +66,14 @@ public class LlmCallContextIT {
         testUser = userRepository.findByEntraOid(oid).orElseThrow();
 
         UUID convId = UUID.randomUUID();
-        conversationRepository.create(convId, testUser.id(), "Context Test Conv", Map.of("profile", "oim"));
+        conversationRepository.create(convId, testUser.id(), "Context Test Conv",
+            Map.of("profile", "oim"));
         testConversation = conversationRepository.findById(convId).orElseThrow();
 
         UUID msgId = UUID.randomUUID();
-        messageRepository.save(new Message(msgId, convId, "assistant", "test output", null, Collections.emptyList(), Collections.emptyList(), Instant.now(), 10, 20, 30, 0, 0, "done", "gemini-2.5-flash"));
+        messageRepository.save(new Message(msgId, convId, "assistant", "test output", null,
+            Collections.emptyList(), Collections.emptyList(), Instant.now(), 10, 20, 30, 0, 0,
+            "done", "gemini-2.5-flash"));
         testMessage = messageRepository.findById(msgId).orElseThrow();
 
         testAgentRunId = UUID.randomUUID();
@@ -83,31 +83,16 @@ public class LlmCallContextIT {
     @Test
     void testLlmCallLoggingService_persistsContextFromEvent() {
         String testModel = "context-it-model-" + UUID.randomUUID();
-        LlmCallLoggedEvent event = new LlmCallLoggedEvent(
-            testConversation.id(),
-            testMessage.id(),
-            testAgentRunId,
-            testUser.id(),
-            "embedding",
-            "embedding",
-            testModel,
-            128,
-            0,
-            0,
-            0
-        );
+        LlmCallLoggedEvent event = new LlmCallLoggedEvent(testConversation.id(), testMessage.id(),
+            testAgentRunId, testUser.id(), "embedding", "embedding", testModel, 128, 0, 0, 0);
 
         eventPublisher.publishEvent(event);
 
         List<Map<String, Object>> rows = jdbcClient.sql("""
-            SELECT conversation_id, message_id, agent_run_id, user_id, source, model
-            FROM llm_call_logs
-            WHERE conversation_id = :cid AND model = :m
-        """)
-        .param("cid", testConversation.id())
-        .param("m", testModel)
-        .query()
-        .listOfRows();
+                SELECT conversation_id, message_id, agent_run_id, user_id, source, model
+                FROM llm_call_logs
+                WHERE conversation_id = :cid AND model = :m
+            """).param("cid", testConversation.id()).param("m", testModel).query().listOfRows();
 
         assertThat(rows).hasSize(1);
         Map<String, Object> matched = rows.get(0);
@@ -197,9 +182,11 @@ public class LlmCallContextIT {
     @Test
     void testSearchCorpusToolCallback_parsesAndBindsContextArguments() {
         SearchCorpusTool mockTool = mock(SearchCorpusTool.class);
-        when(mockTool.searchCorpus("test query", "OIM", null, null, null)).thenReturn("Searched OK");
+        when(mockTool.searchCorpus("test query", "OIM", null, null, null))
+            .thenReturn("Searched OK");
 
-        SearchCorpusToolCallback callback = new SearchCorpusToolCallback(mockTool, objectMapper, 20);
+        SearchCorpusToolCallback callback =
+            new SearchCorpusToolCallback(mockTool, objectMapper, 20);
 
         String jsonArgs = String.format("""
             {

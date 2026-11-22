@@ -1,12 +1,17 @@
 package de.palsoftware.yvoke.document.web.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
+import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.ChunkDetail;
+import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.ChunkDetailPage;
+import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.DocumentDetail;
+import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.DocumentDetailPage;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.service.DocumentAdminViewService;
@@ -16,27 +21,21 @@ import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.user.service.UserService;
 import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.ui.ConcurrentModel;
-import org.springframework.ui.Model;
-import org.springframework.web.servlet.mvc.support.RedirectAttributes;
-import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
-import java.time.OffsetDateTime;
-
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import org.junit.jupiter.api.AfterEach;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.ui.ConcurrentModel;
+import org.springframework.ui.Model;
 import org.springframework.web.server.ResponseStatusException;
-import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.DocumentDetailPage;
-import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.DocumentDetail;
-import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.ChunkDetailPage;
-import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.ChunkDetail;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
 
 public class DocumentAdminControllerTest {
 

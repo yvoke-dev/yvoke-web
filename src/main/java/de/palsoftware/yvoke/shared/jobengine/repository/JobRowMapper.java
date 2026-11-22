@@ -1,11 +1,10 @@
 package de.palsoftware.yvoke.shared.jobengine.repository;
 
-import de.palsoftware.yvoke.shared.jobengine.model.*;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.shared.config.JdbcMappers;
+import de.palsoftware.yvoke.shared.jobengine.model.*;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;

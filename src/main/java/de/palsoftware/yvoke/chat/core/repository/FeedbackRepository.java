@@ -1,8 +1,6 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
 import de.palsoftware.yvoke.chat.core.model.Feedback;
-
-
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

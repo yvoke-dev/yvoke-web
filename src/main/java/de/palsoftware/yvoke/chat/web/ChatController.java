@@ -1,9 +1,5 @@
 package de.palsoftware.yvoke.chat.web;
 
-import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
-import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
-import de.palsoftware.yvoke.chat.core.service.ChatFeedbackService;
-import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
 import de.palsoftware.yvoke.chat.core.model.ConversationSetting;
@@ -12,6 +8,10 @@ import de.palsoftware.yvoke.chat.core.model.ConversationSidebar;
 import de.palsoftware.yvoke.chat.core.model.ConversationSource;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
 import de.palsoftware.yvoke.chat.core.model.Message;
+import de.palsoftware.yvoke.chat.core.service.ChatCancellationService;
+import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
+import de.palsoftware.yvoke.chat.core.service.ChatFeedbackService;
+import de.palsoftware.yvoke.chat.core.service.ChatMessageService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileOption;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;

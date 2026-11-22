@@ -1,23 +1,23 @@
 package de.palsoftware.yvoke.chat.orchestration;
 
+import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
 import static org.assertj.core.api.InstanceOfAssertFactories.type;
-import static org.assertj.core.api.Assertions.as;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.doAnswer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.errors.ClientException;
@@ -27,35 +27,34 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestratorProperties.RoleDefaul
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmPart;
-import de.palsoftware.yvoke.rag.core.model.SeenChunks;
-import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
-import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
-import de.palsoftware.yvoke.rag.retrieval.TelemetryInfo;
-import java.util.Map;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
 import de.palsoftware.yvoke.rag.core.model.RagResult;
+import de.palsoftware.yvoke.rag.core.model.SeenChunks;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
+import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
+import de.palsoftware.yvoke.rag.retrieval.TelemetryInfo;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.tool.ToolCallback;
-import java.util.regex.Pattern;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Control-flow tests for {@link OrchestrationService} using a stubbed {@link RagService} that

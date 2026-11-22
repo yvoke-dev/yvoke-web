@@ -1,8 +1,12 @@
 package de.palsoftware.yvoke.kg.core;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.palsoftware.yvoke.kg.core.repository.KgWriteRepository;
 import de.palsoftware.yvoke.kg.core.service.KgConsolidator;
-
-
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,17 +14,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
-@SpringBootTest(properties = {
-        "spring.flyway.enabled=true",
-        "spring.flyway.locations=filesystem:docker/db/migration",
-        "app.worker.enabled=false"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration", "app.worker.enabled=false"})
 public class KgConsolidatorIT {
 
     private static final String COLLECTION = "CONSOLIDATE-TEST-COL";
@@ -40,8 +35,8 @@ public class KgConsolidatorIT {
         cleanup();
         // Collections are no longer auto-created by resolveCollectionId; it must pre-exist.
         jdbcTemplate.update(
-                "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
-                UUID.randomUUID(), COLLECTION);
+            "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
+            UUID.randomUUID(), COLLECTION);
     }
 
     @AfterEach
@@ -86,23 +81,23 @@ public class KgConsolidatorIT {
         assertThat(jdbcTemplate.queryForObject(
             "SELECT count(*) FROM entities WHERE collection_id = ? AND name = 'Person'",
             Integer.class, colId)).as("both product versions of the entity must survive")
-                .isEqualTo(2);
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT count(*) FROM entities WHERE id IN (?, ?)", Integer.class, v93, v10))
-                .as("neither original row may be deleted as an alias of the other").isEqualTo(2);
+            .isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM entities WHERE id IN (?, ?)",
+            Integer.class, v93, v10))
+            .as("neither original row may be deleted as an alias of the other").isEqualTo(2);
         assertThat(jdbcTemplate.queryForObject(
             "SELECT count(*) FROM relationships WHERE collection_id = ? AND predicate = 'has_column'",
             Integer.class, colId))
-                .as("the same triple under two tags is two edges, not a duplicate to collapse")
-                .isEqualTo(2);
+            .as("the same triple under two tags is two edges, not a duplicate to collapse")
+            .isEqualTo(2);
     }
 
     /**
      * Post kind-aware identity (V2), the entities table enforces uniqueness on
      * {@code (collection_id, coalesce(kind,''), lower(name))}, so same-kind case-variant duplicates
      * no longer arise; only trim/whitespace variants (which differ under lower(name) but collapse
-     * under LOWER(TRIM)) remain as a consolidation target. This verifies that consolidation
-     * (a) still merges such a same-kind trim-variant duplicate and collapses duplicate relationship
+     * under LOWER(TRIM)) remain as a consolidation target. This verifies that consolidation (a)
+     * still merges such a same-kind trim-variant duplicate and collapses duplicate relationship
      * triples, while (b) NOT merging a same-named entity of a DIFFERENT kind — that homonym is the
      * whole point of the kind-aware graph.
      */
@@ -116,22 +111,22 @@ public class KgConsolidatorIT {
         // A DIFFERENT kind 'connector' sharing the name 'ADS' -> must survive untouched.
         UUID connectorId = UUID.fromString("33333333-3333-3333-3333-333333333333");
         jdbcTemplate.update(
-                "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'ADS', 'module', 'short', ?)",
-                moduleId, collectionId, new String[] { VERSION });
+            "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'ADS', 'module', 'short', ?)",
+            moduleId, collectionId, new String[] {VERSION});
         jdbcTemplate.update(
-                "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'ADS ', 'module', 'a much longer module description', ?)",
-                moduleDupId, collectionId, new String[] { VERSION });
+            "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'ADS ', 'module', 'a much longer module description', ?)",
+            moduleDupId, collectionId, new String[] {VERSION});
         jdbcTemplate.update(
-                "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'ADS', 'connector', 'the ADS connector', ?)",
-                connectorId, collectionId, new String[] { VERSION });
+            "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'ADS', 'connector', 'the ADS connector', ?)",
+            connectorId, collectionId, new String[] {VERSION});
 
         // Duplicate relationship triples (same subject/predicate/object, different descriptions).
         jdbcTemplate.update(
-                "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'ADS', 'HAS_CONNECTOR', 'ADS', ?, ?, 'short', ?)",
-                UUID.randomUUID(), collectionId, moduleId, connectorId, new String[] { VERSION });
+            "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'ADS', 'HAS_CONNECTOR', 'ADS', ?, ?, 'short', ?)",
+            UUID.randomUUID(), collectionId, moduleId, connectorId, new String[] {VERSION});
         jdbcTemplate.update(
-                "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'ADS', 'HAS_CONNECTOR', 'ADS', ?, ?, 'a much longer and more detailed edge description', ?)",
-                UUID.randomUUID(), collectionId, moduleId, connectorId, new String[] { VERSION });
+            "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'ADS', 'HAS_CONNECTOR', 'ADS', ?, ?, 'a much longer and more detailed edge description', ?)",
+            UUID.randomUUID(), collectionId, moduleId, connectorId, new String[] {VERSION});
 
         KgConsolidator.ConsolidationStats stats = kgConsolidator.consolidate(COLLECTION, VERSION);
 
@@ -143,24 +138,24 @@ public class KgConsolidatorIT {
 
         // The trim-variant is gone; the canonical module and the different-kind connector remain.
         List<Map<String, Object>> entities = jdbcTemplate.queryForList(
-                "SELECT e.id::text, e.name, e.kind, e.description FROM entities e JOIN collections c ON e.collection_id = c.id WHERE c.name = ? ORDER BY e.kind",
-                COLLECTION);
+            "SELECT e.id::text, e.name, e.kind, e.description FROM entities e JOIN collections c ON e.collection_id = c.id WHERE c.name = ? ORDER BY e.kind",
+            COLLECTION);
         assertThat(entities).hasSize(2);
-        assertThat(entities).extracting(m -> m.get("kind"))
-                .containsExactlyInAnyOrder("module", "connector");
-        Map<String, Object> module = entities.stream()
-                .filter(m -> "module".equals(m.get("kind"))).findFirst().orElseThrow();
+        assertThat(entities).extracting(m -> m.get("kind")).containsExactlyInAnyOrder("module",
+            "connector");
+        Map<String, Object> module =
+            entities.stream().filter(m -> "module".equals(m.get("kind"))).findFirst().orElseThrow();
         assertThat(module.get("id")).isEqualTo(moduleId.toString());
         // Description merged to the longest non-empty among the group.
         assertThat(module.get("description")).isEqualTo("a much longer module description");
 
         // Only the longest-description copy of the triple survives.
         List<Map<String, Object>> rels = jdbcTemplate.queryForList(
-                "SELECT r.description FROM relationships r JOIN collections c ON r.collection_id = c.id WHERE c.name = ?",
-                COLLECTION);
+            "SELECT r.description FROM relationships r JOIN collections c ON r.collection_id = c.id WHERE c.name = ?",
+            COLLECTION);
         assertThat(rels).hasSize(1);
         assertThat(rels.get(0).get("description"))
-                .isEqualTo("a much longer and more detailed edge description");
+            .isEqualTo("a much longer and more detailed edge description");
     }
 
     /**
@@ -179,26 +174,26 @@ public class KgConsolidatorIT {
         UUID aliasId = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000002");
         UUID otherId = UUID.fromString("cccccccc-0000-0000-0000-000000000003");
         jdbcTemplate.update(
-                "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'ADS', 'module', 'short', ?)",
-                canonicalId, collectionId, new String[] { VERSION });
+            "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'ADS', 'module', 'short', ?)",
+            canonicalId, collectionId, new String[] {VERSION});
         jdbcTemplate.update(
-                "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'ADS ', 'module', 'a much longer module description', ?)",
-                aliasId, collectionId, new String[] { VERSION });
+            "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'ADS ', 'module', 'a much longer module description', ?)",
+            aliasId, collectionId, new String[] {VERSION});
         jdbcTemplate.update(
-                "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'Other', 'table', 'other table', ?)",
-                otherId, collectionId, new String[] { VERSION });
+            "INSERT INTO entities (id, collection_id, name, kind, description, tags) VALUES (?, ?, 'Other', 'table', 'other table', ?)",
+            otherId, collectionId, new String[] {VERSION});
 
         // 1. Outgoing edge OF the alias, 2. the same triple already on the canonical row (so the
         // repointed edge becomes a duplicate that step 2 collapses), 3. incoming edge TO the alias.
         jdbcTemplate.update(
-                "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'ADS ', 'part_of', 'Other', ?, ?, 'short', ?)",
-                UUID.randomUUID(), collectionId, aliasId, otherId, new String[] { VERSION });
+            "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'ADS ', 'part_of', 'Other', ?, ?, 'short', ?)",
+            UUID.randomUUID(), collectionId, aliasId, otherId, new String[] {VERSION});
         jdbcTemplate.update(
-                "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'ADS', 'part_of', 'Other', ?, ?, 'a much longer and more detailed edge description', ?)",
-                UUID.randomUUID(), collectionId, canonicalId, otherId, new String[] { VERSION });
+            "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'ADS', 'part_of', 'Other', ?, ?, 'a much longer and more detailed edge description', ?)",
+            UUID.randomUUID(), collectionId, canonicalId, otherId, new String[] {VERSION});
         jdbcTemplate.update(
-                "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'Other', 'references', 'ADS ', ?, ?, 'incoming', ?)",
-                UUID.randomUUID(), collectionId, otherId, aliasId, new String[] { VERSION });
+            "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags) VALUES (?, ?, 'Other', 'references', 'ADS ', ?, ?, 'incoming', ?)",
+            UUID.randomUUID(), collectionId, otherId, aliasId, new String[] {VERSION});
 
         KgConsolidator.ConsolidationStats stats = kgConsolidator.consolidate(COLLECTION, VERSION);
 
@@ -210,19 +205,19 @@ public class KgConsolidatorIT {
 
         // No edge is left dangling on the deleted alias row.
         List<Map<String, Object>> rels = jdbcTemplate.queryForList(
-                "SELECT r.subject, r.predicate, r.object, r.subject_id::text, r.object_id::text, r.description "
-                        + "FROM relationships r JOIN collections c ON r.collection_id = c.id WHERE c.name = ? ORDER BY r.predicate",
-                COLLECTION);
+            "SELECT r.subject, r.predicate, r.object, r.subject_id::text, r.object_id::text, r.description "
+                + "FROM relationships r JOIN collections c ON r.collection_id = c.id WHERE c.name = ? ORDER BY r.predicate",
+            COLLECTION);
         assertThat(rels).hasSize(2);
         assertThat(rels).noneMatch(r -> aliasId.toString().equals(r.get("subject_id"))
-                || aliasId.toString().equals(r.get("object_id")));
+            || aliasId.toString().equals(r.get("object_id")));
 
         Map<String, Object> outgoing = rels.get(0);
         assertThat(outgoing.get("predicate")).isEqualTo("part_of");
         assertThat(outgoing.get("subject")).isEqualTo("ADS");
         assertThat(outgoing.get("subject_id")).isEqualTo(canonicalId.toString());
         assertThat(outgoing.get("description"))
-                .isEqualTo("a much longer and more detailed edge description");
+            .isEqualTo("a much longer and more detailed edge description");
 
         Map<String, Object> incoming = rels.get(1);
         assertThat(incoming.get("predicate")).isEqualTo("references");

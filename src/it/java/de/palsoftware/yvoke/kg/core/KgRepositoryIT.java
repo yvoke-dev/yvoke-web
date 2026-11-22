@@ -1,22 +1,20 @@
 package de.palsoftware.yvoke.kg.core;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.palsoftware.yvoke.kg.core.model.KgCall;
 import de.palsoftware.yvoke.kg.core.model.KgEntity;
 import de.palsoftware.yvoke.kg.core.model.KgNeighborhood;
 import de.palsoftware.yvoke.kg.core.model.KgWalk;
 import de.palsoftware.yvoke.kg.core.repository.KgGraphReadRepository;
-
-
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-
-import java.util.List;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 public class KgRepositoryIT {
@@ -42,8 +40,9 @@ public class KgRepositoryIT {
     public void setUp() {
         cleanup();
         collectionId = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['9.3', '10.0'])",
-                collectionId, COLLECTION);
+        jdbcTemplate.update(
+            "INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['9.3', '10.0'])",
+            collectionId, COLLECTION);
 
         // 1. Insert Entities (9.3)
         insertEntity(tableAId, COLLECTION, "TableA", "table", "9.3", "Table A description");
@@ -53,36 +52,37 @@ public class KgRepositoryIT {
         insertEntity(procYId, COLLECTION, "ProcY", "procedure", "9.3", "Proc Y description");
 
         // 2. Version 10.0 shares the same entity rows — identity is version-independent
-        // ((collection, kind, name)); the version is just an extra tag on the row (V2 unique index).
+        // ((collection, kind, name)); the version is just an extra tag on the row (V2 unique
+        // index).
         addTag(tableAId, "10.0");
         addTag(tableBId, "10.0");
 
         // 3. Insert Relationships (9.3)
         // TableA --fk_to--> TableB
-        insertRelationship(UUID.randomUUID(), COLLECTION, "TableA", "fk_to", "TableB", tableAId, tableBId, "9.3",
-                "FK from A to B");
+        insertRelationship(UUID.randomUUID(), COLLECTION, "TableA", "fk_to", "TableB", tableAId,
+            tableBId, "9.3", "FK from A to B");
         // TableB --fk_to--> TableC
-        insertRelationship(UUID.randomUUID(), COLLECTION, "TableB", "fk_to", "TableC", tableBId, tableCId, "9.3",
-                "FK from B to C");
+        insertRelationship(UUID.randomUUID(), COLLECTION, "TableB", "fk_to", "TableC", tableBId,
+            tableCId, "9.3", "FK from B to C");
         // TableC --fk_to--> TableA (cycle!)
-        insertRelationship(UUID.randomUUID(), COLLECTION, "TableC", "fk_to", "TableA", tableCId, tableAId, "9.3",
-                "FK from C to A");
+        insertRelationship(UUID.randomUUID(), COLLECTION, "TableC", "fk_to", "TableA", tableCId,
+            tableAId, "9.3", "FK from C to A");
         // ProcX --calls--> ProcY
-        insertRelationship(UUID.randomUUID(), COLLECTION, "ProcX", "calls", "ProcY", procXId, procYId, "9.3",
-                "Proc X calls Y");
+        insertRelationship(UUID.randomUUID(), COLLECTION, "ProcX", "calls", "ProcY", procXId,
+            procYId, "9.3", "Proc X calls Y");
         // ProcX --references_table--> TableA
-        insertRelationship(UUID.randomUUID(), COLLECTION, "ProcX", "references_table", "TableA", procXId, tableAId,
-                "9.3", "Proc X touches TableA");
+        insertRelationship(UUID.randomUUID(), COLLECTION, "ProcX", "references_table", "TableA",
+            procXId, tableAId, "9.3", "Proc X touches TableA");
 
         // 4. Insert Relationships (10.0) — same shared entity rows, tagged 10.0.
-        insertRelationship(UUID.randomUUID(), COLLECTION, "TableA", "fk_to", "TableB", tableAId, tableBId, "10.0",
-                "FK from A to B (v10)");
+        insertRelationship(UUID.randomUUID(), COLLECTION, "TableA", "fk_to", "TableB", tableAId,
+            tableBId, "10.0", "FK from A to B (v10)");
     }
 
     private void addTag(UUID entityId, String tag) {
         jdbcTemplate.update(
-                "UPDATE entities SET tags = array_append(tags, ?) WHERE id = ? AND NOT (? = ANY(tags))",
-                tag, entityId, tag);
+            "UPDATE entities SET tags = array_append(tags, ?) WHERE id = ? AND NOT (? = ANY(tags))",
+            tag, entityId, tag);
     }
 
     @AfterEach
@@ -94,20 +94,22 @@ public class KgRepositoryIT {
         jdbcTemplate.update("DELETE FROM collections WHERE name = ?", COLLECTION);
     }
 
-    private void insertEntity(UUID id, String collection, String name, String category, String version,
-            String description) {
-        String sql = "INSERT INTO entities (id, collection_id, name, kind, description, tags, metadata) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?::jsonb)";
-        jdbcTemplate.update(sql, id, collectionId, name, category, description, new String[] { version }, "{}");
+    private void insertEntity(UUID id, String collection, String name, String category,
+        String version, String description) {
+        String sql =
+            "INSERT INTO entities (id, collection_id, name, kind, description, tags, metadata) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?::jsonb)";
+        jdbcTemplate.update(sql, id, collectionId, name, category, description,
+            new String[] {version}, "{}");
     }
 
-    private void insertRelationship(UUID id, String collection, String subject, String predicate, String object,
-            UUID subjectId, UUID objectId, String version, String description) {
-        String sql = "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags, metadata) "
-                +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)";
-        jdbcTemplate.update(sql, id, collectionId, subject, predicate, object, subjectId, objectId, description,
-                new String[] { version }, "{}");
+    private void insertRelationship(UUID id, String collection, String subject, String predicate,
+        String object, UUID subjectId, UUID objectId, String version, String description) {
+        String sql =
+            "INSERT INTO relationships (id, collection_id, subject, predicate, object, subject_id, object_id, description, tags, metadata) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)";
+        jdbcTemplate.update(sql, id, collectionId, subject, predicate, object, subjectId, objectId,
+            description, new String[] {version}, "{}");
     }
 
     @Test
@@ -121,18 +123,21 @@ public class KgRepositoryIT {
         assertThat(results.get(0).tag()).isEqualTo("9.3");
 
         // Test sorting: "TableA" similarity should be highest when searching "TableA"
-        List<KgEntity> resultsExact = kgRepository.fuzzySearchEntities("TableA", 5, "9.3", COLLECTION);
+        List<KgEntity> resultsExact =
+            kgRepository.fuzzySearchEntities("TableA", 5, "9.3", COLLECTION);
         assertThat(resultsExact).isNotEmpty();
         assertThat(resultsExact.get(0).name()).isEqualTo("TableA");
 
         // Test filtering by category: search "TableA" with category "table"
-        List<KgEntity> resultsTable = kgRepository.fuzzySearchEntities("TableA", 5, "9.3", COLLECTION, "table");
+        List<KgEntity> resultsTable =
+            kgRepository.fuzzySearchEntities("TableA", 5, "9.3", COLLECTION, "table");
         assertThat(resultsTable).isNotEmpty();
         assertThat(resultsTable.get(0).name()).isEqualTo("TableA");
 
         // Test filtering by non-matching category: search "TableA" with category
         // "procedure"
-        List<KgEntity> resultsProc = kgRepository.fuzzySearchEntities("TableA", 5, "9.3", COLLECTION, "procedure");
+        List<KgEntity> resultsProc =
+            kgRepository.fuzzySearchEntities("TableA", 5, "9.3", COLLECTION, "procedure");
         assertThat(resultsProc).isEmpty();
     }
 
@@ -151,8 +156,10 @@ public class KgRepositoryIT {
         // Incoming relationships (TableC -> TableA [FK] and ProcX -> TableA
         // [references_table])
         assertThat(neighborhood.incoming()).hasSize(2);
-        assertThat(neighborhood.incoming().stream().anyMatch(r -> "TableC".equals(r.subject()))).isTrue();
-        assertThat(neighborhood.incoming().stream().anyMatch(r -> "ProcX".equals(r.subject()))).isTrue();
+        assertThat(neighborhood.incoming().stream().anyMatch(r -> "TableC".equals(r.subject())))
+            .isTrue();
+        assertThat(neighborhood.incoming().stream().anyMatch(r -> "ProcX".equals(r.subject())))
+            .isTrue();
     }
 
     @Test
@@ -160,7 +167,8 @@ public class KgRepositoryIT {
         // TableD does not exist in entities table but let's insert a relationship
         // mentioning it
         UUID relId = UUID.randomUUID();
-        insertRelationship(relId, COLLECTION, "TableD", "fk_to", "TableA", null, tableAId, "9.3", "FK from D to A");
+        insertRelationship(relId, COLLECTION, "TableD", "fk_to", "TableA", null, tableAId, "9.3",
+            "FK from D to A");
 
         KgNeighborhood neighborhood = kgRepository.getNeighborhood("TableD", "9.3", COLLECTION);
 
@@ -218,7 +226,9 @@ public class KgRepositoryIT {
         // TableC -> TableA -> TableB (depth 2)
         List<KgWalk> walks2 = kgRepository.getFkWalk("TableA", 2, "9.3", COLLECTION);
         assertThat(walks2.size()).isGreaterThan(2);
-        assertThat(walks2.stream().anyMatch(w -> w.depth() == 2 && w.path().toString().contains("TableC"))).isTrue();
+        assertThat(
+            walks2.stream().anyMatch(w -> w.depth() == 2 && w.path().toString().contains("TableC")))
+            .isTrue();
     }
 
     @Test
@@ -235,7 +245,8 @@ public class KgRepositoryIT {
 
     @Test
     public void testVersionScoping() {
-        // TableA is a single entity row shared by both versions (tags {9.3, 10.0}); TableC/ProcX are
+        // TableA is a single entity row shared by both versions (tags {9.3, 10.0}); TableC/ProcX
+        // are
         // 9.3-only. Version scoping is by tag membership.
         List<KgEntity> search10 = kgRepository.fuzzySearchEntities("TableA", 5, "10.0", COLLECTION);
         assertThat(search10).isNotEmpty();

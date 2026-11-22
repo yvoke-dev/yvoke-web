@@ -1,27 +1,25 @@
 package de.palsoftware.yvoke.document.core.repository;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.document.core.model.ChunkInsert;
 import de.palsoftware.yvoke.document.core.model.ChunkKgStatus;
 import de.palsoftware.yvoke.document.core.model.DocumentDetails;
 import de.palsoftware.yvoke.document.core.model.DocumentIngestionStatus;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
-
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.shared.db.CollectionIdResolver;
 import de.palsoftware.yvoke.shared.db.VectorUtils;
 import jakarta.annotation.Nullable;
 import java.sql.Array;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
-import java.sql.Types;
 
 @Repository
 public class DocumentRepository {

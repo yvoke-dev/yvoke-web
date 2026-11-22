@@ -1,11 +1,10 @@
 package de.palsoftware.yvoke.kg.core.repository;
 
-import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Arrays;
 import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 /**
  * The tag SET is part of graph entity identity (V2), so what we store must be a set — not whatever

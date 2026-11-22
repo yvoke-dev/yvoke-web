@@ -1,7 +1,7 @@
 package de.palsoftware.yvoke.chat.web;
 
-import de.palsoftware.yvoke.chat.core.service.ChatFeedbackService;
 import de.palsoftware.yvoke.chat.core.model.Feedback;
+import de.palsoftware.yvoke.chat.core.service.ChatFeedbackService;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

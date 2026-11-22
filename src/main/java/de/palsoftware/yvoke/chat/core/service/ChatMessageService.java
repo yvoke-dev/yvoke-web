@@ -1,20 +1,5 @@
 package de.palsoftware.yvoke.chat.core.service;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.lang.Nullable;
-import org.springframework.stereotype.Service;
-import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.chat.core.ChatProperties;
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.model.ConversationLockState;
@@ -32,6 +17,7 @@ import de.palsoftware.yvoke.chat.orchestration.AgentStep;
 import de.palsoftware.yvoke.chat.orchestration.AgentStepRepository;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestrationService.OrchestrationResult;
+import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import de.palsoftware.yvoke.rag.core.model.AgenticRequest;
@@ -40,18 +26,31 @@ import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.rag.retrieval.RetrievalTelemetryService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.AsyncTaskExecutor;
+import org.springframework.lang.Nullable;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.core.task.AsyncTaskExecutor;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.scheduling.annotation.Scheduled;
-
-import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
-import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class ChatMessageService {

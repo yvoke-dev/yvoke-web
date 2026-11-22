@@ -1,24 +1,23 @@
 package de.palsoftware.yvoke.document.core.repository;
 
-import de.palsoftware.yvoke.document.core.model.DocumentDetails;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.document.core.model.DocumentDetails;
+import de.palsoftware.yvoke.shared.db.CollectionIdResolver;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import de.palsoftware.yvoke.shared.db.CollectionIdResolver;
-import java.time.Instant;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 public class DocumentRepositoryTest {
 

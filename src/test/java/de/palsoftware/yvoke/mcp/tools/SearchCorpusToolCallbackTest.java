@@ -1,23 +1,23 @@
 package de.palsoftware.yvoke.mcp.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import org.junit.jupiter.api.Test;
 import de.palsoftware.yvoke.rag.core.model.AgenticChatContext;
 import jakarta.annotation.Nullable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 
 /**
  * Contracts of the search_corpus tool CALLBACK: the limit ceiling it advertises to the model, and

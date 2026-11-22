@@ -1,7 +1,5 @@
 package de.palsoftware.yvoke.chat.web.admin;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import de.palsoftware.yvoke.area.TestAreas;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -19,6 +17,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.area.TestAreas;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileService;
@@ -441,4 +441,3 @@ public class OrchestratorAdminControllerTest {
             .isInstanceOf(NullPointerException.class);
     }
 }
-

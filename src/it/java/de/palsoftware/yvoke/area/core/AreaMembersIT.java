@@ -25,10 +25,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * refreshes it: a column left out of an {@code ON CONFLICT} list is written once and then frozen,
  * so an item could never be moved to another area, with no error anywhere.
  */
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 class AreaMembersIT {
 
     private static final String OTHER = "IT_AREA_MEMBERS";
@@ -64,15 +62,15 @@ class AreaMembersIT {
 
     @Test
     void aPlaybooksAreaRoundTripsAndCanBeMoved() {
-        playbookRepository.upsert("it-members-pb", "PB", "", "text", List.of(), false,
-            "specialist", false, "OIM", 1);
-        assertThat(playbookRepository.findByName("it-members-pb")).get()
-            .extracting(Playbook::area).isEqualTo("OIM");
+        playbookRepository.upsert("it-members-pb", "PB", "", "text", List.of(), false, "specialist",
+            false, "OIM", 1);
+        assertThat(playbookRepository.findByName("it-members-pb")).get().extracting(Playbook::area)
+            .isEqualTo("OIM");
 
-        playbookRepository.upsert("it-members-pb", "PB", "", "text", List.of(), false,
-            "specialist", false, OTHER, 1);
-        assertThat(playbookRepository.findByName("it-members-pb")).get()
-            .extracting(Playbook::area).isEqualTo(OTHER);
+        playbookRepository.upsert("it-members-pb", "PB", "", "text", List.of(), false, "specialist",
+            false, OTHER, 1);
+        assertThat(playbookRepository.findByName("it-members-pb")).get().extracting(Playbook::area)
+            .isEqualTo(OTHER);
         assertThat(playbookRepository.findAll()).filteredOn(p -> p.name().equals("it-members-pb"))
             .extracting(Playbook::area).containsExactly(OTHER);
     }
@@ -101,8 +99,8 @@ class AreaMembersIT {
 
         assertThat(collectionRepository.findByName("it-members-col")).get()
             .extracting(Collection::area).isEqualTo(OTHER);
-        assertThat(collectionRepository.findById(created.id())).get()
-            .extracting(Collection::area).isEqualTo(OTHER);
+        assertThat(collectionRepository.findById(created.id())).get().extracting(Collection::area)
+            .isEqualTo(OTHER);
         assertThat(collectionRepository.findAll())
             .filteredOn(c -> c.name().equals("it-members-col")).extracting(Collection::area)
             .containsExactly(OTHER);
@@ -115,8 +113,7 @@ class AreaMembersIT {
 
         assertThat(profileRepository.findByName("it-members-prof")).get()
             .extracting(OrchestratorProfile::area).isEqualTo(OTHER);
-        assertThat(profileRepository.findAll())
-            .filteredOn(p -> p.name().equals("it-members-prof"))
+        assertThat(profileRepository.findAll()).filteredOn(p -> p.name().equals("it-members-prof"))
             .extracting(OrchestratorProfile::area).containsExactly(OTHER);
     }
 
@@ -127,18 +124,19 @@ class AreaMembersIT {
 
     /**
      * One membership query feeds list_areas and the area admin page. Its playbook rule must match
-     * list_playbooks (PlaybookService.listSpecializedPlaybooks): orchestrator and reviewer playbooks
-     * are left out, any other role or none is pickable.
+     * list_playbooks (PlaybookService.listSpecializedPlaybooks): orchestrator and reviewer
+     * playbooks are left out, any other role or none is pickable.
      */
     @Test
     void membersAreListedPerAreaWithIngestionPromptsAndPickablePlaybooks() {
         systemPromptRepository.upsert("it-members-kg", SystemPromptType.KG, "t", null, OTHER);
-        systemPromptRepository.upsert("it-members-sum", SystemPromptType.SUMMARIZE, "t", null, OTHER);
+        systemPromptRepository.upsert("it-members-sum", SystemPromptType.SUMMARIZE, "t", null,
+            OTHER);
         collectionRepository.create("it-members-col", "", OTHER);
         playbookRepository.upsert("it-members-spec", "S", "", "t", List.of(), false, "specialist",
             false, OTHER, 1);
-        playbookRepository.upsert("it-members-orch", "O", "", "t", List.of(), false,
-            "Orchestrator", false, OTHER, 1);
+        playbookRepository.upsert("it-members-orch", "O", "", "t", List.of(), false, "Orchestrator",
+            false, OTHER, 1);
         playbookRepository.upsert("it-members-rev", "R", "", "t", List.of(), false, "reviewer",
             false, OTHER, 1);
         jdbcClient.sql("""
@@ -152,14 +150,16 @@ class AreaMembersIT {
         assertThat(members.collections()).containsExactly("it-members-col");
         assertThat(members.playbooks()).containsExactly("it-members-none", "it-members-spec");
         assertThat(members.profiles()).containsExactly("it-members-prof");
-        assertThat(areaRepository.findAllMembers().getOrDefault("OIM", AreaMembers.NONE).playbooks())
+        assertThat(
+            areaRepository.findAllMembers().getOrDefault("OIM", AreaMembers.NONE).playbooks())
             .doesNotContain("it-members-spec");
     }
 
     /**
      * The pickable-playbook rule exists twice: in SQL here and in Java in
-     * {@code PlaybookService.listSpecializedPlaybooks} ({@code area} may not depend on {@code rag}).
-     * This compares the two over every kind of role, so changing one without the other fails.
+     * {@code PlaybookService.listSpecializedPlaybooks} ({@code area} may not depend on
+     * {@code rag}). This compares the two over every kind of role, so changing one without the
+     * other fails.
      */
     @Test
     void thePlaybookMembersMatchWhatListPlaybooksOffers() {
@@ -176,8 +176,7 @@ class AreaMembersIT {
             .filter(p -> OTHER.equals(p.area())).map(Playbook::name).toList();
 
         assertThat(areaRepository.findAllMembers().get(OTHER).playbooks())
-            .containsExactlyInAnyOrderElementsOf(offered)
-            .isNotEmpty();
+            .containsExactlyInAnyOrderElementsOf(offered).isNotEmpty();
         assertThat(offered).hasSizeBetween(1, roles.length - 1);
     }
 }

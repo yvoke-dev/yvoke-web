@@ -1,8 +1,6 @@
 package de.palsoftware.yvoke.kg.core.repository;
 
 import de.palsoftware.yvoke.kg.core.model.KgCall;
-
-
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import org.springframework.jdbc.core.RowMapper;

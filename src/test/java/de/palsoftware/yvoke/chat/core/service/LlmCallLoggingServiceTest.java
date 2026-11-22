@@ -1,26 +1,25 @@
 package de.palsoftware.yvoke.chat.core.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import de.palsoftware.yvoke.chat.core.model.ModelPricing;
 import de.palsoftware.yvoke.chat.core.repository.ModelPricingRepository;
 import de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent;
 import de.palsoftware.yvoke.llm.core.model.GatewayCacheStatus;
 import de.palsoftware.yvoke.llm.core.model.LlmCallLog;
 import de.palsoftware.yvoke.llm.core.repository.LlmCallLogRepository;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 public class LlmCallLoggingServiceTest {

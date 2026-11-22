@@ -1,18 +1,21 @@
 package de.palsoftware.yvoke.chat.web.admin;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.assertj.core.api.Assertions.assertThat;
 
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.orchestration.AgentRunRepository;
+import de.palsoftware.yvoke.chat.orchestration.AgentStep;
 import de.palsoftware.yvoke.chat.orchestration.AgentStepRepository;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,9 +27,6 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import de.palsoftware.yvoke.chat.orchestration.AgentStep;
-import java.util.List;
-import org.hamcrest.Matchers;
 
 /**
  * Full Thymeleaf render coverage for the agent-run admin pages after the DTO-at-boundary refactor
@@ -107,8 +107,8 @@ public class AgentRunAdminRenderingIT {
     }
 
     /**
-     * The point of the whole change: a failed run must explain itself on this page, so nobody has to
-     * go reading container logs. Seeds a run whose error is the multi-line diagnosis
+     * The point of the whole change: a failed run must explain itself on this page, so nobody has
+     * to go reading container logs. Seeds a run whose error is the multi-line diagnosis
      * {@code OrchestrationService} now composes, plus the failed step that killed it.
      */
     @Test
@@ -133,17 +133,16 @@ public class AgentRunAdminRenderingIT {
             .andExpect(content().string(Matchers.containsString("role=specialist")))
             .andExpect(content().string(Matchers.containsString("attempt 3/3")))
             .andExpect(content().string(Matchers.containsString("failed")))
-            .andExpect(
-                content().string(Matchers.containsString("partial streamed output")));
+            .andExpect(content().string(Matchers.containsString("partial streamed output")));
     }
 
     /**
      * {@code agent_steps} carries an explicit {@code seq} because the trace's ORDER IS ITS MEANING:
-     * the admin run-detail timeline is read as "the orchestrator asked, the specialist answered, the
-     * reviewer approved". Sorting it by a timestamp instead looks like an innocuous "show it
+     * the admin run-detail timeline is read as "the orchestrator asked, the specialist answered,
+     * the reviewer approved". Sorting it by a timestamp instead looks like an innocuous "show it
      * chronologically" edit and returns every row, with every status, every token count and every
-     * string the existing render assertions look for — they are all {@code containsString}, which is
-     * order-blind — so nothing here would notice.
+     * string the existing render assertions look for — they are all {@code containsString}, which
+     * is order-blind — so nothing here would notice.
      *
      * <p>
      * It is not hypothetical: {@code created_at} is written as {@code CURRENT_TIMESTAMP}, which
@@ -186,9 +185,9 @@ public class AgentRunAdminRenderingIT {
     }
 
     /**
-     * The detail page now carries provider text and stack frames, so the admin gate is load-bearing.
-     * Nothing pinned it before: there is no {@code @PreAuthorize} anywhere, so the single
-     * {@code /admin/**} rule in {@code SecurityConfig} is the entire control.
+     * The detail page now carries provider text and stack frames, so the admin gate is
+     * load-bearing. Nothing pinned it before: there is no {@code @PreAuthorize} anywhere, so the
+     * single {@code /admin/**} rule in {@code SecurityConfig} is the entire control.
      */
     @Test
     public void agentRunDetailIsDeniedToNonAdmins() throws Exception {

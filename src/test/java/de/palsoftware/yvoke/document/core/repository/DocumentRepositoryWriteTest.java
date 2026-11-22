@@ -1,7 +1,5 @@
 package de.palsoftware.yvoke.document.core.repository;
 
-import de.palsoftware.yvoke.document.core.model.ChunkKgStatus;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -10,16 +8,17 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.document.core.model.ChunkKgStatus;
 import de.palsoftware.yvoke.shared.db.CollectionIdResolver;
 import java.sql.PreparedStatement;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.junit.jupiter.api.Assertions;
 
 public class DocumentRepositoryWriteTest {
 

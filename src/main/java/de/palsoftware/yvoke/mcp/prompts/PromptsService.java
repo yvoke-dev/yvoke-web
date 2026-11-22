@@ -6,8 +6,8 @@ import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 @Component
 public class PromptsService {

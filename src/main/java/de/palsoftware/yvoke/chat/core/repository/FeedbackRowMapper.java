@@ -1,8 +1,6 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
 import de.palsoftware.yvoke.chat.core.model.Feedback;
-
-
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;

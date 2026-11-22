@@ -1,21 +1,20 @@
 package de.palsoftware.yvoke.shared.jobengine.repository;
 
-import de.palsoftware.yvoke.shared.jobengine.*;
-import de.palsoftware.yvoke.shared.jobengine.model.*;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.shared.db.CollectionIdResolver;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.simple.JdbcClient;
+import de.palsoftware.yvoke.shared.jobengine.*;
+import de.palsoftware.yvoke.shared.jobengine.model.*;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 public class JobRepositoryTest {
 

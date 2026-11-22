@@ -1,7 +1,6 @@
 package de.palsoftware.yvoke.rag.prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -9,7 +8,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -18,10 +16,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
  *
  * <p>
  * The corpus tooling in {@code yvoke-exports} writes the type upper-cased — its own code carries
- * the comment "the stored values are KG/SUMMARIZE" — and that importer is what actually
- * populated every environment. {@code SystemPromptType.dbValue()} returned
- * {@code name().toLowerCase()}, and {@code findByType} compared it with a case-SENSITIVE {@code =},
- * so every imported prompt was invisible to Java.
+ * the comment "the stored values are KG/SUMMARIZE" — and that importer is what actually populated
+ * every environment. {@code SystemPromptType.dbValue()} returned {@code name().toLowerCase()}, and
+ * {@code findByType} compared it with a case-SENSITIVE {@code =}, so every imported prompt was
+ * invisible to Java.
  *
  * <p>
  * Nothing failed. The admin ingest page rendered an empty prompt dropdown and, from that emptiness,
@@ -34,11 +32,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * with and cannot express PostgreSQL's case sensitivity, so a unit test would pass against the bug.
  * The sibling {@link SystemPromptTypeTest} pins the lenient parsing; this pins the query.
  */
-@SpringBootTest(
-        properties = {
-            "spring.flyway.enabled=true",
-            "spring.flyway.locations=filesystem:docker/db/migration"
-        })
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class SystemPromptRepositoryIT {
 
     private static final String UPPER = "IT-UPPER-SUMMARIZE";
@@ -70,10 +65,8 @@ public class SystemPromptRepositoryIT {
     /** The shape the corpus importer actually writes, and the one that was invisible. */
     @Test
     public void aPromptImportedWithAnUppercaseTypeIsFound() {
-        jdbcTemplate.update(
-            "INSERT INTO system_prompts (name, type, system_prompt, description) "
-                + "VALUES (?, 'SUMMARIZE', 'body', 'imported by the corpus tooling')",
-            UPPER);
+        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt, description) "
+            + "VALUES (?, 'SUMMARIZE', 'body', 'imported by the corpus tooling')", UPPER);
 
         List<SystemPrompt> found = repository.findByType(SystemPromptType.SUMMARIZE);
 
@@ -86,10 +79,8 @@ public class SystemPromptRepositoryIT {
     /** Rows written by an older Java build are lower-cased; both spellings must resolve. */
     @Test
     public void aPromptStoredWithALowercaseTypeIsAlsoFound() {
-        jdbcTemplate.update(
-            "INSERT INTO system_prompts (name, type, system_prompt, description) "
-                + "VALUES (?, 'summarize', 'body', 'written by an older build')",
-            LOWER);
+        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt, description) "
+            + "VALUES (?, 'summarize', 'body', 'written by an older build')", LOWER);
 
         assertThat(repository.findByType(SystemPromptType.SUMMARIZE)).extracting(SystemPrompt::name)
             .contains(LOWER);
@@ -97,10 +88,8 @@ public class SystemPromptRepositoryIT {
 
     @Test
     public void aPromptStoredWithSurroundingWhitespaceIsFound() {
-        jdbcTemplate.update(
-            "INSERT INTO system_prompts (name, type, system_prompt, description) "
-                + "VALUES (?, ' kg ', 'body', 'padded type')",
-            PADDED);
+        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt, description) "
+            + "VALUES (?, ' kg ', 'body', 'padded type')", PADDED);
 
         assertThat(repository.findByType(SystemPromptType.KG)).extracting(SystemPrompt::name)
             .contains(PADDED);
@@ -118,10 +107,8 @@ public class SystemPromptRepositoryIT {
     /** Case tolerance must not blur the types into each other. */
     @Test
     public void theTypeFilterStillSeparatesKindsOfPrompt() {
-        jdbcTemplate.update(
-            "INSERT INTO system_prompts (name, type, system_prompt, description) "
-                + "VALUES (?, 'SUMMARIZE', 'body', 'x')",
-            UPPER);
+        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt, description) "
+            + "VALUES (?, 'SUMMARIZE', 'body', 'x')", UPPER);
 
         assertThat(repository.findByType(SystemPromptType.KG)).extracting(SystemPrompt::name)
             .doesNotContain(UPPER);
@@ -132,9 +119,8 @@ public class SystemPromptRepositoryIT {
         // V17 intentionally stays non-destructive for rolling-deploy/rollback safety from 1.3.0,
         // so legacy CHAT rows can still coexist in DB while typed repository queries return only
         // SUMMARIZE and KG prompts.
-        jdbcTemplate.update(
-            "INSERT INTO system_prompts (name, type, system_prompt, description) "
-                + "VALUES ('IT-LEGACY-CHAT', 'CHAT', 'body', 'x') ON CONFLICT (name) DO NOTHING");
+        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt, description) "
+            + "VALUES ('IT-LEGACY-CHAT', 'CHAT', 'body', 'x') ON CONFLICT (name) DO NOTHING");
         try {
             assertThat(repository.findByType(SystemPromptType.SUMMARIZE))
                 .extracting(SystemPrompt::name).doesNotContain("IT-LEGACY-CHAT");

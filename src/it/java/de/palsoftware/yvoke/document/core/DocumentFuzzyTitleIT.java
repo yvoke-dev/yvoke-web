@@ -61,8 +61,8 @@ public class DocumentFuzzyTitleIT {
 
     @Test
     public void fuzzyQueryFiltersRanksAndKeepsCountConsistent() {
-        List<DocumentDetails> docs = documentRepository.listDocuments(COLLECTION, 100, 0, null, null,
-            null, null, "PRC_Person_Delete_Chain");
+        List<DocumentDetails> docs = documentRepository.listDocuments(COLLECTION, 100, 0, null,
+            null, null, null, "PRC_Person_Delete_Chain");
         long count = documentRepository.countDocuments(COLLECTION, null, null, null, null,
             "PRC_Person_Delete_Chain");
 
@@ -79,8 +79,8 @@ public class DocumentFuzzyTitleIT {
     public void fuzzyQueryMatchesOnTrigramSimilarityDespiteTypo() {
         // "Persn" is a typo (missing 'o'): the substring ILIKE would miss it, but trigram
         // similarity(> 0.25) still surfaces the intended documents.
-        List<DocumentDetails> docs = documentRepository.listDocuments(COLLECTION, 100, 0, null, null,
-            null, null, "PRC_Persn_Delete_Chain");
+        List<DocumentDetails> docs = documentRepository.listDocuments(COLLECTION, 100, 0, null,
+            null, null, null, "PRC_Persn_Delete_Chain");
 
         List<String> titles = docs.stream().map(DocumentDetails::title).toList();
         assertThat(titles).contains("PRC_Person_Delete_Chain");
@@ -89,8 +89,8 @@ public class DocumentFuzzyTitleIT {
 
     @Test
     public void nullFuzzyQueryLeavesListingUnfiltered() {
-        List<DocumentDetails> docs = documentRepository.listDocuments(COLLECTION, 100, 0, null, null,
-            null, null, null);
+        List<DocumentDetails> docs =
+            documentRepository.listDocuments(COLLECTION, 100, 0, null, null, null, null, null);
         assertThat(docs).hasSize(4);
     }
 }

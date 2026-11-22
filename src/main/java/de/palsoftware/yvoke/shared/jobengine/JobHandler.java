@@ -1,7 +1,6 @@
 package de.palsoftware.yvoke.shared.jobengine;
 
 import de.palsoftware.yvoke.shared.jobengine.model.*;
-
 import java.util.List;
 
 public interface JobHandler {

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
+import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import de.palsoftware.yvoke.shared.security.BlockedHostException;
 import de.palsoftware.yvoke.shared.security.SecretCipher;
@@ -11,6 +12,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -19,9 +22,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.env.Environment;
 import org.springframework.web.client.RestClient;
-import com.sun.net.httpserver.HttpExchange;
-import java.util.ArrayList;
-import java.util.Collections;
 
 /**
  * The connector is instance-scoped: nothing here may be shared between two connected Confluence

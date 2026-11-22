@@ -5,12 +5,14 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import java.util.UUID;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,21 +24,21 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
-import org.hamcrest.Matchers;
 
 /**
- * The destructive admin writes: clearing a knowledge-graph scope and stopping a running job. Neither
- * had a test at any tier, which is an uncomfortable place for the two endpoints that delete data and
- * kill work in flight.
+ * The destructive admin writes: clearing a knowledge-graph scope and stopping a running job.
+ * Neither had a test at any tier, which is an uncomfortable place for the two endpoints that delete
+ * data and kill work in flight.
  *
- * <p>Both guards are covered as well as both happy paths, because the guards are the whole safety
+ * <p>
+ * Both guards are covered as well as both happy paths, because the guards are the whole safety
  * story: {@code /admin/kg/clear} refuses to run without an explicit tag (a missing tag must not be
  * read as "all versions"), and {@code /admin/jobs/{id}/stop} must report honestly when it changed
  * nothing rather than claiming success.
  *
- * <p>{@code POST /admin/documents/{id}/process-kg} is deliberately not driven here: it enqueues an
- * LLM extraction job, and this context has a live worker and a real {@code LlmClient}, so the happy
+ * <p>
+ * {@code POST /admin/documents/{id}/process-kg} is deliberately not driven here: it enqueues an LLM
+ * extraction job, and this context has a live worker and a real {@code LlmClient}, so the happy
  * path would make network calls. Only its authorization is asserted.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
@@ -136,8 +138,10 @@ public class AdminDestructiveWriteIT {
     public void clearingTheGraphRequiresAdmin() throws Exception {
         seedEntity("ADS");
 
-        mockMvc.perform(post("/admin/kg/clear").with(csrf()).with(plainUser())
-            .param("collection", COLLECTION).param("tag", TAG)).andExpect(status().isForbidden());
+        mockMvc
+            .perform(post("/admin/kg/clear").with(csrf()).with(plainUser())
+                .param("collection", COLLECTION).param("tag", TAG))
+            .andExpect(status().isForbidden());
 
         assertThat(entityCount()).isEqualTo(1);
     }
@@ -211,7 +215,9 @@ public class AdminDestructiveWriteIT {
         assertThat(jobStatus(running)).isEqualTo("running");
     }
 
-    /** Stopping something already finished must say so instead of reporting a success it didn't do. */
+    /**
+     * Stopping something already finished must say so instead of reporting a success it didn't do.
+     */
     @Test
     public void stoppingAFinishedJobReportsThatNothingChanged() throws Exception {
         UUID jobId = seedJob("succeeded");
@@ -234,10 +240,8 @@ public class AdminDestructiveWriteIT {
 
     @Test
     public void enqueuingKgExtractionForADocumentRequiresAdmin() throws Exception {
-        mockMvc
-            .perform(post("/admin/documents/" + UUID.randomUUID() + "/process-kg").with(csrf())
-                .with(plainUser()))
-            .andExpect(status().isForbidden());
+        mockMvc.perform(post("/admin/documents/" + UUID.randomUUID() + "/process-kg").with(csrf())
+            .with(plainUser())).andExpect(status().isForbidden());
     }
 
     /**
@@ -260,12 +264,10 @@ public class AdminDestructiveWriteIT {
         // Assert on the RENDERED element: both headings and both class names also appear as
         // string literals in the page's inline script, which drives the same swap over SSE.
         mockMvc.perform(get("/admin/jobs/" + jobId).with(admin())).andExpect(status().isOk())
-            .andExpect(content()
-                .string(Matchers.containsString(">Cancellation details</h3>")))
-            .andExpect(content()
-                .string(Matchers.containsString("card job-outcome-cancelled")))
-            .andExpect(content().string(Matchers
-                .not(Matchers.containsString(">Failure details</h3>"))));
+            .andExpect(content().string(Matchers.containsString(">Cancellation details</h3>")))
+            .andExpect(content().string(Matchers.containsString("card job-outcome-cancelled")))
+            .andExpect(
+                content().string(Matchers.not(Matchers.containsString(">Failure details</h3>"))));
     }
 
     @Test
@@ -274,16 +276,14 @@ public class AdminDestructiveWriteIT {
         jdbcTemplate.update("UPDATE ingestion_jobs SET error = ? WHERE id = ?", "boom", jobId);
 
         mockMvc.perform(get("/admin/jobs/" + jobId).with(admin())).andExpect(status().isOk())
-            .andExpect(
-                content().string(Matchers.containsString(">Failure details</h3>")))
-            .andExpect(
-                content().string(Matchers.containsString("card job-outcome-failed")));
+            .andExpect(content().string(Matchers.containsString(">Failure details</h3>")))
+            .andExpect(content().string(Matchers.containsString("card job-outcome-failed")));
     }
 
     /**
      * The crawl summary used to live only on a progress event: no replay buffer, and the terminal
-     * snapshot blanks it, so it survived milliseconds and only for someone already watching —
-     * while connectors.html tells the operator to read it here.
+     * snapshot blanks it, so it survived milliseconds and only for someone already watching — while
+     * connectors.html tells the operator to read it here.
      */
     @Test
     public void aJobSummarySurvivesTheRunAndIsRenderedOnTheDetailPage() throws Exception {
@@ -293,8 +293,7 @@ public class AdminDestructiveWriteIT {
 
         mockMvc.perform(get("/admin/jobs/" + jobId).with(admin())).andExpect(status().isOk())
             .andExpect(content().string(Matchers.containsString(">Run summary</h3>")))
-            .andExpect(content()
-                .string(Matchers.containsString("41 already queued")));
+            .andExpect(content().string(Matchers.containsString("41 already queued")));
     }
 
     /**
@@ -332,9 +331,8 @@ public class AdminDestructiveWriteIT {
             .isNull();
 
         mockMvc.perform(get("/admin/jobs/" + jobId).with(admin())).andExpect(status().isOk())
-            .andExpect(content().string(Matchers.containsString(">Run summary</h3>")))
-            .andExpect(content().string(Matchers
-                .containsString("display: none; margin-bottom: 0;")));
+            .andExpect(content().string(Matchers.containsString(">Run summary</h3>"))).andExpect(
+                content().string(Matchers.containsString("display: none; margin-bottom: 0;")));
     }
 
     /** No summary, no card — an empty heading would just be noise on most jobs. */
@@ -343,7 +341,7 @@ public class AdminDestructiveWriteIT {
         UUID jobId = seedJob("completed");
 
         mockMvc.perform(get("/admin/jobs/" + jobId).with(admin())).andExpect(status().isOk())
-            .andExpect(content().string(
-                Matchers.not(Matchers.containsString(">Run summary</h3>"))));
+            .andExpect(
+                content().string(Matchers.not(Matchers.containsString(">Run summary</h3>"))));
     }
 }

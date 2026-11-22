@@ -1,7 +1,7 @@
 package de.palsoftware.yvoke.ingest.worker;
 
-import de.palsoftware.yvoke.ingest.core.service.DocumentIngestService;
 import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
+import de.palsoftware.yvoke.ingest.core.service.DocumentIngestService;
 import de.palsoftware.yvoke.shared.jobengine.JobHandler;
 import de.palsoftware.yvoke.shared.jobengine.model.JobContext;
 import de.palsoftware.yvoke.shared.jobengine.model.JobCounts;

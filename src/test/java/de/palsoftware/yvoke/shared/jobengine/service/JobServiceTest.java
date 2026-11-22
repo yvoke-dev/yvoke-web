@@ -1,15 +1,15 @@
 package de.palsoftware.yvoke.shared.jobengine.service;
 
-import de.palsoftware.yvoke.shared.jobengine.*;
-import de.palsoftware.yvoke.shared.jobengine.model.*;
-import de.palsoftware.yvoke.shared.jobengine.repository.*;
-
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.shared.jobengine.*;
+import de.palsoftware.yvoke.shared.jobengine.model.*;
+import de.palsoftware.yvoke.shared.jobengine.repository.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
@@ -20,8 +20,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import java.util.ArrayList;
-import static org.assertj.core.api.Assertions.assertThatCode;
 
 class JobServiceTest {
 

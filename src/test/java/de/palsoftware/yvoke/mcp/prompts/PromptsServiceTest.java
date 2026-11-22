@@ -1,9 +1,9 @@
 package de.palsoftware.yvoke.mcp.prompts;
 
-import de.palsoftware.yvoke.area.TestAreas;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.area.TestAreas;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;

@@ -3,6 +3,8 @@ package de.palsoftware.yvoke.ingest.core.confluence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.lang.reflect.Field;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -10,9 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import java.lang.reflect.Method;
-import java.lang.reflect.Field;
-import java.util.Map;
 
 // Same properties as OrchestratorProfileRepositoryIT on purpose: an identical configuration reuses
 // that cached TestContext instead of minting a new one.
@@ -51,15 +50,15 @@ public class ConfluenceInstanceRepositoryIT {
             assertThat(bySlug.get().tokenKeyId()).isEqualTo("abcdef0123456789");
 
             assertThat(repository.findById(inserted.id())).isPresent();
-            assertThat(repository.findByName(name)).isPresent()
-                .get().extracting(ConfluenceInstance::id).isEqualTo(inserted.id());
+            assertThat(repository.findByName(name)).isPresent().get()
+                .extracting(ConfluenceInstance::id).isEqualTo(inserted.id());
             assertThat(repository.findAll()).extracting(ConfluenceInstance::name).contains(name);
 
             // Same id -> update in place.
-            ConfluenceInstance updated = repository.upsert(new ConfluenceInstance(inserted.id(),
-                name, "it-confluence-2", "https://other.atlassian.net/wiki", "svc2@example.com",
-                null, null, "OPS", "999", null, null, "IT - Confluence", "", false, false, null,
-                null));
+            ConfluenceInstance updated =
+                repository.upsert(new ConfluenceInstance(inserted.id(), name, "it-confluence-2",
+                    "https://other.atlassian.net/wiki", "svc2@example.com", null, null, "OPS",
+                    "999", null, null, "IT - Confluence", "", false, false, null, null));
 
             assertThat(updated.id()).isEqualTo(inserted.id());
             assertThat(updated.slug()).isEqualTo("it-confluence-2");
@@ -87,8 +86,8 @@ public class ConfluenceInstanceRepositoryIT {
             repository.upsert(sample("IT_Confluence_Rename_Before", "it-conf-rename", null));
         try {
             ConfluenceInstance renamed = repository.upsert(new ConfluenceInstance(inserted.id(),
-                "IT_Confluence_Rename_After", "it-conf-rename", inserted.domain(),
-                inserted.email(), null, null, inserted.space(), inserted.rootPageId(), null, null,
+                "IT_Confluence_Rename_After", "it-conf-rename", inserted.domain(), inserted.email(),
+                null, null, inserted.space(), inserted.rootPageId(), null, null,
                 inserted.targetCollection(), null, false, true, null, null));
 
             assertThat(renamed.id()).isEqualTo(inserted.id());
@@ -124,8 +123,8 @@ public class ConfluenceInstanceRepositoryIT {
             assertThat(reloadedB.domain()).isEqualTo("https://bbb.atlassian.net/wiki");
             assertThat(reloadedB.apiTokenEnc()).isEqualTo("enc:b-ciphertext");
             assertThat(reloadedB.tokenKeyId()).isEqualTo("bbbbbbbb");
-            assertThat(repository.findById(a.id())).isPresent()
-                .get().extracting(ConfluenceInstance::name).isEqualTo("IT_Confluence_A");
+            assertThat(repository.findById(a.id())).isPresent().get()
+                .extracting(ConfluenceInstance::name).isEqualTo("IT_Confluence_A");
         } finally {
             repository.deleteById(a.id());
             repository.deleteById(b.id());
@@ -134,7 +133,8 @@ public class ConfluenceInstanceRepositoryIT {
 
     @Test
     void testSlugCollisionFails() {
-        ConfluenceInstance a = repository.upsert(sample("IT_Confluence_Slug_A", "it-conf-slug", null));
+        ConfluenceInstance a =
+            repository.upsert(sample("IT_Confluence_Slug_A", "it-conf-slug", null));
         ConfluenceInstance b =
             repository.upsert(sample("IT_Confluence_Slug_B", "it-conf-slug-other", null));
         try {
@@ -144,8 +144,8 @@ public class ConfluenceInstanceRepositoryIT {
 
             assertThatThrownBy(() -> repository.upsert(clash))
                 .isInstanceOf(DataIntegrityViolationException.class);
-            assertThat(repository.findById(b.id())).isPresent()
-                .get().extracting(ConfluenceInstance::slug).isEqualTo("it-conf-slug-other");
+            assertThat(repository.findById(b.id())).isPresent().get()
+                .extracting(ConfluenceInstance::slug).isEqualTo("it-conf-slug-other");
         } finally {
             repository.deleteById(a.id());
             repository.deleteById(b.id());
@@ -193,10 +193,10 @@ public class ConfluenceInstanceRepositoryIT {
     void testUpsertRejectsAFingerprintWithoutItsCiphertext() {
         // The ciphertext and its fingerprint are one value; a row with only the fingerprint has a
         // tokenHealth that lies.
-        ConfluenceInstance broken = new ConfluenceInstance(null, "IT_Confluence_Broken",
-            "it-conf-broken", "https://mycompany.atlassian.net/wiki", "svc@example.com", null,
-            "abcdef0123456789", "DOCS", "12345", null, null, "IT - Confluence", null, false, true,
-            null, null);
+        ConfluenceInstance broken =
+            new ConfluenceInstance(null, "IT_Confluence_Broken", "it-conf-broken",
+                "https://mycompany.atlassian.net/wiki", "svc@example.com", null, "abcdef0123456789",
+                "DOCS", "12345", null, null, "IT - Confluence", null, false, true, null, null);
 
         assertThatThrownBy(() -> repository.upsert(broken))
             .isInstanceOf(IllegalArgumentException.class);
@@ -206,9 +206,9 @@ public class ConfluenceInstanceRepositoryIT {
     /**
      * The V2 backfill promotes whatever an administrator once typed into {@code app_config}, so a
      * stored domain need not be a canonical (or even valid) URL. Mapping such a row must NOT throw:
-     * the record's compact constructor runs on every read, and a throw here fails
-     * {@code findAll()} — i.e. the whole connector admin page — with no way to reach the form that
-     * fixes the value. Saving it again is what rejects it.
+     * the record's compact constructor runs on every read, and a throw here fails {@code findAll()}
+     * — i.e. the whole connector admin page — with no way to reach the form that fixes the value.
+     * Saving it again is what rejects it.
      */
     @Test
     void testARowWhoseStoredDomainIsNotAUrlStillLoads() {
@@ -299,11 +299,12 @@ public class ConfluenceInstanceRepositoryIT {
     }
 
     /**
-     * {@code target_tag = ''} is not "no tag" — it is a value that breaks two pipelines quietly.
-     * At enqueue it becomes {@code List.of("")}, which hard-fails {@code CollectionTagEnqueueValidator}
-     * the moment the target collection declares any tag; and it defeats the ingest version-skip,
-     * which tests {@code :tag IS NULL} ({@code ''} is neither NULL nor a member of the document's
-     * tags array), so every sync re-embeds the entire space instead of skipping unchanged pages.
+     * {@code target_tag = ''} is not "no tag" — it is a value that breaks two pipelines quietly. At
+     * enqueue it becomes {@code List.of("")}, which hard-fails
+     * {@code CollectionTagEnqueueValidator} the moment the target collection declares any tag; and
+     * it defeats the ingest version-skip, which tests {@code :tag IS NULL} ({@code ''} is neither
+     * NULL nor a member of the document's tags array), so every sync re-embeds the entire space
+     * instead of skipping unchanged pages.
      *
      * <p>
      * The record's compact constructor normalizes {@code ''} to null, and
@@ -328,11 +329,11 @@ public class ConfluenceInstanceRepositoryIT {
             // Control: NULL IS the supported "no tag", so the constraint rejects '' specifically
             // rather than every row that carries no tag at all.
             insertRawInstance(slug, null);
-            assertThat(repository.findBySlug(slug)).isPresent()
-                .get().extracting(ConfluenceInstance::targetTag).isNull();
+            assertThat(repository.findBySlug(slug)).isPresent().get()
+                .extracting(ConfluenceInstance::targetTag).isNull();
         } finally {
-            jdbcClient.sql("DELETE FROM confluence_instances WHERE slug = :slug").param("slug", slug)
-                .update();
+            jdbcClient.sql("DELETE FROM confluence_instances WHERE slug = :slug")
+                .param("slug", slug).update();
         }
     }
 
@@ -351,20 +352,22 @@ public class ConfluenceInstanceRepositoryIT {
     /**
      * Deleting an instance must drop its cached {@link ConfluenceClientService} client — which
      * carries {@code Basic base64(email:plaintextToken)} as a DEFAULT HEADER — as a direct,
-     * synchronous consequence of the delete, on a call path where <em>no transaction is active</em>.
+     * synchronous consequence of the delete, on a call path where <em>no transaction is
+     * active</em>.
      *
      * <p>
      * That last clause is the whole point and it is invisible in the code:
      * {@link ConfluenceInstanceRepository#deleteById} publishes one line after the DELETE and
-     * {@code ConfluenceClientService.onInstanceCredentialsChanged} is a plain {@code @EventListener}.
-     * Promote that listener to {@code @TransactionalEventListener} — a change that looks like
-     * tightening, compiles, and passes review — and Spring SILENTLY SKIPS delivery whenever no
-     * transaction is bound to the thread ({@code fallbackExecution} is false by default; it logs
-     * "No transaction is active" at trace and returns). {@code deleteById} and {@code clearToken} are
-     * plain JdbcClient methods with no {@code @Transactional} anywhere on the class, so that is
-     * every non-service caller: the row is deleted, the token is revoked, and the built client with
-     * the old credential stays reachable in the heap until the next restart. Deferring the publish
-     * to an {@code afterCommit} synchronization has the same shape of consequence.
+     * {@code ConfluenceClientService.onInstanceCredentialsChanged} is a plain
+     * {@code @EventListener}. Promote that listener to {@code @TransactionalEventListener} — a
+     * change that looks like tightening, compiles, and passes review — and Spring SILENTLY SKIPS
+     * delivery whenever no transaction is bound to the thread ({@code fallbackExecution} is false
+     * by default; it logs "No transaction is active" at trace and returns). {@code deleteById} and
+     * {@code clearToken} are plain JdbcClient methods with no {@code @Transactional} anywhere on
+     * the class, so that is every non-service caller: the row is deleted, the token is revoked, and
+     * the built client with the old credential stays reachable in the heap until the next restart.
+     * Deferring the publish to an {@code afterCommit} synchronization has the same shape of
+     * consequence.
      *
      * <p>
      * {@code ConfluenceInstanceRepositoryValidationTest} verifies only THAT an event is published,
@@ -374,8 +377,8 @@ public class ConfluenceInstanceRepositoryIT {
      *
      * <p>
      * The cache is seeded with a sentinel rather than a real client because the only warming entry
-     * point runs {@code assertSafeConfluenceUrl}, which calls {@code InetAddress.getAllByName} —
-     * a live DNS lookup for {@code mycompany.atlassian.net}. {@code evict} only removes by key, so
+     * point runs {@code assertSafeConfluenceUrl}, which calls {@code InetAddress.getAllByName} — a
+     * live DNS lookup for {@code mycompany.atlassian.net}. {@code evict} only removes by key, so
      * the sentinel exercises the identical code path.
      */
     @Test
@@ -384,12 +387,10 @@ public class ConfluenceInstanceRepositoryIT {
         ConfluenceInstance inserted =
             repository.upsert(sample("IT_Confluence_Evict", "it-conf-evict", null));
 
-        Field cacheField =
-            ConfluenceClientService.class.getDeclaredField("clientCache");
+        Field cacheField = ConfluenceClientService.class.getDeclaredField("clientCache");
         cacheField.setAccessible(true);
         @SuppressWarnings("unchecked")
-        Map<UUID, Object> clientCache =
-            (Map<UUID, Object>) cacheField.get(clientService);
+        Map<UUID, Object> clientCache = (Map<UUID, Object>) cacheField.get(clientService);
 
         try {
             clientCache.put(inserted.id(), "client-carrying-the-basic-auth-header");
@@ -397,8 +398,8 @@ public class ConfluenceInstanceRepositoryIT {
 
             repository.deleteById(inserted.id());
 
-            assertThat(clientCache)
-                .as("the deleted instance's client — and the credential inside it — must be dropped "
+            assertThat(clientCache).as(
+                "the deleted instance's client — and the credential inside it — must be dropped "
                     + "by the delete itself, on a path with no transaction to defer to")
                 .doesNotContainKey(inserted.id());
         } finally {

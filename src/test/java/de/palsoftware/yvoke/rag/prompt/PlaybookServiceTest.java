@@ -1,9 +1,9 @@
 package de.palsoftware.yvoke.rag.prompt;
 
-import de.palsoftware.yvoke.area.TestAreas;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.area.TestAreas;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncPromptSpecification;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptRequest;
@@ -396,4 +396,3 @@ class PlaybookServiceTest {
         assertEquals(Set.of("oim-full", "ping-full"), service.listDefaultPlaybookNames());
     }
 }
-

@@ -6,7 +6,6 @@ import static org.mockito.Mockito.*;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
-import de.palsoftware.yvoke.document.core.model.DocumentKind;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.lifecycle.core.service.LifecycleService;

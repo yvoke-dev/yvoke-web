@@ -1,11 +1,10 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.model.MessageRole;
 import de.palsoftware.yvoke.rag.core.service.CitationVerifier.CitationCheckResult;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.util.List;

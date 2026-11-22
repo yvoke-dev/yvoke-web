@@ -1,7 +1,7 @@
 package de.palsoftware.yvoke.rag.retrieval;
 
-import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.shared.db.VectorUtils;
 import jakarta.annotation.PreDestroy;
 import java.util.*;

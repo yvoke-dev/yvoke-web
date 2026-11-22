@@ -4,37 +4,34 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import java.util.Map;
-import org.springframework.http.MediaType;
 
 /**
- * {@code GET /api/jobs/v1/{id}} over a REAL row. Deliberately reuses {@code IngestApiControllerIT}'s
- * context configuration verbatim (same four properties, same order, no mock beans) so no new Spring
- * context is minted — the {@code src/it} suite sits close to its TestContext cache limit and an
- * evicted {@code RANDOM_PORT} context poisons an unrelated IT.
+ * {@code GET /api/jobs/v1/{id}} over a REAL row. Deliberately reuses
+ * {@code IngestApiControllerIT}'s context configuration verbatim (same four properties, same order,
+ * no mock beans) so no new Spring context is minted — the {@code src/it} suite sits close to its
+ * TestContext cache limit and an evicted {@code RANDOM_PORT} context poisons an unrelated IT.
  */
-@SpringBootTest(properties = {
-        "spring.flyway.enabled=true",
-        "spring.flyway.locations=filesystem:docker/db/migration",
-        "app.worker.enabled=false",
-        "app.security.mock=true"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration", "app.worker.enabled=false",
+    "app.security.mock=true"})
 public class JobApiControllerIT {
 
     private static final String COLLECTION = "JOB-API-IT-COLLECTION";
@@ -61,13 +58,15 @@ public class JobApiControllerIT {
         // Inserted terminal, not queued: this context runs with the worker disabled, but a queued
         // row would still be a claimable job for anything else sharing the container.
         jobId = UUID.randomUUID();
-        jdbcTemplate.update("""
-            INSERT INTO ingestion_jobs
-                (id, kind, source_ref, tags, collection_id, status, step, progress, attempts, created_at)
-            VALUES
-                (?, 'kg-extract', 'kit/install.md', ARRAY['10.0'], ?, 'completed', 'extract', 100, 1,
-                 CURRENT_TIMESTAMP)
-            """, jobId, collectionId);
+        jdbcTemplate.update(
+            """
+                INSERT INTO ingestion_jobs
+                    (id, kind, source_ref, tags, collection_id, status, step, progress, attempts, created_at)
+                VALUES
+                    (?, 'kg-extract', 'kit/install.md', ARRAY['10.0'], ?, 'completed', 'extract', 100, 1,
+                     CURRENT_TIMESTAMP)
+                """,
+            jobId, collectionId);
     }
 
     @AfterEach
@@ -81,16 +80,16 @@ public class JobApiControllerIT {
      *
      * <p>
      * Two Jackson generations are on the classpath — {@code com.fasterxml.jackson} 2 and
-     * {@code tools.jackson} 3 — and which one converts MVC responses is decided by autoconfiguration
-     * conditions, not by anything in this repository: Boot's Jackson 2 converter activates only when
-     * {@code spring.http.converters.preferred-json-mapper=jackson2} or when the Jackson 3
-     * customizer is missing, and neither holds today. That matters because the application's only
-     * hand-built mapper ({@code RestClientConfig}) is a bare {@code new ObjectMapper()} with no
-     * java.time module, which cannot serialize {@code OffsetDateTime} at all — so if the boundary
-     * ever falls back to it, every field of {@code IngestionJob} is fine and {@code createdAt}
-     * alone takes the whole response down with a 500. The job resource is polled by the admin
-     * job-detail page and by the corpus/eval scripts, so the failure is total and it is a
-     * configuration change, not a code change, that causes it.
+     * {@code tools.jackson} 3 — and which one converts MVC responses is decided by
+     * autoconfiguration conditions, not by anything in this repository: Boot's Jackson 2 converter
+     * activates only when {@code spring.http.converters.preferred-json-mapper=jackson2} or when the
+     * Jackson 3 customizer is missing, and neither holds today. That matters because the
+     * application's only hand-built mapper ({@code RestClientConfig}) is a bare
+     * {@code new ObjectMapper()} with no java.time module, which cannot serialize
+     * {@code OffsetDateTime} at all — so if the boundary ever falls back to it, every field of
+     * {@code IngestionJob} is fine and {@code createdAt} alone takes the whole response down with a
+     * 500. The job resource is polled by the admin job-detail page and by the corpus/eval scripts,
+     * so the failure is total and it is a configuration change, not a code change, that causes it.
      *
      * <p>
      * {@code JobWireFormatTest} cannot see any of this: it builds its own {@code ObjectMapper} and
@@ -103,18 +102,18 @@ public class JobApiControllerIT {
      */
     @Test
     public void getJobResourceRendersARealRowWithAnIso8601CreatedAt() throws Exception {
-        String body = mockMvc
-            .perform(get("/api/jobs/v1/" + jobId)
-                .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.id").value(jobId.toString()))
-            .andExpect(jsonPath("$.kind").value("kg-extract"))
-            .andExpect(jsonPath("$.status").value("COMPLETED"))
-            .andExpect(jsonPath("$.step").value("extract"))
-            .andExpect(jsonPath("$.createdAt").isString())
-            .andExpect(jsonPath("$.createdAt", matchesPattern(
-                "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})")))
-            .andReturn().getResponse().getContentAsString();
+        String body =
+            mockMvc
+                .perform(get("/api/jobs/v1/" + jobId)
+                    .with(SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(jobId.toString()))
+                .andExpect(jsonPath("$.kind").value("kg-extract"))
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.step").value("extract"))
+                .andExpect(jsonPath("$.createdAt").isString())
+                .andExpect(jsonPath("$.createdAt", matchesPattern(
+                    "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})")))
+                .andReturn().getResponse().getContentAsString();
 
         assertThat(body)
             .as("a mapper with no java.time support renders the timestamp as a bean, not a string")
@@ -123,11 +122,11 @@ public class JobApiControllerIT {
 
     /**
      * The enqueue wire format — {@code POST /api/jobs/v1} with
-     * {@code {"kind":…,"sourceRef":…,"tags":[…],"collection":…}} — is the machine clients'
-     * whole contract, and it is bound by {@code com.fasterxml.jackson.annotation} annotations on a
-     * static factory of a record ({@code EnqueueRequest.create}), resolved by whichever of the two
-     * Jackson generations on the classpath autoconfiguration picks: databind is {@code tools.jackson}
-     * 3 today (see this class's other javadoc), with the annotations still coming from the 2.x
+     * {@code {"kind":…,"sourceRef":…,"tags":[…],"collection":…}} — is the machine clients' whole
+     * contract, and it is bound by {@code com.fasterxml.jackson.annotation} annotations on a static
+     * factory of a record ({@code EnqueueRequest.create}), resolved by whichever of the two Jackson
+     * generations on the classpath autoconfiguration picks: databind is {@code tools.jackson} 3
+     * today (see this class's other javadoc), with the annotations still coming from the 2.x
      * {@code jackson-annotations} artifact. Nothing tests any of that. {@code EnqueueRequestTest}
      * calls {@code EnqueueRequest.create(...)} as a plain static method — which binds no JSON and
      * would pass with every annotation deleted — and no test in the repository POSTs a body to this
@@ -191,15 +190,17 @@ public class JobApiControllerIT {
 
     @Test
     public void enqueueRejectsCaseVariantCollectionInUnauthorizedAreaWith404() throws Exception {
-        String payload = """
-            {"kind":"job-api-it-wire-format","sourceRef":"kit/10.0/unauthorized.md","collection":"%s"}
-            """.formatted(COLLECTION.toUpperCase());
+        String payload =
+            """
+                {"kind":"job-api-it-wire-format","sourceRef":"kit/10.0/unauthorized.md","collection":"%s"}
+                """
+                .formatted(COLLECTION.toUpperCase());
 
         mockMvc
             .perform(post("/api/jobs/v1").contentType(MediaType.APPLICATION_JSON).content(payload)
-                .with(SecurityMockMvcRequestPostProcessors.user("other-ingest")
-                    .authorities(new SimpleGrantedAuthority("ROLE_INGEST"),
-                        new SimpleGrantedAuthority("AREA_INGEST_PINGID"))))
+                .with(SecurityMockMvcRequestPostProcessors.user("other-ingest").authorities(
+                    new SimpleGrantedAuthority("ROLE_INGEST"),
+                    new SimpleGrantedAuthority("AREA_INGEST_PINGID"))))
             .andExpect(status().isNotFound());
     }
 
@@ -225,9 +226,9 @@ public class JobApiControllerIT {
             mockMvc
                 .perform(
                     post("/api/jobs/v1").contentType(MediaType.APPLICATION_JSON).content(payload)
-                        .with(SecurityMockMvcRequestPostProcessors.user("ping-ingest")
-                            .authorities(new SimpleGrantedAuthority("ROLE_INGEST"),
-                                new SimpleGrantedAuthority("AREA_INGEST_PINGID"))))
+                        .with(SecurityMockMvcRequestPostProcessors.user("ping-ingest").authorities(
+                            new SimpleGrantedAuthority("ROLE_INGEST"),
+                            new SimpleGrantedAuthority("AREA_INGEST_PINGID"))))
                 .andExpect(status().isNotFound());
         } finally {
             jdbcTemplate.update("DELETE FROM documents WHERE id = ?", oimDocId);

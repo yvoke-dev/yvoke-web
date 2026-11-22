@@ -1,14 +1,12 @@
 package de.palsoftware.yvoke.ingest.core.service;
 
 import de.palsoftware.yvoke.ingest.core.model.Section;
-
-
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.shared.jobengine.model.JobContext;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -19,11 +17,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Service;
 import org.springframework.security.concurrent.DelegatingSecurityContextExecutorService;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import java.sql.Types;
 
 @Service
 public class SectionSummarizer {

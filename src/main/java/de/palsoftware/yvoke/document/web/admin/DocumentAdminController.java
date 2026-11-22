@@ -1,6 +1,5 @@
 package de.palsoftware.yvoke.document.web.admin;
 
-import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.ChunkDetailPage;
@@ -8,14 +7,15 @@ import de.palsoftware.yvoke.document.core.model.DocumentAdminViews.DocumentDetai
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.service.DocumentAdminViewService;
+import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.model.EnqueueResult;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
-import de.palsoftware.yvoke.shared.web.PagingParams;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
+import de.palsoftware.yvoke.shared.web.PagingParams;
 import de.palsoftware.yvoke.tag.core.service.TagService;
 import java.util.ArrayList;
 import java.util.HashMap;

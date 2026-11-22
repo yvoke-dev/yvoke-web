@@ -3,7 +3,12 @@ package de.palsoftware.yvoke.jsonobject.core.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
+import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
+import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -12,19 +17,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.JdbcTemplate;
-import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
-import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
-import de.palsoftware.yvoke.collection.core.model.Collection;
 import org.springframework.dao.DataAccessException;
-import java.util.ArrayList;
-import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
+import org.springframework.jdbc.core.JdbcTemplate;
 
-@SpringBootTest(
-        properties = {
-            "spring.flyway.enabled=true",
-            "spring.flyway.locations=filesystem:docker/db/migration"
-        })
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class JsonObjectRepositoryIT {
 
     private static final String COLLECTION_NAME = "OIM-JSON-TEST";
@@ -47,7 +44,8 @@ public class JsonObjectRepositoryIT {
     public void setUp() {
         cleanup();
         collectionRepository.create(COLLECTION_NAME, "Test Collection", "OIM");
-        collectionId = collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
+        collectionId =
+            collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
     }
 
     @AfterEach
@@ -88,9 +86,9 @@ public class JsonObjectRepositoryIT {
     public void distinctValuesIsSilentlyCappedAtOneHundredAndOnlyEverReadsATopLevelKey() {
         List<JsonObject> objs = new ArrayList<>();
         for (int i = 0; i < 150; i++) {
-            objs.add(new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME,
-                Map.of("category", String.format("cat-%03d", i), "customer",
-                    Map.of("name", "nested-" + i)),
+            objs.add(new JsonObject(
+                UUID.randomUUID(), collectionId, COLLECTION_NAME, Map.of("category",
+                    String.format("cat-%03d", i), "customer", Map.of("name", "nested-" + i)),
                 "bulk.json", OffsetDateTime.now()));
         }
         // A row that simply does not carry the field at all.
@@ -223,12 +221,13 @@ public class JsonObjectRepositoryIT {
      * syntax error, never SQL.
      *
      * <p>
-     * The unit-level sibling ({@code JsonObjectRepositoryGroupByTest#theJsonPathFilterUsesTheIndexableContainmentOperator})
+     * The unit-level sibling
+     * ({@code JsonObjectRepositoryGroupByTest#theJsonPathFilterUsesTheIndexableContainmentOperator})
      * asserts the SQL TEXT contains {@code data @?? :} with a mocked JdbcClient — it proves the
-     * statement is written with a named parameter and nothing about what Postgres then does with the
-     * value, and it would stay green against a database that never sees the query at all. This is
-     * the runtime half. It also pins the deliberate asymmetry: the value is bound, the groupBy field
-     * is REJECTED rather than sanitised, so neither is ever concatenated unchecked.
+     * statement is written with a named parameter and nothing about what Postgres then does with
+     * the value, and it would stay green against a database that never sees the query at all. This
+     * is the runtime half. It also pins the deliberate asymmetry: the value is bound, the groupBy
+     * field is REJECTED rather than sanitised, so neither is ever concatenated unchecked.
      */
     @Test
     public void aJsonPathCarryingSqlMetacharactersIsBoundRatherThanConcatenated() {
@@ -243,37 +242,42 @@ public class JsonObjectRepositoryIT {
 
         String hostilePath = "$.name ? (@ == \"" + hostileValue + "\")";
 
-        List<JsonObject> rows = jsonObjectRepository.queryByJsonPath(collectionId, hostilePath, 10, 0);
+        List<JsonObject> rows =
+            jsonObjectRepository.queryByJsonPath(collectionId, hostilePath, 10, 0);
         assertThat(rows).as("the path reached Postgres as jsonpath text, character for character")
             .hasSize(1);
         assertThat(rows.get(0).data().get("name")).isEqualTo(hostileValue);
 
         assertThat(jsonObjectRepository.countByJsonPath(collectionId, hostilePath))
             .as("the pager binds it the same way, or the page and its count disagree").isEqualTo(1);
-        assertThat(jsonObjectRepository.countGroupedByJsonPath(collectionId, hostilePath, "name",
-            null)).as("the grouped count binds the filter separately from the concatenated field")
-                .containsEntry(hostileValue, 1L);
+        assertThat(
+            jsonObjectRepository.countGroupedByJsonPath(collectionId, hostilePath, "name", null))
+            .as("the grouped count binds the filter separately from the concatenated field")
+            .containsEntry(hostileValue, 1L);
 
-        // A path that is not valid jsonpath fails as a JSONPATH, i.e. it was never SQL. The rows are
+        // A path that is not valid jsonpath fails as a JSONPATH, i.e. it was never SQL. The rows
+        // are
         // still there afterwards: nothing the caller wrote reached the statement.
         assertThatThrownBy(
             () -> jsonObjectRepository.queryByJsonPath(collectionId, "$.name ? (@ == ", 10, 0))
-                .isInstanceOf(DataAccessException.class);
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM json_objects WHERE collection_id = ?", Integer.class, collectionId))
-                .isEqualTo(2);
+            .isInstanceOf(DataAccessException.class);
+        assertThat(
+            jdbcTemplate.queryForObject("SELECT COUNT(*) FROM json_objects WHERE collection_id = ?",
+                Integer.class, collectionId))
+            .isEqualTo(2);
 
         // ...and the one fragment that IS concatenated refuses anything outside the identifier
         // charset instead of silently stripping it into a key no row carries.
         assertThatThrownBy(() -> jsonObjectRepository.countGroupedByJsonPath(collectionId, null,
             "name'; --", null)).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("name'; --");
+            .hasMessageContaining("name'; --");
     }
 
     /**
-     * Re-importing a natural key that already exists at the SAME tag must take {@code updateBatch}'s
-     * UPDATE branch and rewrite THAT row in place — the only path in this repository that overwrites
-     * a stored corpus payload. The failure is silent by construction: {@code
+     * Re-importing a natural key that already exists at the SAME tag must take
+     * {@code updateBatch}'s UPDATE branch and rewrite THAT row in place — the only path in this
+     * repository that overwrites a stored corpus payload. The failure is silent by construction:
+     * {@code
      * JdbcTemplate.batchUpdate} throws nothing when a statement matches zero rows, and {@code
      * JsonObjectService.importObjects} reports the same object count either way, so a
      * parameter-index or WHERE slip leaves the stale payload in place while the ingest job looks
@@ -336,7 +340,8 @@ public class JsonObjectRepositoryIT {
 
     @Test
     public void findIdsByJsonFieldReturnsEmptyForEmptyInput() {
-        assertThat(jsonObjectRepository.findIdsByJsonField(collectionId, "id", List.of())).isEmpty();
+        assertThat(jsonObjectRepository.findIdsByJsonField(collectionId, "id", List.of()))
+            .isEmpty();
     }
 
     @Test
@@ -344,18 +349,21 @@ public class JsonObjectRepositoryIT {
         Map<String, Object> data1 = Map.of("name", "Alice", "age", 30);
         Map<String, Object> data2 = Map.of("name", "Bob", "age", 40);
 
-        JsonObject obj1 = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data1, "users.json", OffsetDateTime.now());
-        JsonObject obj2 = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data2, "users.json", OffsetDateTime.now());
+        JsonObject obj1 = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data1,
+            "users.json", OffsetDateTime.now());
+        JsonObject obj2 = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data2,
+            "users.json", OffsetDateTime.now());
         jsonObjectRepository.saveBatch(List.of(obj1, obj2));
 
         List<JsonObject> objects = jsonObjectRepository.findByCollectionId(collectionId, 10, 0);
         assertThat(objects).hasSize(2);
-        
+
         List<JsonObject> allObjects = jsonObjectRepository.findByCollectionId(collectionId, 10, 0);
         assertThat(allObjects).hasSize(2);
 
         // find by json path
-        List<JsonObject> bobs = jsonObjectRepository.queryByJsonPath(collectionId, "$.name ? (@ == \"Bob\")", 10, 0);
+        List<JsonObject> bobs =
+            jsonObjectRepository.queryByJsonPath(collectionId, "$.name ? (@ == \"Bob\")", 10, 0);
         assertThat(bobs).hasSize(1);
         assertThat(bobs.get(0).data().get("name")).isEqualTo("Bob");
     }
@@ -363,7 +371,8 @@ public class JsonObjectRepositoryIT {
     @Test
     public void testFindById() {
         Map<String, Object> data = Map.of("key", "value");
-        JsonObject obj = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data, "test.json", OffsetDateTime.now());
+        JsonObject obj = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data,
+            "test.json", OffsetDateTime.now());
         jsonObjectRepository.save(obj);
 
         List<JsonObject> objects = jsonObjectRepository.findByCollectionId(collectionId, 1, 0);
@@ -377,7 +386,8 @@ public class JsonObjectRepositoryIT {
     @Test
     public void testDeleteByCollectionId() {
         Map<String, Object> data = Map.of("key", "value");
-        JsonObject obj = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data, "test.json", OffsetDateTime.now());
+        JsonObject obj = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data,
+            "test.json", OffsetDateTime.now());
         jsonObjectRepository.save(obj);
 
         jsonObjectRepository.deleteByCollectionId(collectionId);
@@ -387,11 +397,11 @@ public class JsonObjectRepositoryIT {
     }
 
     /**
-     * The free-text count must apply the SAME tag scope as the page it counts. Nothing pairs the two
-     * queries — {@code countSearch} and {@code search} build their predicates independently — and a
-     * count that has dropped the tag filter still returns a perfectly plausible number. The admin
-     * corpus browser derives its total-page count from it, so a tag-blind count renders page links
-     * into another product version's rows and an empty final page. Worse,
+     * The free-text count must apply the SAME tag scope as the page it counts. Nothing pairs the
+     * two queries — {@code countSearch} and {@code search} build their predicates independently —
+     * and a count that has dropped the tag filter still returns a perfectly plausible number. The
+     * admin corpus browser derives its total-page count from it, so a tag-blind count renders page
+     * links into another product version's rows and an empty final page. Worse,
      * {@code JsonObjectService.countSearchObjects} feeds the MCP count-only answer, where the model
      * is told "N objects match" for a release scope it believes it asked about — a number an agent
      * will quote verbatim into an answer, with no way to notice it is the corpus-wide total.
@@ -434,12 +444,15 @@ public class JsonObjectRepositoryIT {
         Map<String, Object> data1 = Map.of("name", "TaggedAlice");
         Map<String, Object> data2 = Map.of("name", "UntaggedBob");
 
-        JsonObject obj1 = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data1, "tagged.json", List.of("v1", "release"), OffsetDateTime.now());
-        JsonObject obj2 = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data2, "untagged.json", List.of("v2"), OffsetDateTime.now());
+        JsonObject obj1 = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data1,
+            "tagged.json", List.of("v1", "release"), OffsetDateTime.now());
+        JsonObject obj2 = new JsonObject(UUID.randomUUID(), collectionId, COLLECTION_NAME, data2,
+            "untagged.json", List.of("v2"), OffsetDateTime.now());
         jsonObjectRepository.saveBatch(List.of(obj1, obj2));
 
         // 1. Find all in collection with tag 'release'
-        List<JsonObject> found = jsonObjectRepository.findByCollectionId(collectionId, List.of("release"), 10, 0);
+        List<JsonObject> found =
+            jsonObjectRepository.findByCollectionId(collectionId, List.of("release"), 10, 0);
         assertThat(found).hasSize(1);
         assertThat(found.get(0).data().get("name")).isEqualTo("TaggedAlice");
         assertThat(found.get(0).tags()).contains("v1", "release");
@@ -449,17 +462,21 @@ public class JsonObjectRepositoryIT {
         assertThat(count).isEqualTo(1);
 
         // 3. Search text with tag 'v2'
-        List<JsonObject> searchResults = jsonObjectRepository.search(collectionId, "UntaggedBob", List.of("v2"), 10, 0);
+        List<JsonObject> searchResults =
+            jsonObjectRepository.search(collectionId, "UntaggedBob", List.of("v2"), 10, 0);
         assertThat(searchResults).hasSize(1);
 
-        List<JsonObject> searchResultsWrongTag = jsonObjectRepository.search(collectionId, "UntaggedBob", List.of("release"), 10, 0);
+        List<JsonObject> searchResultsWrongTag =
+            jsonObjectRepository.search(collectionId, "UntaggedBob", List.of("release"), 10, 0);
         assertThat(searchResultsWrongTag).isEmpty();
 
         // 4. Query JSON path with tag 'release'
-        List<JsonObject> pathResults = jsonObjectRepository.queryByJsonPath(collectionId, "$.name ? (@ == \"TaggedAlice\")", List.of("release"), 10, 0);
+        List<JsonObject> pathResults = jsonObjectRepository.queryByJsonPath(collectionId,
+            "$.name ? (@ == \"TaggedAlice\")", List.of("release"), 10, 0);
         assertThat(pathResults).hasSize(1);
-        
-        List<JsonObject> pathResultsWrongTag = jsonObjectRepository.queryByJsonPath(collectionId, "$.name ? (@ == \"TaggedAlice\")", List.of("v2"), 10, 0);
+
+        List<JsonObject> pathResultsWrongTag = jsonObjectRepository.queryByJsonPath(collectionId,
+            "$.name ? (@ == \"TaggedAlice\")", List.of("v2"), 10, 0);
         assertThat(pathResultsWrongTag).isEmpty();
     }
 

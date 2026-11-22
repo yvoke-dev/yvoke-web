@@ -1,18 +1,17 @@
 package de.palsoftware.yvoke.document.core.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.when;
+
 import de.palsoftware.yvoke.document.core.model.ChunkPathRow;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
 import de.palsoftware.yvoke.document.core.model.SectionResponse;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.when;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.time.Instant;
 import java.util.*;
 import org.junit.jupiter.api.BeforeEach;

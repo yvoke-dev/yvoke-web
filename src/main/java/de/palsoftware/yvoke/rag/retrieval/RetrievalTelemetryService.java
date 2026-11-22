@@ -1,6 +1,8 @@
 package de.palsoftware.yvoke.rag.retrieval;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
 import jakarta.annotation.PreDestroy;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -10,9 +12,6 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-
-import de.palsoftware.yvoke.collection.core.model.Collection;
-import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
 
 @Service
 public class RetrievalTelemetryService {

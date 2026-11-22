@@ -1,13 +1,9 @@
 package de.palsoftware.yvoke.kg.core.repository;
 
-import de.palsoftware.yvoke.shared.config.JdbcMappers;
-
 import de.palsoftware.yvoke.kg.core.model.KgWalk;
-
-
+import de.palsoftware.yvoke.shared.config.JdbcMappers;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Collections;
 import java.util.List;
 import org.springframework.jdbc.core.RowMapper;
 

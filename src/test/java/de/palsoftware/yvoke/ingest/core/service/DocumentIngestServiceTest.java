@@ -1,21 +1,25 @@
 package de.palsoftware.yvoke.ingest.core.service;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.palsoftware.yvoke.document.core.model.ChunkInsert;
+import de.palsoftware.yvoke.document.core.model.ChunkKgStatus;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.ingest.core.UploadPathGuard;
+import de.palsoftware.yvoke.ingest.core.model.MarkdownTree;
+import de.palsoftware.yvoke.ingest.core.model.Section;
 import de.palsoftware.yvoke.kg.core.model.KgExtractionResult;
 import de.palsoftware.yvoke.kg.core.model.KgExtractionResult.ExtractedEntity;
 import de.palsoftware.yvoke.kg.core.model.KgExtractionResult.ExtractedRelationship;
@@ -25,14 +29,13 @@ import de.palsoftware.yvoke.kg.core.repository.KgWriteRepository.RelationshipUps
 import de.palsoftware.yvoke.kg.core.service.DocumentKgExtractor;
 import de.palsoftware.yvoke.kg.core.service.KgConsolidator;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
-import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
+import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
 import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
 import de.palsoftware.yvoke.shared.jobengine.model.JobContext;
 import de.palsoftware.yvoke.shared.jobengine.model.JobCounts;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStatus;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,18 +43,14 @@ import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
-import de.palsoftware.yvoke.document.core.model.ChunkInsert;
-import de.palsoftware.yvoke.ingest.core.model.MarkdownTree;
-import de.palsoftware.yvoke.ingest.core.model.Section;
-import de.palsoftware.yvoke.document.core.model.ChunkKgStatus;
 
 /**
  * Graph-persistence rules of the LLM-extracted (manual/document) ingest path. Kinds are mandatory

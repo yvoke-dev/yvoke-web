@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import de.palsoftware.yvoke.kg.core.repository.KgWriteRepository;
 import java.util.UUID;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,12 +20,11 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import org.hamcrest.Matchers;
 
 /**
- * Full Thymeleaf render coverage for the KG admin pages after the DTO-at-boundary refactor
- * (Wave 3.3): the overview (scopes), browse/search (entity list with the derived {@code displayTag})
- * and the active-entity panel (relationships + neighborhood + metadata). A missing accessor on a
+ * Full Thymeleaf render coverage for the KG admin pages after the DTO-at-boundary refactor (Wave
+ * 3.3): the overview (scopes), browse/search (entity list with the derived {@code displayTag}) and
+ * the active-entity panel (relationships + neighborhood + metadata). A missing accessor on a
  * per-view DTO would throw during rendering and surface as a 500.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
@@ -60,7 +60,8 @@ public class KgAdminRenderingIT {
 
         UUID subjectId = kgRepository.upsertEntity(COLLECTION, TAG, "OAuth Module", "module",
             "Handles OAuth flows.");
-        UUID objectId = kgRepository.upsertEntity(COLLECTION, TAG, "OIM", "product", "The product.");
+        UUID objectId =
+            kgRepository.upsertEntity(COLLECTION, TAG, "OIM", "product", "The product.");
         kgRepository.upsertRelationship(COLLECTION, TAG, "OAuth Module", "depends_on", "OIM",
             subjectId, objectId, "OAuth relies on OIM.");
     }
@@ -79,15 +80,19 @@ public class KgAdminRenderingIT {
 
     @Test
     public void browseRendersEntityDtosWithDisplayTag() throws Exception {
-        mockMvc.perform(get("/admin/kg/view").param("collection", COLLECTION).param("tag", TAG)
-                .with(admin())).andExpect(status().isOk())
+        mockMvc
+            .perform(get("/admin/kg/view").param("collection", COLLECTION).param("tag", TAG)
+                .with(admin()))
+            .andExpect(status().isOk())
             .andExpect(content().string(Matchers.containsString("OAuth Module")));
     }
 
     @Test
     public void activeEntityPanelRendersRelationshipAndEntityDtos() throws Exception {
-        mockMvc.perform(get("/admin/kg/view").param("collection", COLLECTION).param("tag", TAG)
-                .param("selectedEntity", "OAuth Module").with(admin())).andExpect(status().isOk())
+        mockMvc
+            .perform(get("/admin/kg/view").param("collection", COLLECTION).param("tag", TAG)
+                .param("selectedEntity", "OAuth Module").with(admin()))
+            .andExpect(status().isOk())
             .andExpect(content().string(Matchers.containsString("Handles OAuth flows.")));
     }
 }

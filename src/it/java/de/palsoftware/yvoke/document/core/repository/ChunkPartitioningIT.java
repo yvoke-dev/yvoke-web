@@ -18,8 +18,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * Verifies the V11 chunks partitioning: partition pruning for collection-scoped searches,
- * collection-local BM25 statistics (the point of partitioning), literal-tokenizer tag
- * matching, trigger-managed partition lifecycle, and strict collection resolution.
+ * collection-local BM25 statistics (the point of partitioning), literal-tokenizer tag matching,
+ * trigger-managed partition lifecycle, and strict collection resolution.
  */
 @SpringBootTest
 public class ChunkPartitioningIT {
@@ -48,10 +48,11 @@ public class ChunkPartitioningIT {
 
         smallCollectionId = UUID.randomUUID();
         largeCollectionId = UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['long term support']::TEXT[])",
+        jdbcTemplate.update(
+            "INSERT INTO collections (id, name, tags) VALUES (?, ?, ARRAY['long term support']::TEXT[])",
             smallCollectionId, SMALL_COLLECTION);
-        jdbcTemplate.update("INSERT INTO collections (id, name) VALUES (?, ?)",
-            largeCollectionId, LARGE_COLLECTION);
+        jdbcTemplate.update("INSERT INTO collections (id, name) VALUES (?, ?)", largeCollectionId,
+            LARGE_COLLECTION);
 
         seedCollection(smallCollectionId, "small.md", 3);
         seedCollection(largeCollectionId, "large.md", 150);
@@ -67,8 +68,8 @@ public class ChunkPartitioningIT {
     }
 
     private void cleanup() {
-        jdbcTemplate.update(
-            "DELETE FROM collections WHERE name IN (?, ?)", SMALL_COLLECTION, LARGE_COLLECTION);
+        jdbcTemplate.update("DELETE FROM collections WHERE name IN (?, ?)", SMALL_COLLECTION,
+            LARGE_COLLECTION);
     }
 
     /** One sentinel chunk (tagged 'long term support') plus fillerCount filler chunks. */
@@ -101,11 +102,10 @@ public class ChunkPartitioningIT {
 
     @Test
     public void testCollectionScopedSearchPrunesToSinglePartition() {
-        List<String> planLines = jdbcTemplate.queryForList(
-            "EXPLAIN SELECT ch.id, pdb.score(ch.id) FROM chunks ch "
+        List<String> planLines =
+            jdbcTemplate.queryForList("EXPLAIN SELECT ch.id, pdb.score(ch.id) FROM chunks ch "
                 + "WHERE ch.text ||| 'identity' AND ch.collection_id = '" + smallCollectionId + "' "
-                + "ORDER BY pdb.score(ch.id) DESC LIMIT 5",
-            String.class);
+                + "ORDER BY pdb.score(ch.id) DESC LIMIT 5", String.class);
         String plan = String.join("\n", planLines);
 
         assertThat(plan).contains(partitionName(smallCollectionId));
@@ -122,11 +122,9 @@ public class ChunkPartitioningIT {
 
         assertThat(smallScore).isGreaterThan(0.0);
         assertThat(largeScore).isGreaterThan(0.0);
-        assertThat(largeScore)
-            .withFailMessage(
-                "Sentinel in the large collection should out-IDF the small one (local stats): small=%s large=%s",
-                smallScore, largeScore)
-            .isGreaterThan(smallScore * 1.5);
+        assertThat(largeScore).withFailMessage(
+            "Sentinel in the large collection should out-IDF the small one (local stats): small=%s large=%s",
+            smallScore, largeScore).isGreaterThan(smallScore * 1.5);
     }
 
     private double scoreSentinel(String collection) {
@@ -140,12 +138,12 @@ public class ChunkPartitioningIT {
     public void testTagFilterMatchesExactLiteralTag() {
         // 'long term support' is a multi-word tag: the literal tokenizer indexes it as one
         // exact token, so the full tag value matches and a sub-word does not.
-        List<ChunkRow> exact = chunkRepository.findFulltextCandidates(
-            SENTINEL, 5, 0, List.of("long term support"), List.of(SMALL_COLLECTION));
+        List<ChunkRow> exact = chunkRepository.findFulltextCandidates(SENTINEL, 5, 0,
+            List.of("long term support"), List.of(SMALL_COLLECTION));
         assertThat(exact).hasSize(1);
 
-        List<ChunkRow> subWord = chunkRepository.findFulltextCandidates(
-            SENTINEL, 5, 0, List.of("term"), List.of(SMALL_COLLECTION));
+        List<ChunkRow> subWord = chunkRepository.findFulltextCandidates(SENTINEL, 5, 0,
+            List.of("term"), List.of(SMALL_COLLECTION));
         assertThat(subWord).isEmpty();
     }
 
@@ -157,17 +155,17 @@ public class ChunkPartitioningIT {
         jdbcTemplate.update("DELETE FROM collections WHERE id = ?", smallCollectionId);
 
         assertThat(tableExists(partition)).isFalse();
-        Integer remaining = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM chunks WHERE collection_id = ?", Integer.class, smallCollectionId);
+        Integer remaining =
+            jdbcTemplate.queryForObject("SELECT COUNT(*) FROM chunks WHERE collection_id = ?",
+                Integer.class, smallCollectionId);
         assertThat(remaining).isZero();
     }
 
     @Test
     public void testUnknownCollectionIsRejectedInsteadOfAutoCreated() {
-        assertThatThrownBy(() -> jobRepository.enqueue(new EnqueueRequest(
-                "manual-zip", "some/file.zip", List.of(), "NO-SUCH-COLLECTION", Map.of())))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("does not exist");
+        assertThatThrownBy(() -> jobRepository.enqueue(new EnqueueRequest("manual-zip",
+            "some/file.zip", List.of(), "NO-SUCH-COLLECTION", Map.of())))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("does not exist");
 
         Integer created = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM collections WHERE name = 'NO-SUCH-COLLECTION'", Integer.class);

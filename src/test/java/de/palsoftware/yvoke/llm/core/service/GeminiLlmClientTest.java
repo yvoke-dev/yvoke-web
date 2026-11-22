@@ -13,21 +13,21 @@ import com.google.genai.types.ThinkingLevel;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import de.palsoftware.yvoke.llm.core.model.LlmCallFailedException;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmPart;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponse;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
 import de.palsoftware.yvoke.llm.core.model.LlmTool;
-import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import de.palsoftware.yvoke.llm.core.model.LlmToolCall;
+import de.palsoftware.yvoke.llm.core.model.LlmUsage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -35,8 +35,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import java.util.ArrayList;
-import de.palsoftware.yvoke.llm.core.model.LlmCallFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Timeout(60)
 class GeminiLlmClientTest {

@@ -2,14 +2,14 @@ package de.palsoftware.yvoke.mcp;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
-import java.util.Map;
-import org.junit.jupiter.api.Test;
 import de.palsoftware.yvoke.rag.core.model.SeenChunks;
 import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.TelemetryInfo;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 /**
  * Markdown table cells are clipped so one long value cannot blow up a whole tool result. The clip

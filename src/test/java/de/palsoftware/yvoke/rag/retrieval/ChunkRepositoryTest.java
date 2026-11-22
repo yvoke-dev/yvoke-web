@@ -2,30 +2,29 @@ package de.palsoftware.yvoke.rag.retrieval;
 
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.ChunkRowMapper;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.sql.Array;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.*;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import java.sql.Array;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import org.junit.jupiter.api.Assertions;
 
 public class ChunkRepositoryTest {
 

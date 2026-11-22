@@ -1,39 +1,38 @@
 package de.palsoftware.yvoke.ingest.worker;
 
-import java.util.Map;
-import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
-import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
-import de.palsoftware.yvoke.shared.jobengine.model.*;
-import de.palsoftware.yvoke.shared.jobengine.service.*;
-import de.palsoftware.yvoke.shared.jobengine.repository.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import de.palsoftware.yvoke.document.core.model.*;
 import de.palsoftware.yvoke.document.core.service.*;
-import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
-import org.awaitility.Awaitility;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import de.palsoftware.yvoke.ingest.core.model.IngestJobKind;
+import de.palsoftware.yvoke.ingest.core.service.IngestPrompts;
 import de.palsoftware.yvoke.llm.core.model.*;
 import de.palsoftware.yvoke.llm.core.service.*;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.annotation.DirtiesContext;
-
+import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
+import de.palsoftware.yvoke.shared.jobengine.model.*;
+import de.palsoftware.yvoke.shared.jobengine.repository.*;
+import de.palsoftware.yvoke.shared.jobengine.service.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
+import java.util.Map;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 
 @SpringBootTest(properties = {"spring.flyway.enabled=true",
@@ -97,12 +96,14 @@ public class HierarchicalDocumentJobHandlerIT {
             COLLECTION, "Hierarchical test collection", new String[] {VERSION});
         // Prompts are required job settings now, so the rows the jobs name must exist -- exactly
         // as in a real deployment, where an operator picks them from a list of registered prompts.
-        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt)"
-            + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING", "it-kg", "KG",
-            "Return STRICT JSON only.");
-        jdbcTemplate.update("INSERT INTO system_prompts (name, type, system_prompt)"
-            + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING", "it-summarize", "SUMMARIZE",
-            "Write a concise summary.");
+        jdbcTemplate.update(
+            "INSERT INTO system_prompts (name, type, system_prompt)"
+                + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING",
+            "it-kg", "KG", "Return STRICT JSON only.");
+        jdbcTemplate.update(
+            "INSERT INTO system_prompts (name, type, system_prompt)"
+                + " VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING",
+            "it-summarize", "SUMMARIZE", "Write a concise summary.");
 
         manualPath = tempDir.resolve("hierarchical_guide.md");
         Files.writeString(manualPath, MARKDOWN, StandardCharsets.UTF_8);

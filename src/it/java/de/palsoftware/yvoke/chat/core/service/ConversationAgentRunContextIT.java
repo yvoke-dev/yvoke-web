@@ -1,6 +1,10 @@
 package de.palsoftware.yvoke.chat.core.service;
 
-import de.palsoftware.yvoke.chat.core.model.Conversation;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.when;
+
 import de.palsoftware.yvoke.chat.core.model.Message;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.MessageRepository;
@@ -8,6 +12,8 @@ import de.palsoftware.yvoke.chat.orchestration.OrchestrationService;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfile;
 import de.palsoftware.yvoke.chat.orchestration.OrchestratorProfileRepository;
 import de.palsoftware.yvoke.chat.web.PlaybookValidationController;
+import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
+import de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponse;
 import de.palsoftware.yvoke.llm.core.model.LlmResponseChunk;
@@ -18,35 +24,25 @@ import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.rag.retrieval.EmbeddingService;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
-import java.time.Duration;
 import org.awaitility.Awaitility;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.when;
-import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
-import de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-@SpringBootTest(properties = {
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=filesystem:docker/db/migration"
-})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 @WithMockUser(username = "conv-context-user", authorities = {"ROLE_USER", "AREA_USER_OIM"})
 public class ConversationAgentRunContextIT {
 
@@ -101,31 +97,32 @@ public class ConversationAgentRunContextIT {
         doAnswer(inv -> {
             @SuppressWarnings("unchecked")
             Consumer<LlmResponseChunk> cb = inv.getArgument(1);
-            cb.accept(new LlmResponseChunk("Hello from mocked LLM", null, null, new LlmUsage(50, 25, 75, 0, 0)));
+            cb.accept(new LlmResponseChunk("Hello from mocked LLM", null, null,
+                new LlmUsage(50, 25, 75, 0, 0)));
             LlmCallContextHolder.Context ctx = LlmCallContextHolder.get();
             if (ctx != null && eventPublisher != null) {
-                eventPublisher.publishEvent(new LlmCallLoggedEvent(
-                    ctx.conversationId(), ctx.messageId(), ctx.agentRunId(), ctx.userId(),
-                    "embedding", "embedding", "voyage-4-large", 15, 0, 0, 0
-                ));
+                eventPublisher.publishEvent(
+                    new LlmCallLoggedEvent(ctx.conversationId(), ctx.messageId(), ctx.agentRunId(),
+                        ctx.userId(), "embedding", "embedding", "voyage-4-large", 15, 0, 0, 0));
             }
             return null;
         }).when(llmClient).generateStream(any(LlmRequest.class), any());
 
         // Stub llmClient.generate for playbook validation
-        when(llmClient.generate(any(LlmRequest.class))).thenReturn(
-            new LlmResponse("{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}",
-                new LlmUsage(100, 20, 120, 0, 0))
-        );
+        when(llmClient.generate(any(LlmRequest.class))).thenReturn(new LlmResponse(
+            "{\"plausible\": true, \"reason\": \"\", \"suggestedPlaybookName\": null}",
+            new LlmUsage(100, 20, 120, 0, 0)));
 
-        playbookService.savePlaybook("oim-orch", "OIM Orchestrator", "", "Orchestrator prompt", List.of(), false, "specialist", false, "OIM", 1);
-        playbookService.savePlaybook("oim-rev", "OIM Reviewer", "", "Reviewer prompt", List.of(), false, "specialist", false, "OIM", 1);
-        playbookService.savePlaybook("oim-spec", "OIM Specialist", "", "Specialist prompt", List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("oim-orch", "OIM Orchestrator", "", "Orchestrator prompt",
+            List.of(), false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("oim-rev", "OIM Reviewer", "", "Reviewer prompt", List.of(),
+            false, "specialist", false, "OIM", 1);
+        playbookService.savePlaybook("oim-spec", "OIM Specialist", "", "Specialist prompt",
+            List.of(), false, "specialist", false, "OIM", 1);
 
-        orchestratorProfileRepository.upsert(new OrchestratorProfile(
-            "oim", 2, 5, "oim-orch", "oim-rev", List.of("oim-spec"),
-            "gemini-2.5-pro", "high", "gemini-2.5-pro", "high", "gemini-2.5-flash", "medium", false, null, null
-        ).withArea("OIM"));
+        orchestratorProfileRepository.upsert(new OrchestratorProfile("oim", 2, 5, "oim-orch",
+            "oim-rev", List.of("oim-spec"), "gemini-2.5-pro", "high", "gemini-2.5-pro", "high",
+            "gemini-2.5-flash", "medium", false, null, null).withArea("OIM"));
     }
 
     @Test
@@ -143,20 +140,15 @@ public class ConversationAgentRunContextIT {
         chatMessageService.generateSync(prepared, assistantMessageId);
 
         List<Map<String, Object>> logs = jdbcClient.sql("""
-            SELECT conversation_id, message_id, user_id, source, role, model, total_tokens
-            FROM llm_call_logs
-            WHERE conversation_id = :cid
-        """)
-        .param("cid", convId)
-        .query()
-        .listOfRows();
+                SELECT conversation_id, message_id, user_id, source, role, model, total_tokens
+                FROM llm_call_logs
+                WHERE conversation_id = :cid
+            """).param("cid", convId).query().listOfRows();
 
         assertThat(logs).isNotEmpty();
 
-        Map<String, Object> logRow = logs.stream()
-            .filter(r -> "chat".equals(r.get("source")))
-            .findFirst()
-            .orElseThrow();
+        Map<String, Object> logRow =
+            logs.stream().filter(r -> "chat".equals(r.get("source"))).findFirst().orElseThrow();
 
         assertThat(logRow.get("conversation_id")).isEqualTo(convId);
         assertThat(logRow.get("message_id")).isEqualTo(prepared.userMessageId());
@@ -168,23 +160,21 @@ public class ConversationAgentRunContextIT {
     @Test
     void testChatMessageService_stream_logsCallAndEmbeddingWithFullContext() {
         UUID convId = UUID.randomUUID();
-        conversationRepository.create(convId, testUser.id(), "Stream Chat Conv", Map.of("model", "gemini-2.5-flash"));
+        conversationRepository.create(convId, testUser.id(), "Stream Chat Conv",
+            Map.of("model", "gemini-2.5-flash"));
 
-        ChatMessageService.PreparedChat prepared = chatMessageService.prepare(
-            convId, "What is the system status?", "oim-orch"
-        );
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(convId, "What is the system status?", "oim-orch");
 
         UUID assistantMessageId = UUID.randomUUID();
-        chatMessageService.stream(prepared, assistantMessageId, token -> {});
+        chatMessageService.stream(prepared, assistantMessageId, token -> {
+        });
 
         List<Map<String, Object>> logs = jdbcClient.sql("""
-            SELECT conversation_id, message_id, user_id, source, role, model
-            FROM llm_call_logs
-            WHERE conversation_id = :cid
-        """)
-        .param("cid", convId)
-        .query()
-        .listOfRows();
+                SELECT conversation_id, message_id, user_id, source, role, model
+                FROM llm_call_logs
+                WHERE conversation_id = :cid
+            """).param("cid", convId).query().listOfRows();
 
         assertThat(logs).hasSizeGreaterThanOrEqualTo(2);
 
@@ -229,24 +219,20 @@ public class ConversationAgentRunContextIT {
         // attribution rule is a deliberate choice, not something the database enforces.
         assertThat(messageRepository.findById(assistantMessageId)).isPresent();
 
-        Awaitility.await().atMost(Duration.ofSeconds(30))
-            .untilAsserted(() -> assertThat(
-                messageRepository.findById(assistantMessageId).orElseThrow().status())
-                    .as("the background generation never completed").isEqualTo("done"));
+        Awaitility.await().atMost(Duration.ofSeconds(30)).untilAsserted(
+            () -> assertThat(messageRepository.findById(assistantMessageId).orElseThrow().status())
+                .as("the background generation never completed").isEqualTo("done"));
 
-        UUID userMessageId = jdbcClient
-            .sql("SELECT id FROM messages WHERE conversation_id = :cid AND role = 'user'")
-            .param("cid", convId).query(UUID.class).single();
+        UUID userMessageId =
+            jdbcClient.sql("SELECT id FROM messages WHERE conversation_id = :cid AND role = 'user'")
+                .param("cid", convId).query(UUID.class).single();
         assertThat(userMessageId).isNotEqualTo(assistantMessageId);
 
         List<Map<String, Object>> logs = jdbcClient.sql("""
-            SELECT message_id, user_id, source, role
-            FROM llm_call_logs
-            WHERE conversation_id = :cid AND source = 'chat'
-        """)
-        .param("cid", convId)
-        .query()
-        .listOfRows();
+                SELECT message_id, user_id, source, role
+                FROM llm_call_logs
+                WHERE conversation_id = :cid AND source = 'chat'
+            """).param("cid", convId).query().listOfRows();
 
         assertThat(logs).as("the async turn logged no LLM spend at all").isNotEmpty();
         for (Map<String, Object> logRow : logs) {
@@ -265,20 +251,17 @@ public class ConversationAgentRunContextIT {
 
         UUID agentRunId = UUID.randomUUID();
         UUID userMessageId = UUID.randomUUID();
-        messageRepository.save(new Message(userMessageId, convId, "user", "Analyze system logs", null, Collections.emptyList(), Collections.emptyList(), Instant.now()));
+        messageRepository.save(new Message(userMessageId, convId, "user", "Analyze system logs",
+            null, Collections.emptyList(), Collections.emptyList(), Instant.now()));
 
         orchestrationService.runOrchestration(convId, userMessageId, "Analyze system logs",
             Collections.emptyList(), agentRunId, "oim", AgenticChatContext.ALL_AREAS);
 
         List<Map<String, Object>> logs = jdbcClient.sql("""
-            SELECT conversation_id, message_id, agent_run_id, user_id, source, role, model
-            FROM llm_call_logs
-            WHERE conversation_id = :cid AND agent_run_id = :runId AND source = 'orchestrator'
-        """)
-        .param("cid", convId)
-        .param("runId", agentRunId)
-        .query()
-        .listOfRows();
+                SELECT conversation_id, message_id, agent_run_id, user_id, source, role, model
+                FROM llm_call_logs
+                WHERE conversation_id = :cid AND agent_run_id = :runId AND source = 'orchestrator'
+            """).param("cid", convId).param("runId", agentRunId).query().listOfRows();
 
         assertThat(logs).isNotEmpty();
 
@@ -296,16 +279,14 @@ public class ConversationAgentRunContextIT {
         UUID convId = UUID.randomUUID();
         conversationRepository.create(convId, testUser.id(), "Validation Conv", Map.of());
 
-        playbookValidationController.validatePlaybook(convId, "Can I request access?", "oim-access-governance");
+        playbookValidationController.validatePlaybook(convId, "Can I request access?",
+            "oim-access-governance");
 
         List<Map<String, Object>> logs = jdbcClient.sql("""
-            SELECT conversation_id, user_id, source, role
-            FROM llm_call_logs
-            WHERE conversation_id = :cid AND source = 'playbook_validator'
-        """)
-        .param("cid", convId)
-        .query()
-        .listOfRows();
+                SELECT conversation_id, user_id, source, role
+                FROM llm_call_logs
+                WHERE conversation_id = :cid AND source = 'playbook_validator'
+            """).param("cid", convId).query().listOfRows();
 
         assertThat(logs).hasSize(1);
         Map<String, Object> logRow = logs.get(0);
@@ -325,19 +306,17 @@ public class ConversationAgentRunContextIT {
             "Access governance prompt", List.of(), false, "specialist", false, "OIM", 1);
 
         UUID assistantMessageId = UUID.randomUUID();
-        ChatMessageService.PreparedChat prepared = chatMessageService.prepare(convId,
-            "What is attestation?", "oim-access-governance");
-        chatMessageService.stream(prepared, assistantMessageId, token -> {});
+        ChatMessageService.PreparedChat prepared =
+            chatMessageService.prepare(convId, "What is attestation?", "oim-access-governance");
+        chatMessageService.stream(prepared, assistantMessageId, token -> {
+        });
 
-        CostCalculationService.FilteredCostExplorerReport report = costCalculationService.getFilteredExplorerReport(
-            "MESSAGE", null, null, null, null, null, null
-        );
+        CostCalculationService.FilteredCostExplorerReport report = costCalculationService
+            .getFilteredExplorerReport("MESSAGE", null, null, null, null, null, null);
 
         assertThat(report.messages()).isNotEmpty();
         CostCalculationService.FilteredMessageRow row = report.messages().stream()
-            .filter(r -> convId.equals(r.conversationId()))
-            .findFirst()
-            .orElseThrow();
+            .filter(r -> convId.equals(r.conversationId())).findFirst().orElseThrow();
 
         assertThat(row.userName()).isEqualTo(testUser.displayName());
         assertThat(row.playbook()).isEqualTo("oim-access-governance");

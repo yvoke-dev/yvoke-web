@@ -25,4 +25,3 @@ Object current=data;for(String token:tokens){if(token.isBlank()){continue;}if(cu
 if(current instanceof Map<?,?>map){Object next=map.get(token);if(next==null){for(Map.Entry<?,?>entry:map.entrySet()){if(entry.getKey()!=null&&entry.getKey().toString().equalsIgnoreCase(token)){next=entry.getValue();break;}}}current=next;}else if(current instanceof List<?>list){try{int index=Integer.parseInt(token);if(index>=0&&index<list.size()){current=list.get(index);}else{return null;}}catch(NumberFormatException e){return null;}}else{return null;}}
 
 if(current==null){return null;}return current.toString();}}
-

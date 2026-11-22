@@ -5,12 +5,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.palsoftware.yvoke.chat.core.model.ModelPricing;
 import de.palsoftware.yvoke.chat.core.repository.CostQueryRepository;
 import de.palsoftware.yvoke.chat.core.repository.ModelPricingRepository;
 import de.palsoftware.yvoke.chat.core.service.CostCalculationService.OverviewReport;
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;

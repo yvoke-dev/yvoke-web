@@ -1,18 +1,20 @@
 package de.palsoftware.yvoke.shared.user.service;
 
-import de.palsoftware.yvoke.shared.user.model.*;
-import de.palsoftware.yvoke.shared.user.repository.*;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.palsoftware.yvoke.shared.user.model.*;
+import de.palsoftware.yvoke.shared.user.repository.*;
+import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
@@ -23,9 +25,6 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
-import org.mockito.ArgumentCaptor;
-import java.time.Instant;
-import java.util.UUID;
 
 public class UserServiceTest {
 

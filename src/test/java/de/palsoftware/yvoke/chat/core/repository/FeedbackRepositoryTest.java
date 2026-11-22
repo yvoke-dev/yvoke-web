@@ -1,19 +1,18 @@
 package de.palsoftware.yvoke.chat.core.repository;
 
-import de.palsoftware.yvoke.chat.core.model.Feedback;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+import de.palsoftware.yvoke.chat.core.model.Feedback;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.junit.jupiter.api.Assertions;
 
 public class FeedbackRepositoryTest {
 

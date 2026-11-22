@@ -1,5 +1,7 @@
 package de.palsoftware.yvoke.rag.retrieval;
 
+import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
+import de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -7,16 +9,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-
-import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
-import de.palsoftware.yvoke.llm.core.event.LlmCallLoggedEvent;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 
 @Service
 public class EmbeddingService implements EmbeddingModel {

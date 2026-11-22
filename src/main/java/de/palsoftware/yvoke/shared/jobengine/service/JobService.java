@@ -3,7 +3,6 @@ package de.palsoftware.yvoke.shared.jobengine.service;
 import de.palsoftware.yvoke.shared.jobengine.*;
 import de.palsoftware.yvoke.shared.jobengine.model.*;
 import de.palsoftware.yvoke.shared.jobengine.repository.*;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;

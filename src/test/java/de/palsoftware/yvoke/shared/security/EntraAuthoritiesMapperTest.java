@@ -4,25 +4,25 @@ package de.palsoftware.yvoke.shared.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.palsoftware.yvoke.shared.user.service.UserService;
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.core.oidc.OidcIdToken;
 import org.springframework.security.oauth2.core.oidc.OidcUserInfo;
 import org.springframework.security.oauth2.core.oidc.user.OidcUserAuthority;
-import java.util.stream.Collectors;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import de.palsoftware.yvoke.shared.user.service.UserService;
-import java.lang.reflect.Method;
-import org.mockito.Mockito;
-import org.springframework.mock.env.MockEnvironment;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 
 public class EntraAuthoritiesMapperTest {
 

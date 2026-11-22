@@ -1,6 +1,8 @@
 package de.palsoftware.yvoke.chat.core.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.entry;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -23,16 +25,14 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
-import static org.assertj.core.api.Assertions.entry;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
-import org.mockito.ArgumentMatchers;
 
 public class ChatConversationServiceTest {
     private ConversationRepository conversationRepository;
@@ -686,4 +686,3 @@ public class ChatConversationServiceTest {
         assertThat(chatConversationService.canViewFeedback(convId)).isFalse();
     }
 }
-

@@ -1,35 +1,35 @@
 package de.palsoftware.yvoke.lifecycle.core.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
-import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
-import de.palsoftware.yvoke.kg.core.repository.KgWriteRepository;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
-import de.palsoftware.yvoke.tag.core.repository.TagRepository;
+import de.palsoftware.yvoke.kg.core.repository.KgWriteRepository;
 import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
 import de.palsoftware.yvoke.shared.user.service.UserService;
+import de.palsoftware.yvoke.tag.core.repository.TagRepository;
+import java.lang.reflect.Method;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import de.palsoftware.yvoke.collection.core.model.Collection;
-import java.lang.reflect.Method;
-import java.time.OffsetDateTime;
-import java.util.Arrays;
-import java.util.List;
 import org.mockito.InOrder;
 import org.springframework.transaction.annotation.Transactional;
 

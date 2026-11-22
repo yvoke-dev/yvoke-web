@@ -1,5 +1,13 @@
 package de.palsoftware.yvoke.document.core.service;
 
+import de.palsoftware.yvoke.document.core.HierarchyUtils;
+import de.palsoftware.yvoke.document.core.model.ChunkPathRow;
+import de.palsoftware.yvoke.document.core.model.DocumentRow;
+import de.palsoftware.yvoke.document.core.model.TocNode;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import jakarta.annotation.Nullable;
+import java.sql.Array;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -10,18 +18,10 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import jakarta.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-import de.palsoftware.yvoke.document.core.HierarchyUtils;
-import de.palsoftware.yvoke.document.core.model.ChunkPathRow;
-import de.palsoftware.yvoke.document.core.model.DocumentRow;
-import de.palsoftware.yvoke.document.core.model.TocNode;
-import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
-import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
-import java.sql.Array;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Service;
 
 @Service
 public class TocService {

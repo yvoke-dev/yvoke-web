@@ -23,9 +23,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * Config matches the other repository ITs exactly so this class reuses their cached Spring context
  * rather than minting a new one (CLAUDE.md § 6, TestContext cache thrash).
  */
-@SpringBootTest(
-    properties = {"spring.flyway.enabled=true",
-        "spring.flyway.locations=filesystem:docker/db/migration"})
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class UserRepositoryIT {
 
     private static final String ENTRA_OID = "user-repo-it-oid";
@@ -51,12 +50,12 @@ public class UserRepositoryIT {
     }
 
     /**
-     * A bearer token missing the optional claims MUST NOT blank what a browser login stored. Without
-     * a COALESCE the sequence is: log in via the web UI (columns populated) → connect over MCP →
-     * the first request, and every one after it, overwrites both columns with NULL. They stay null
-     * until the next browser login, which the next MCP call then undoes again. Nothing errors; the
-     * damage surfaces only as blank names in the cost dashboard — for exactly the heavy MCP users
-     * an operator most wants to see there.
+     * A bearer token missing the optional claims MUST NOT blank what a browser login stored.
+     * Without a COALESCE the sequence is: log in via the web UI (columns populated) → connect over
+     * MCP → the first request, and every one after it, overwrites both columns with NULL. They stay
+     * null until the next browser login, which the next MCP call then undoes again. Nothing errors;
+     * the damage surfaces only as blank names in the cost dashboard — for exactly the heavy MCP
+     * users an operator most wants to see there.
      */
     @Test
     public void aTokenWithoutTheOptionalClaimsMustNotBlankWhatAnEarlierLoginStored() {

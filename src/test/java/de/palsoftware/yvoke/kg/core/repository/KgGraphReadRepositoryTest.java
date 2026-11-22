@@ -1,11 +1,5 @@
 package de.palsoftware.yvoke.kg.core.repository;
 
-import de.palsoftware.yvoke.kg.core.model.KgCall;
-import de.palsoftware.yvoke.kg.core.model.KgEntity;
-import de.palsoftware.yvoke.kg.core.model.KgNeighborhood;
-import de.palsoftware.yvoke.kg.core.model.KgRelationship;
-import de.palsoftware.yvoke.kg.core.model.KgWalk;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -14,6 +8,11 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.palsoftware.yvoke.kg.core.model.KgCall;
+import de.palsoftware.yvoke.kg.core.model.KgEntity;
+import de.palsoftware.yvoke.kg.core.model.KgNeighborhood;
+import de.palsoftware.yvoke.kg.core.model.KgRelationship;
+import de.palsoftware.yvoke.kg.core.model.KgWalk;
 import de.palsoftware.yvoke.shared.db.CollectionIdResolver;
 import java.sql.Array;
 import java.sql.ResultSet;

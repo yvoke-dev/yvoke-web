@@ -2,6 +2,9 @@ package de.palsoftware.yvoke.jsonobject.core.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.palsoftware.yvoke.collection.core.model.Collection;
+import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
+import de.palsoftware.yvoke.jsonobject.core.model.JsonSchema;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -10,15 +13,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import de.palsoftware.yvoke.jsonobject.core.model.JsonSchema;
-import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
-import de.palsoftware.yvoke.collection.core.model.Collection;
 
-@SpringBootTest(
-        properties = {
-            "spring.flyway.enabled=true",
-            "spring.flyway.locations=filesystem:docker/db/migration"
-        })
+@SpringBootTest(properties = {"spring.flyway.enabled=true",
+    "spring.flyway.locations=filesystem:docker/db/migration"})
 public class JsonSchemaRepositoryIT {
 
     private static final String COLLECTION_NAME = "OIM-SCHEMA-TEST";
@@ -38,7 +35,8 @@ public class JsonSchemaRepositoryIT {
     public void setUp() {
         cleanup();
         collectionRepository.create(COLLECTION_NAME, "Test Collection", "OIM");
-        collectionId = collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
+        collectionId =
+            collectionRepository.findByName(COLLECTION_NAME).map(Collection::id).orElseThrow();
     }
 
     @AfterEach
@@ -53,31 +51,29 @@ public class JsonSchemaRepositoryIT {
 
     @Test
     public void testUpsertAndFind() {
-        Map<String, Object> schemaData = Map.of(
-            "type", "object",
-            "properties", Map.of("name", Map.of("type", "string"))
-        );
+        Map<String, Object> schemaData =
+            Map.of("type", "object", "properties", Map.of("name", Map.of("type", "string")));
 
-        JsonSchema schema = new JsonSchema(UUID.randomUUID(), collectionId, null, schemaData, "inferred", null);
+        JsonSchema schema =
+            new JsonSchema(UUID.randomUUID(), collectionId, null, schemaData, "inferred", null);
         jsonSchemaRepository.upsert(schema);
 
         JsonSchema found = jsonSchemaRepository.findByCollectionId(collectionId, null).orElse(null);
         assertThat(found).isNotNull();
         assertThat(found.source()).isEqualTo("inferred");
         assertThat(found.schemaData().get("type")).isEqualTo("object");
-        
+
         // Upsert should update existing
-        Map<String, Object> manualSchema = Map.of(
-            "type", "object",
-            "properties", Map.of("name", Map.of("type", "string"), "age", Map.of("type", "integer"))
-        );
-        JsonSchema manual = new JsonSchema(found.id(), collectionId, null, manualSchema, "manual", null);
+        Map<String, Object> manualSchema = Map.of("type", "object", "properties",
+            Map.of("name", Map.of("type", "string"), "age", Map.of("type", "integer")));
+        JsonSchema manual =
+            new JsonSchema(found.id(), collectionId, null, manualSchema, "manual", null);
         jsonSchemaRepository.upsert(manual);
 
         found = jsonSchemaRepository.findByCollectionId(collectionId, null).orElse(null);
         assertThat(found).isNotNull();
         assertThat(found.source()).isEqualTo("manual");
-        
+
         @SuppressWarnings("unchecked")
         Map<String, Object> props = (Map<String, Object>) found.schemaData().get("properties");
         assertThat(props).containsKey("age");
@@ -120,11 +116,13 @@ public class JsonSchemaRepositoryIT {
                 Map.of("via", Map.of("type", "string"), "category", Map.of("type", "string"))),
             "manual", null));
 
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT count(*) FROM json_schemas WHERE collection_id = ?", Integer.class,
-            collectionId)).as("an untagged collection holds exactly ONE schema row").isEqualTo(1);
+        assertThat(
+            jdbcTemplate.queryForObject("SELECT count(*) FROM json_schemas WHERE collection_id = ?",
+                Integer.class, collectionId))
+            .as("an untagged collection holds exactly ONE schema row").isEqualTo(1);
 
-        JsonSchema found = jsonSchemaRepository.findByCollectionId(collectionId, null).orElseThrow();
+        JsonSchema found =
+            jsonSchemaRepository.findByCollectionId(collectionId, null).orElseThrow();
         assertThat(found.source()).isEqualTo("manual");
         @SuppressWarnings("unchecked")
         Map<String, Object> props = (Map<String, Object>) found.schemaData().get("properties");
@@ -138,9 +136,10 @@ public class JsonSchemaRepositoryIT {
         jsonSchemaRepository.upsert(new JsonSchema(UUID.randomUUID(), collectionId, "10.0",
             Map.of("type", "object", "properties", Map.of("kitVersion", Map.of("type", "string"))),
             "imported", null));
-        assertThat(jdbcTemplate.queryForObject(
-            "SELECT count(*) FROM json_schemas WHERE collection_id = ?", Integer.class,
-            collectionId)).isEqualTo(2);
+        assertThat(
+            jdbcTemplate.queryForObject("SELECT count(*) FROM json_schemas WHERE collection_id = ?",
+                Integer.class, collectionId))
+            .isEqualTo(2);
         assertThat(jsonSchemaRepository.findByCollectionId(collectionId, null).orElseThrow().id())
             .as("a tagged declaration must not overwrite the untagged one").isEqualTo(firstId);
         assertThat(jsonSchemaRepository.findByCollectionId(collectionId, "10.0")).isPresent();
@@ -149,7 +148,8 @@ public class JsonSchemaRepositoryIT {
     @Test
     public void testDeleteByCollectionId() {
         Map<String, Object> schemaData = Map.of("type", "object");
-        JsonSchema schema = new JsonSchema(UUID.randomUUID(), collectionId, null, schemaData, "inferred", null);
+        JsonSchema schema =
+            new JsonSchema(UUID.randomUUID(), collectionId, null, schemaData, "inferred", null);
         jsonSchemaRepository.upsert(schema);
 
         jsonSchemaRepository.deleteByCollectionId(collectionId);

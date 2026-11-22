@@ -2,11 +2,11 @@ package de.palsoftware.yvoke.ingest.core.service;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
-import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
 import de.palsoftware.yvoke.shared.jobengine.EnqueueValidator;
+import de.palsoftware.yvoke.shared.jobengine.model.EnqueueRequest;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
-import java.util.ArrayList;
 
 /**
  * Validates and normalizes an enqueue request against the collection catalog: the collection must

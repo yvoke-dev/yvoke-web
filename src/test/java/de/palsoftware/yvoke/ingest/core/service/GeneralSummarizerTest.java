@@ -3,21 +3,21 @@ package de.palsoftware.yvoke.ingest.core.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.*;
-import static org.mockito.ArgumentMatchers.eq;
 
-import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
+import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder.Context;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
 import de.palsoftware.yvoke.llm.core.model.LlmResponse;
 import de.palsoftware.yvoke.llm.core.model.LlmUsage;
+import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import java.util.Optional;
-import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
-import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder.Context;
 import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 class GeneralSummarizerTest {
 

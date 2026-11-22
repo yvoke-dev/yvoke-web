@@ -1,9 +1,9 @@
 package de.palsoftware.yvoke.ingest.core.service;
 
-import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
+import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -13,10 +13,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class GeneralSummarizer {

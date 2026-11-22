@@ -3,7 +3,6 @@ package de.palsoftware.yvoke.tag.core.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.when;
 
 import de.palsoftware.yvoke.tag.core.repository.TagRepository;
 import java.lang.reflect.Method;

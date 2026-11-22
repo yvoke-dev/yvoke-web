@@ -1,7 +1,12 @@
 package de.palsoftware.yvoke.kg.core.repository;
 
-import de.palsoftware.yvoke.kg.core.model.KgEntity;
+import static org.assertj.core.api.Assertions.assertThat;
 
+import de.palsoftware.yvoke.kg.core.model.KgEntity;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,17 +14,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.Arrays;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Graph entity identity is scoped by tag.
  *
- * <p>Regression: the OIM corpus puts two product versions of the same installation kit into ONE
+ * <p>
+ * Regression: the OIM corpus puts two product versions of the same installation kit into ONE
  * collection, separated only by tag. Identity used to be {@code (collection_id, kind, lower(name))}
  * with no tag component, and {@code upsertEntitiesBatch} resolved pre-existing identities, appended
  * the job's tags to them, and inserted only what was missing — it never updated {@code metadata} on
@@ -27,7 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code metadata.document_id}, the link was written exactly once, on the first ingest: 9,431 of
  * 10.0's 9,904 entities kept pointing at 9.3.1's documents, and the job still reported 9,904.
  *
- * <p>The read paths were never the problem — they already filter with {@code :tag = ANY(tags)}. The
+ * <p>
+ * The read paths were never the problem — they already filter with {@code :tag = ANY(tags)}. The
  * shared row simply carried BOTH tags, so it matched either query and handed back the one
  * document_id it had. Making the tag part of identity is what lets that existing filter select the
  * right row.
@@ -68,7 +68,9 @@ public class KgWriteRepositoryTagIdentityIT {
         jdbcTemplate.update("DELETE FROM collections WHERE name = ?", COLLECTION);
     }
 
-    /** One entity of the OIM corpus: same kind and name in both kit versions, different document. */
+    /**
+     * One entity of the OIM corpus: same kind and name in both kit versions, different document.
+     */
     private static KgWriteRepository.EntityUpsert table(String docId) {
         return new KgWriteRepository.EntityUpsert("ADSAccount", "table", null, null,
             Map.of("document_id", docId));
@@ -99,8 +101,8 @@ public class KgWriteRepositoryTagIdentityIT {
         writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V1), List.of(table("doc-9.3.1")));
         writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V2), List.of(table("doc-10.0")));
 
-        assertThat(rows()).extracting(r -> r.get("document_id"))
-            .containsExactly("doc-10.0", "doc-9.3.1");
+        assertThat(rows()).extracting(r -> r.get("document_id")).containsExactly("doc-10.0",
+            "doc-9.3.1");
     }
 
     /**
@@ -132,8 +134,9 @@ public class KgWriteRepositoryTagIdentityIT {
     void anLlmPathUpsertWithNoMetadataMustNotWipeAnExistingDocumentLink() {
         writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V1), List.of(table("doc-9.3.1")));
 
-        writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V1), List.of(
-            new KgWriteRepository.EntityUpsert("ADSAccount", "table", "a model-written description")));
+        writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V1),
+            List.of(new KgWriteRepository.EntityUpsert("ADSAccount", "table",
+                "a model-written description")));
 
         assertThat(rows()).hasSize(1);
         assertThat(rows().get(0).get("document_id"))
@@ -146,10 +149,9 @@ public class KgWriteRepositoryTagIdentityIT {
         writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V1), List.of(table("doc-9.3.1")));
         writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V2), List.of(table("doc-10.0")));
 
-        List<String> tagsOf931 = jdbcTemplate.queryForList(
-            "SELECT unnest(tags) FROM entities WHERE collection_id = ? "
-                + "AND metadata->>'document_id' = 'doc-9.3.1'",
-            String.class, collectionId);
+        List<String> tagsOf931 =
+            jdbcTemplate.queryForList("SELECT unnest(tags) FROM entities WHERE collection_id = ? "
+                + "AND metadata->>'document_id' = 'doc-9.3.1'", String.class, collectionId);
         assertThat(tagsOf931).containsExactly(V1);
     }
 
@@ -199,13 +201,14 @@ public class KgWriteRepositoryTagIdentityIT {
      * depends on agreeing with. Only the Java half is tested today
      * ({@code KgWriteRepositoryCanonicalTagsTest}); nothing anywhere executes the SQL function, so
      * the two are free to drift on trimming, blank-dropping, de-duplication or the
-     * {@code COLLATE "C"} ordering with no compile error, no startup error and no failing test. When
-     * they do, one tag scope forks into two across three tables at once: the ingest reports
+     * {@code COLLATE "C"} ordering with no compile error, no startup error and no failing test.
+     * When they do, one tag scope forks into two across three tables at once: the ingest reports
      * perfectly normal counts while the second product version's entities either land on rows of
      * their own or resolve onto the first version's and overwrite its document links — the exact
      * incident tag-scoped identity was introduced to fix.
      *
-     * <p>The input carries every case the two implementations have to agree on: padding
+     * <p>
+     * The input carries every case the two implementations have to agree on: padding
      * ({@code " 10.0 "} must land in the same scope as {@code "10.0"}), a duplicate that only
      * appears after trimming, an empty and a whitespace-only tag, a NULL element, and mixed case to
      * pin the byte ordering — under a locale-aware collation {@code "alpha"} sorts before
@@ -216,11 +219,9 @@ public class KgWriteRepositoryTagIdentityIT {
      */
     @Test
     void theCanonicalTagsSqlFunctionAgreesWithItsJavaMirrorOnTrimmingBlanksDuplicatesAndOrder() {
-        List<String> fromSql = jdbcTemplate.queryForList(
-            "SELECT t FROM unnest(kg_canonical_tags("
-                + "ARRAY[' 10.0 ', '10.0', '9.3.1', '', '  ', NULL, '9.3.1', 'Beta', 'alpha']"
-                + ")) WITH ORDINALITY AS u(t, ord) ORDER BY ord",
-            String.class);
+        List<String> fromSql = jdbcTemplate.queryForList("SELECT t FROM unnest(kg_canonical_tags("
+            + "ARRAY[' 10.0 ', '10.0', '9.3.1', '', '  ', NULL, '9.3.1', 'Beta', 'alpha']"
+            + ")) WITH ORDINALITY AS u(t, ord) ORDER BY ord", String.class);
         String[] fromJava = KgWriteRepository.canonicalTags(
             Arrays.asList(" 10.0 ", "10.0", "9.3.1", "", "  ", null, "9.3.1", "Beta", "alpha"));
 
@@ -230,18 +231,16 @@ public class KgWriteRepositoryTagIdentityIT {
             .containsExactly("10.0", "9.3.1", "Beta", "alpha");
 
         // Identity is the SET, so permuting the write's tag list must not change the index key.
-        List<String> permuted = jdbcTemplate.queryForList(
-            "SELECT t FROM unnest(kg_canonical_tags("
-                + "ARRAY['alpha', '9.3.1', NULL, 'Beta', '  ', '10.0', '', ' 10.0 ']"
-                + ")) WITH ORDINALITY AS u(t, ord) ORDER BY ord",
-            String.class);
+        List<String> permuted = jdbcTemplate.queryForList("SELECT t FROM unnest(kg_canonical_tags("
+            + "ARRAY['alpha', '9.3.1', NULL, 'Beta', '  ', '10.0', '', ' 10.0 ']"
+            + ")) WITH ORDINALITY AS u(t, ord) ORDER BY ord", String.class);
         assertThat(permuted).as("array order must not be able to fork one logical scope into two")
             .containsExactly("10.0", "9.3.1", "Beta", "alpha");
 
         assertThat(jdbcTemplate.queryForObject("SELECT provolatile::text || proparallel::text "
             + "FROM pg_proc WHERE proname = 'kg_canonical_tags'", String.class))
-                .as("IMMUTABLE PARALLEL SAFE — an index expression cannot be anything else")
-                .isEqualTo("is");
+            .as("IMMUTABLE PARALLEL SAFE — an index expression cannot be anything else")
+            .isEqualTo("is");
     }
 
     // --------------------------------------------- invariants that must survive
@@ -250,11 +249,12 @@ public class KgWriteRepositoryTagIdentityIT {
     void differentKindsUnderOneTagRemainSeparateRows() {
         // Pre-existing invariant: a name alone is ambiguous in this corpus — Person is a table, an
         // entity_model, a ui_forms, an object_methods AND a notification.
-        writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V1), List.of(
-            new KgWriteRepository.EntityUpsert("Person", "table", null, null,
-                Map.of("document_id", "doc-table")),
-            new KgWriteRepository.EntityUpsert("Person", "notification", null, null,
-                Map.of("document_id", "doc-notification"))));
+        writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V1),
+            List.of(
+                new KgWriteRepository.EntityUpsert("Person", "table", null, null,
+                    Map.of("document_id", "doc-table")),
+                new KgWriteRepository.EntityUpsert("Person", "notification", null, null,
+                    Map.of("document_id", "doc-notification"))));
 
         assertThat(rows()).hasSize(2);
     }
@@ -289,10 +289,10 @@ public class KgWriteRepositoryTagIdentityIT {
      * <p>
      * {@code KgConsolidator} merges duplicate entities and then repoints their edges onto the
      * canonical row before deleting the aliases. Both repoint UPDATEs are guarded by
-     * {@code kg_canonical_tags(relationships.tags) = kg_canonical_tags(canonical.tags)} — an edge in
-     * a different tag scope is deliberately NOT repointed. That guard is correct only while an
-     * edge's tag scope always equals its endpoints': an edge tagged {@code {10.0}} that pointed at a
-     * {@code {9.3.1}} entity would be skipped by the repoint and then hard-deleted by
+     * {@code kg_canonical_tags(relationships.tags) = kg_canonical_tags(canonical.tags)} — an edge
+     * in a different tag scope is deliberately NOT repointed. That guard is correct only while an
+     * edge's tag scope always equals its endpoints': an edge tagged {@code {10.0}} that pointed at
+     * a {@code {9.3.1}} entity would be skipped by the repoint and then hard-deleted by
      * {@code fk_relationships_subject/object ON DELETE CASCADE} when that entity is removed as an
      * alias. Silently, with the consolidation stats reporting a perfectly ordinary merge.
      *
@@ -317,8 +317,8 @@ public class KgWriteRepositoryTagIdentityIT {
     @Test
     void everyEdgesTagScopeEqualsItsEndpointEntitiesTagScope() {
         Map<String, UUID> v931 = writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V1),
-            List.of(table("doc-9.3.1"), new KgWriteRepository.EntityUpsert("ADSGroup", "table", null,
-                null, Map.of("document_id", "doc-9.3.1-b"))));
+            List.of(table("doc-9.3.1"), new KgWriteRepository.EntityUpsert("ADSGroup", "table",
+                null, null, Map.of("document_id", "doc-9.3.1-b"))));
         Map<String, UUID> v10 = writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V2),
             List.of(table("doc-10.0"), new KgWriteRepository.EntityUpsert("ADSGroup", "table", null,
                 null, Map.of("document_id", "doc-10.0-b"))));
@@ -376,13 +376,11 @@ public class KgWriteRepositoryTagIdentityIT {
         // Relationship identity is (subjectId, predicate, objectId); once the endpoints are
         // tag-scoped rows, the edges separate by version without any change of their own.
         writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V1),
-            List.of(table("doc-9.3.1"),
-                new KgWriteRepository.EntityUpsert("ADSGroup", "table", null, null,
-                    Map.of("document_id", "doc-9.3.1-b"))));
+            List.of(table("doc-9.3.1"), new KgWriteRepository.EntityUpsert("ADSGroup", "table",
+                null, null, Map.of("document_id", "doc-9.3.1-b"))));
         writeRepository.upsertEntitiesBatch(COLLECTION, List.of(V2),
-            List.of(table("doc-10.0"),
-                new KgWriteRepository.EntityUpsert("ADSGroup", "table", null, null,
-                    Map.of("document_id", "doc-10.0-b"))));
+            List.of(table("doc-10.0"), new KgWriteRepository.EntityUpsert("ADSGroup", "table", null,
+                null, Map.of("document_id", "doc-10.0-b"))));
 
         writeRepository.insertRelationshipsBatch(COLLECTION, List.of(V1),
             List.of(new KgWriteRepository.RelationshipUpsert("ADSAccount", "FK_TO", "ADSGroup",

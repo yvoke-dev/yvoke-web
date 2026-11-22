@@ -6,8 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
+import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import java.util.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

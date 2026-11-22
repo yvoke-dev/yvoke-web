@@ -2,13 +2,14 @@ package de.palsoftware.yvoke.lifecycle.core.service;
 
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.repository.CollectionRepository;
-import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.model.DocumentRow;
+import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import de.palsoftware.yvoke.kg.core.repository.KgWriteRepository;
-import de.palsoftware.yvoke.tag.core.repository.TagRepository;
 import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.service.UserService;
+import de.palsoftware.yvoke.tag.core.repository.TagRepository;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -16,7 +17,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 
 /**
  * Cross-domain content-deletion coordinator. It owns the ORDER and atomicity of cascading deletes

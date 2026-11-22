@@ -1,12 +1,12 @@
 package de.palsoftware.yvoke.document.core;
 
+import de.palsoftware.yvoke.document.core.model.ChunkPathRow;
+import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
-import de.palsoftware.yvoke.document.core.model.ChunkPathRow;
-import de.palsoftware.yvoke.document.core.model.ChunkRow;
 
 public final class HierarchyUtils {
 

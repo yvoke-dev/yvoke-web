@@ -1,17 +1,16 @@
 package de.palsoftware.yvoke.kg.core.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.kg.core.model.KgExtractionResult;
 import de.palsoftware.yvoke.kg.core.model.KgExtractionResult.ExtractedEntity;
 import de.palsoftware.yvoke.kg.core.model.KgExtractionResult.ExtractedRelationship;
-import de.palsoftware.yvoke.llm.core.model.LlmResponse;
-import java.util.Locale;
-import org.springframework.beans.factory.annotation.Autowired;
-import de.palsoftware.yvoke.llm.core.service.LlmClient;
+import de.palsoftware.yvoke.llm.core.context.LlmCallContextHolder;
 import de.palsoftware.yvoke.llm.core.model.LlmMessage;
 import de.palsoftware.yvoke.llm.core.model.LlmRequest;
+import de.palsoftware.yvoke.llm.core.model.LlmResponse;
+import de.palsoftware.yvoke.llm.core.service.LlmClient;
 import de.palsoftware.yvoke.shared.jobengine.model.JobContext;
 import de.palsoftware.yvoke.shared.jobengine.model.JobStep;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +18,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,16 +26,16 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.springframework.security.concurrent.DelegatingSecurityContextExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.concurrent.DelegatingSecurityContextExecutorService;
 import org.springframework.stereotype.Service;
-import com.fasterxml.jackson.core.JsonProcessingException;
 
 @Service
 public class DocumentKgExtractor {

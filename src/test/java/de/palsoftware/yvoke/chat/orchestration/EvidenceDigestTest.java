@@ -7,10 +7,8 @@ import de.palsoftware.yvoke.rag.core.model.SeenChunks;
 import de.palsoftware.yvoke.rag.retrieval.ChunkBlocks;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearchResult;
 import de.palsoftware.yvoke.rag.retrieval.TelemetryInfo;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 

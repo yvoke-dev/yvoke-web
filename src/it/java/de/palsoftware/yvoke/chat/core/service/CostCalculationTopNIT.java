@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.palsoftware.yvoke.chat.core.model.ModelPricing;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.repository.ModelPricingRepository;
+import de.palsoftware.yvoke.llm.core.model.GatewayCacheStatus;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -18,7 +19,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import de.palsoftware.yvoke.llm.core.model.GatewayCacheStatus;
 
 /**
  * Characterization coverage for the cost dashboard's top-N methods
@@ -79,7 +79,8 @@ public class CostCalculationTopNIT {
         // conv1/user1: uncached prompt 800@0.50=0.0004; completion 500@1.50=0.00075; cached
         // 200@0.10=0.00002 -> 0.001170, tokens 1700.
         insertCall(conv1, user1, 1000, 500, 200, 0);
-        // conv2/user2: uncached 100@0.50=0.00005; completion 50@1.50=0.000075 -> 0.000125, tokens 150.
+        // conv2/user2: uncached 100@0.50=0.00005; completion 50@1.50=0.000075 -> 0.000125, tokens
+        // 150.
         insertCall(conv2, user2, 100, 50, 0, 0);
 
         // MAS profile on its own conv3/user3 so it does not roll into the message-only totals above
@@ -116,10 +117,10 @@ public class CostCalculationTopNIT {
         List<CostCalculationService.ConversationCostRow> rows =
             costCalculationService.getTopConversationsByCost(null, null, 100);
 
-        CostCalculationService.ConversationCostRow c1 = rows.stream()
-            .filter(r -> r.conversationId().equals(conv1)).findFirst().orElseThrow();
-        CostCalculationService.ConversationCostRow c2 = rows.stream()
-            .filter(r -> r.conversationId().equals(conv2)).findFirst().orElseThrow();
+        CostCalculationService.ConversationCostRow c1 =
+            rows.stream().filter(r -> r.conversationId().equals(conv1)).findFirst().orElseThrow();
+        CostCalculationService.ConversationCostRow c2 =
+            rows.stream().filter(r -> r.conversationId().equals(conv2)).findFirst().orElseThrow();
         assertThat(c1.totalTokens()).isEqualTo(1700);
         assertThat(c1.estimatedCostUsd()).isEqualByComparingTo("0.001170");
         assertThat(c2.estimatedCostUsd()).isEqualByComparingTo("0.000125");
@@ -134,8 +135,8 @@ public class CostCalculationTopNIT {
         List<CostCalculationService.MasProfileCostRow> rows =
             costCalculationService.getMasProfilesByCost(null, null);
 
-        CostCalculationService.MasProfileCostRow p = rows.stream()
-            .filter(r -> PROFILE.equals(r.profileName())).findFirst().orElseThrow();
+        CostCalculationService.MasProfileCostRow p =
+            rows.stream().filter(r -> PROFILE.equals(r.profileName())).findFirst().orElseThrow();
         assertThat(p.totalTokens()).isEqualTo(2000);
         assertThat(p.estimatedCostUsd()).isEqualByComparingTo("0.001000");
     }
@@ -148,13 +149,13 @@ public class CostCalculationTopNIT {
      * row that is uniformly replayed or uniformly forwarded. Drop it from one of them and that
      * grouping silently merges a replay with a real call: the merged row loses the discriminator,
      * {@code isReplayed} returns false, and the tab charges list price for tokens the provider was
-     * never asked to produce — while every other tab still reports zero, so the dashboard
-     * disagrees with itself and with the persisted ledger, and nothing fails. The existing
-     * {@code aGatewayReplayedCallContributesTokensButNoCostToTheTopNTabs} covers only the
-     * top-USERS query, so the MAS-profile and top-conversation statements can regress
-     * independently and unnoticed. Seeding one REPLAYED and one FORWARDED call with identical
-     * tokens and model makes the loss unambiguous: any view that prices them the same has dropped
-     * the column. Tokens must still be counted for both — a replay is free, not absent.
+     * never asked to produce — while every other tab still reports zero, so the dashboard disagrees
+     * with itself and with the persisted ledger, and nothing fails. The existing
+     * {@code aGatewayReplayedCallContributesTokensButNoCostToTheTopNTabs} covers only the top-USERS
+     * query, so the MAS-profile and top-conversation statements can regress independently and
+     * unnoticed. Seeding one REPLAYED and one FORWARDED call with identical tokens and model makes
+     * the loss unambiguous: any view that prices them the same has dropped the column. Tokens must
+     * still be counted for both — a replay is free, not absent.
      */
     @Test
     void aReplayedCallIsFreeOnTheMasProfileAndTopConversationTabs() {
@@ -178,15 +179,14 @@ public class CostCalculationTopNIT {
         assertThat(masRow.totalTokens())
             .as("both exchanges are real and must still be counted on the MAS-profile tab")
             .isEqualTo(3000L);
-        assertThat(masRow.estimatedCostUsd())
-            .as("only the forwarded call was billed")
+        assertThat(masRow.estimatedCostUsd()).as("only the forwarded call was billed")
             .isEqualByComparingTo(new BigDecimal("0.001250"));
 
         CostCalculationService.ConversationCostRow convRow =
             costCalculationService.getTopConversationsByCost(null, null, 1000).stream()
                 .filter(r -> r.conversationId().equals(conv5)).findFirst().orElseThrow();
-        assertThat(convRow.totalTokens())
-            .as("and the same two calls on the top-conversation tab").isEqualTo(3000L);
+        assertThat(convRow.totalTokens()).as("and the same two calls on the top-conversation tab")
+            .isEqualTo(3000L);
         assertThat(convRow.estimatedCostUsd())
             .as("which is a different query and can lose the discriminator on its own")
             .isEqualByComparingTo(new BigDecimal("0.001250"));
@@ -197,20 +197,21 @@ public class CostCalculationTopNIT {
      * {@code calculateCostByConversation} and {@code calculateCostByMasProfile} — are three MORE
      * grouped statements, each of which has to carry {@code gateway_cache_status} in its SELECT and
      * its GROUP BY on its own. Drop it from any one of them and that view merges a replay with a
-     * real call: the merged row has no discriminator left, {@code isReplayed} returns false, and the
-     * run / conversation / MAS-profile cost card charges list price for tokens the provider was
+     * real call: the merged row has no discriminator left, {@code isReplayed} returns false, and
+     * the run / conversation / MAS-profile cost card charges list price for tokens the provider was
      * never asked to produce — while the explorer and the top-N tabs, which read different
      * statements, keep reporting zero for exactly those calls. The dashboard then disagrees with
      * itself and with the persisted ledger, and nothing fails: these three methods have no coverage
      * of the gateway-cache rule at all today, and the existing replay tests exercise only the top-N
      * queries.
      *
-     * <p>The status is seeded through {@code GatewayCacheStatus.REPLAYED.name()} rather than the
+     * <p>
+     * The status is seeded through {@code GatewayCacheStatus.REPLAYED.name()} rather than the
      * string {@code "REPLAYED"} deliberately. The read side compares the literal {@code "REPLAYED"}
      * ({@code CostCalculationService.GATEWAY_REPLAYED}) against a value the write side derives from
-     * the enum, the column has no CHECK constraint, and nothing links the two — so renaming the enum
-     * constant compiles, starts cleanly, and silently makes every replayed call billable again.
-     * Going through the enum here is what makes that rename red.
+     * the enum, the column has no CHECK constraint, and nothing links the two — so renaming the
+     * enum constant compiles, starts cleanly, and silently makes every replayed call billable
+     * again. Going through the enum here is what makes that rename red.
      */
     @Test
     void aReplayedGatewayCallIsFreeOnTheAgentRunConversationAndProfileSummariesToo() {
@@ -233,8 +234,8 @@ public class CostCalculationTopNIT {
 
         CostCalculationService.CostReport run =
             costCalculationService.calculateCostByAgentRun(runId);
-        assertThat(run.totalPromptTokens())
-            .as("both exchanges are real and must still be counted").isEqualTo(2000L);
+        assertThat(run.totalPromptTokens()).as("both exchanges are real and must still be counted")
+            .isEqualTo(2000L);
         assertThat(run.totalCompletionTokens()).isEqualTo(1000L);
         assertThat(run.estimatedCostUsd()).as("only the forwarded call was billed")
             .isEqualByComparingTo(billedOnce);
@@ -289,9 +290,9 @@ public class CostCalculationTopNIT {
 
     /**
      * Seeds the ledger, not the {@code messages} mirror. The top-N queries read
-     * {@code llm_call_logs} because that is the only source carrying
-     * {@code gateway_cache_status} — the mirrors have no cache signal, so reading them kept
-     * charging list price for calls the gateway replayed.
+     * {@code llm_call_logs} because that is the only source carrying {@code gateway_cache_status} —
+     * the mirrors have no cache signal, so reading them kept charging list price for calls the
+     * gateway replayed.
      */
     private void insertCall(UUID convId, UUID userId, int prompt, int completion, int cached,
         int thought) {
@@ -302,11 +303,17 @@ public class CostCalculationTopNIT {
         int cached, int thought, String gatewayCacheStatus) {
         long uncachedPrompt = Math.max(0, prompt - cached);
         long unthoughtCompletion = Math.max(0, completion - thought);
-        BigDecimal promptCost = new BigDecimal(uncachedPrompt).multiply(new BigDecimal("0.50")).divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
-        BigDecimal completionCost = new BigDecimal(unthoughtCompletion).multiply(new BigDecimal("1.50")).divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
-        BigDecimal cachedCost = new BigDecimal(cached).multiply(new BigDecimal("0.10")).divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
-        BigDecimal thoughtCost = new BigDecimal(thought).multiply(new BigDecimal("0.00")).divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
-        BigDecimal totalCost = promptCost.add(completionCost).add(cachedCost).add(thoughtCost).setScale(6, RoundingMode.HALF_UP);
+        BigDecimal promptCost = new BigDecimal(uncachedPrompt).multiply(new BigDecimal("0.50"))
+            .divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
+        BigDecimal completionCost =
+            new BigDecimal(unthoughtCompletion).multiply(new BigDecimal("1.50"))
+                .divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
+        BigDecimal cachedCost = new BigDecimal(cached).multiply(new BigDecimal("0.10"))
+            .divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
+        BigDecimal thoughtCost = new BigDecimal(thought).multiply(new BigDecimal("0.00"))
+            .divide(new BigDecimal("1000000"), 8, RoundingMode.HALF_UP);
+        BigDecimal totalCost = promptCost.add(completionCost).add(cachedCost).add(thoughtCost)
+            .setScale(6, RoundingMode.HALF_UP);
         BigDecimal costAvoided = BigDecimal.ZERO;
         if ("REPLAYED".equals(gatewayCacheStatus)) {
             costAvoided = totalCost;
@@ -318,7 +325,8 @@ public class CostCalculationTopNIT {
             + "thought_tokens, total_tokens, gateway_cache_status, total_cost, cost_avoided, created_at) "
             + "VALUES (?, ?, ?, ?, 'chat', 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
             UUID.randomUUID(), convId, userId, agentRunId, MODEL, prompt, completion, cached,
-            thought, prompt + completion + cached + thought, gatewayCacheStatus, totalCost, costAvoided);
+            thought, prompt + completion + cached + thought, gatewayCacheStatus, totalCost,
+            costAvoided);
     }
 
     private void cleanup() {
@@ -328,10 +336,9 @@ public class CostCalculationTopNIT {
     }
 
     /**
-     * End to end for the source change: these tabs read llm_call_logs precisely so a gateway
-     * replay can be priced at zero. Against the messages/agent_steps mirrors it could not be —
-     * they carry no cache signal — so the tabs kept charging list price for calls that cost
-     * nothing.
+     * End to end for the source change: these tabs read llm_call_logs precisely so a gateway replay
+     * can be priced at zero. Against the messages/agent_steps mirrors it could not be — they carry
+     * no cache signal — so the tabs kept charging list price for calls that cost nothing.
      */
     @Test
     void aGatewayReplayedCallContributesTokensButNoCostToTheTopNTabs() {

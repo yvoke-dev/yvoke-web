@@ -8,9 +8,9 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 import de.palsoftware.yvoke.shared.audit.repository.AuditLogRepository;
+import de.palsoftware.yvoke.shared.jobengine.ItTestJobHandler;
 import de.palsoftware.yvoke.shared.jobengine.model.IngestionJob;
 import de.palsoftware.yvoke.shared.jobengine.model.QueuedKindSummary;
-import de.palsoftware.yvoke.shared.jobengine.ItTestJobHandler;
 import de.palsoftware.yvoke.shared.jobengine.repository.JobRepository;
 import de.palsoftware.yvoke.shared.jobengine.service.JobService;
 import de.palsoftware.yvoke.shared.user.service.UserService;
@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,6 @@ import org.springframework.ui.Model;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
-import java.util.stream.IntStream;
 
 public class AdminControllerTest {
 

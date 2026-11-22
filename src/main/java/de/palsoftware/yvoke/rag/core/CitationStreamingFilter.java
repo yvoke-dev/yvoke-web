@@ -1,8 +1,6 @@
 package de.palsoftware.yvoke.rag.core;
 
 import de.palsoftware.yvoke.rag.core.service.CitationVerifier;
-
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
