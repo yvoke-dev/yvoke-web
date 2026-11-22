@@ -297,22 +297,23 @@ public class JsonObjectService {
         }
 
         List<String> tagList = (normalizedTag != null) ? List.of(normalizedTag) : null;
-        List<Map<String, Object>> data = new ArrayList<>();
-        int offset = 0;
+        Map<String, Object> schema = schemaExtractor.extractSchema(List.of());
+        UUID afterId = null;
         while (true) {
-            List<JsonObject> batch =
-                    jsonObjectRepository.findByCollectionId(
-                            collectionId, tagList, JsonObjectRepository.MAX_LIMIT, offset);
-            for (JsonObject obj : batch) {
-                data.add(obj.data());
+            JsonObjectRepository.JsonObjectDataBatch batch =
+                    jsonObjectRepository.findDataBatchAfterId(
+                            collectionId, tagList, afterId, JsonObjectRepository.MAX_LIMIT);
+            if (!batch.payloads().isEmpty()) {
+                schemaExtractor.mergeSchema(
+                        schema, schemaExtractor.extractSchema(batch.payloads()));
             }
-            if (batch.size() < JsonObjectRepository.MAX_LIMIT) {
+            if (batch.payloads().size() < JsonObjectRepository.MAX_LIMIT
+                    || batch.lastId() == null) {
                 break;
             }
-            offset += batch.size();
+            afterId = batch.lastId();
         }
 
-        Map<String, Object> schema = schemaExtractor.extractSchema(data);
         UUID id = existing.map(JsonSchema::id).orElseGet(UUID::randomUUID);
         jsonSchemaRepository.upsert(
                 new JsonSchema(

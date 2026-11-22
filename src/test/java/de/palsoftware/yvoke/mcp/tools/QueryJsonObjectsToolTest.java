@@ -631,4 +631,70 @@ public class QueryJsonObjectsToolTest {
         assertEquals("Error: 'offset' must be 0 or greater.", output);
         verifyNoInteractions(jsonObjectService);
     }
+
+    @Test
+    public void wildcardProjectionTreatsRegexMetacharactersLiterallyAndNeverBacktracks() {
+        UUID colId = UUID.randomUUID();
+        String longKey = "a".repeat(60) + "!";
+        JsonObject obj =
+                new JsonObject(
+                        UUID.randomUUID(),
+                        colId,
+                        "JSON-Col-1",
+                        Map.of(
+                                "cost[USD]_net",
+                                42,
+                                "costU_net",
+                                99,
+                                "a(b)+c_val",
+                                "ok",
+                                longKey,
+                                "sentinel"),
+                        "f.json",
+                        List.of("v1"),
+                        OffsetDateTime.now());
+        when(jsonObjectService.listObjectsByOffset(any(), any(), anyInt(), anyInt()))
+                .thenReturn(List.of(obj));
+
+        // 1. Regex brackets/parens/plus in a wildcard segment must match LITERAL characters,
+        // never throw PatternSyntaxException (unclosed '[' or '(') or interpret '[USD]' as a
+        // character class matching 'U'.
+        String metachars =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1",
+                        null,
+                        "v1",
+                        "cost[usd]*,a(b)+*,unclosed[*",
+                        10,
+                        0,
+                        null,
+                        null);
+        assertTrue(
+                metachars.startsWith("Found 1 JSON objects"),
+                "regex metacharacters in fields wildcard must not fail the query: " + metachars);
+        assertTrue(
+                metachars.contains("cost[USD]_net"),
+                "literal bracket key must match: " + metachars);
+        assertFalse(
+                metachars.contains("costU_net"),
+                "'[usd]' must not act as a regex character class matching 'U': " + metachars);
+        assertTrue(
+                metachars.contains("a(b)+c_val"),
+                "literal parens/plus key must match: " + metachars);
+
+        // 2. Classic ReDoS shape must finish cleanly without hanging or throwing
+        String redos =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1",
+                        null,
+                        "v1",
+                        "(a+)+b*,*a*a*a*a*a*a*a*a*a*a*a*a*b",
+                        10,
+                        0,
+                        null,
+                        null);
+        assertTrue(
+                redos.startsWith("Found 1 JSON objects"),
+                "ReDoS-shaped wildcard pattern must finish cleanly: " + redos);
+    }
 }

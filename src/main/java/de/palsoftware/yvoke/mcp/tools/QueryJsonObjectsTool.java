@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -304,10 +305,9 @@ public class QueryJsonObjectsTool {
             @SuppressWarnings("unchecked")
             Map<String, Object> nested = (Map<String, Object>) current;
             if (part.contains("*")) {
-                String regex = "(?i)" + part.replace("*", ".*");
                 Map<String, Object> matches = new HashMap<>();
                 for (Map.Entry<String, Object> entry : nested.entrySet()) {
-                    if (entry.getKey().matches(regex)) {
+                    if (matchesWildcardIgnoreCase(entry.getKey(), part)) {
                         Object val = extractPath(entry.getValue(), parts, index + 1);
                         if (val != null) {
                             matches.put(entry.getKey(), val);
@@ -331,5 +331,39 @@ public class QueryJsonObjectsTool {
             return matches.isEmpty() ? null : matches;
         }
         return null;
+    }
+
+    /**
+     * Case-insensitive glob matcher supporting {@code *} (zero or more of any character). Treats
+     * all other characters — including regex metacharacters like {@code [}, {@code (}, {@code +} —
+     * as literals, avoiding {@code PatternSyntaxException} and catastrophic backtracking (ReDoS).
+     */
+    static boolean matchesWildcardIgnoreCase(String text, String pattern) {
+        String s = text.toLowerCase(Locale.ROOT);
+        String p = pattern.toLowerCase(Locale.ROOT);
+        int si = 0;
+        int pi = 0;
+        int starIdx = -1;
+        int matchIdx = 0;
+        while (si < s.length()) {
+            if (pi < p.length() && p.charAt(pi) == s.charAt(si)) {
+                si++;
+                pi++;
+            } else if (pi < p.length() && p.charAt(pi) == '*') {
+                starIdx = pi;
+                matchIdx = si;
+                pi++;
+            } else if (starIdx != -1) {
+                pi = starIdx + 1;
+                matchIdx++;
+                si = matchIdx;
+            } else {
+                return false;
+            }
+        }
+        while (pi < p.length() && p.charAt(pi) == '*') {
+            pi++;
+        }
+        return pi == p.length();
     }
 }

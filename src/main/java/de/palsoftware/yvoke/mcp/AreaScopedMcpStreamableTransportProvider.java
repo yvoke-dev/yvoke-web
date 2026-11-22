@@ -62,6 +62,11 @@ public class AreaScopedMcpStreamableTransportProvider
     }
 
     @Override
+    public Mono<Void> notifyClient(String sessionId, String method, Object params) {
+        return delegate.notifyClient(sessionId, method, params);
+    }
+
+    @Override
     public void close() {
         delegate.close();
     }
@@ -104,7 +109,7 @@ public class AreaScopedMcpStreamableTransportProvider
         return new McpSchema.ListPromptsResult(allowed, original.nextCursor(), original.meta());
     }
 
-    private static final class AreaScopedSession extends McpStreamableServerSession {
+    static final class AreaScopedSession extends McpStreamableServerSession {
 
         private final McpStreamableServerSession delegate;
         private final PlaybookRepository playbookRepository;
@@ -134,6 +139,11 @@ public class AreaScopedMcpStreamableTransportProvider
         @Override
         public <T> Mono<T> sendRequest(String method, Object requestParams, TypeRef<T> typeRef) {
             return delegate.sendRequest(method, requestParams, typeRef);
+        }
+
+        @Override
+        public Mono<Void> sendNotification(String method) {
+            return delegate.sendNotification(method);
         }
 
         @Override
@@ -190,7 +200,7 @@ public class AreaScopedMcpStreamableTransportProvider
         }
     }
 
-    private static final class PromptsFilteringTransport implements McpStreamableServerTransport {
+    static final class PromptsFilteringTransport implements McpStreamableServerTransport {
 
         private final McpStreamableServerTransport delegate;
         private final Authentication capturedAuth;
