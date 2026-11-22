@@ -356,4 +356,12 @@ public class KgRepositoryIT {
         assertThat(neighborhood10.outgoing().get(0).tag()).isEqualTo("10.0");
         assertThat(neighborhood10.incoming()).isEmpty(); // ProcX references TableA only in 9.3
     }
+
+    @Test
+    public void testListPredicates() {
+        assertThat(kgRepository.listPredicates(COLLECTION))
+                .containsExactly("calls", "fk_to", "references_table");
+        assertThat(kgRepository.listPredicates("NO-SUCH-COLLECTION")).isEmpty();
+        assertThat(kgRepository.listPredicates("")).isEmpty();
+    }
 }

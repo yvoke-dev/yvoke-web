@@ -38,7 +38,10 @@ public class SearchGraphEntitiesTool {
                             required = false)
                     @Nullable
                     String query,
-            @ToolParam(description = "The collection to search.", required = true)
+            @ToolParam(
+                            description =
+                                    "The collection to search (if not given by a playbook, call 'list_areas' to discover authorized areas and their collections).",
+                            required = true)
                     String collection,
             @ToolParam(
                             description =
@@ -134,12 +137,23 @@ public class SearchGraphEntitiesTool {
             // A full page is indistinguishable from a complete result set unless we say so, and
             // most kinds in a real corpus exceed the cap — an unlabelled page reads as "that is
             // all of them" and gets counted. Same wording as get_graph_neighbors, deliberately.
-            String countLabel =
-                    (entities.size() >= lim)
-                            ? "showing first "
-                                    + lim
-                                    + ", more exist — narrow with query/kind, or raise limit"
-                            : "total: " + entities.size();
+            String countLabel;
+            if (entities.size() >= lim) {
+                countLabel =
+                        (lim >= KgGraphReadRepository.MAX_LIMIT)
+                                ? "showing first "
+                                        + lim
+                                        + ", more exist — at maximum limit ("
+                                        + KgGraphReadRepository.MAX_LIMIT
+                                        + "); narrow with query/kind"
+                                : "showing first "
+                                        + lim
+                                        + ", more exist — narrow with query/kind, or raise limit (max "
+                                        + KgGraphReadRepository.MAX_LIMIT
+                                        + ")";
+            } else {
+                countLabel = "total: " + entities.size();
+            }
             String subject =
                     isListAll
                             ? "### All graph entities"

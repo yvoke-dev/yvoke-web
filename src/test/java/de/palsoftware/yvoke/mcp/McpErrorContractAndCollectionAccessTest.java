@@ -8,8 +8,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.palsoftware.yvoke.area.core.AreaService;
+import de.palsoftware.yvoke.chat.core.tool.AskClarifyingQuestionToolCallback;
 import de.palsoftware.yvoke.collection.core.model.Collection;
 import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
@@ -21,6 +23,7 @@ import de.palsoftware.yvoke.mcp.tools.ListDocumentsTool;
 import de.palsoftware.yvoke.mcp.tools.ListDocumentsToolCallback;
 import de.palsoftware.yvoke.mcp.tools.PlaybookTools;
 import de.palsoftware.yvoke.mcp.tools.SearchCorpusTool;
+import de.palsoftware.yvoke.mcp.tools.SearchCorpusToolCallback;
 import de.palsoftware.yvoke.mcp.tools.SearchGraphEntitiesTool;
 import de.palsoftware.yvoke.mcp.tools.VerifyCitationsTool;
 import de.palsoftware.yvoke.mcp.tools.VerifyCitationsToolCallback;
@@ -29,6 +32,7 @@ import de.palsoftware.yvoke.rag.prompt.PlaybookRepository;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.user.service.UserService;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -246,6 +250,89 @@ class McpErrorContractAndCollectionAccessTest {
         assertThat(((McpSchema.TextContent) res4.content().get(0)).text())
                 .isEqualTo("ERROR: the 't4' tool failed to complete the request.")
                 .doesNotContain("internal-host");
+    }
+
+    @Test
+    void mcpSyncToolAdapterAttachesToolAnnotationsForReadOnlyAndSubmitFeedback() {
+        McpSchema.Tool readOnlyTool =
+                McpSyncToolAdapter.adapt(stubCallback("search_corpus", "ok")).tool();
+        assertThat(readOnlyTool.annotations()).isNotNull();
+        assertThat(readOnlyTool.annotations().readOnlyHint()).isTrue();
+        assertThat(readOnlyTool.annotations().destructiveHint()).isFalse();
+        assertThat(readOnlyTool.annotations().idempotentHint()).isTrue();
+        assertThat(readOnlyTool.annotations().openWorldHint()).isFalse();
+
+        McpSchema.Tool writeTool =
+                McpSyncToolAdapter.adapt(stubCallback("submit_feedback", "ok")).tool();
+        assertThat(writeTool.annotations()).isNotNull();
+        assertThat(writeTool.annotations().readOnlyHint()).isFalse();
+        assertThat(writeTool.annotations().destructiveHint()).isFalse();
+        assertThat(writeTool.annotations().idempotentHint()).isTrue();
+        assertThat(writeTool.annotations().openWorldHint()).isFalse();
+    }
+
+    @Test
+    void argumentParseFailuresDoNotLeakRawJacksonOrJavaExceptionDetails() {
+        String expected =
+                "Error parsing arguments: invalid JSON or argument types; check the tool schema.";
+
+        String searchOut =
+                new SearchCorpusToolCallback(
+                                mock(SearchCorpusTool.class),
+                                MAPPER,
+                                10,
+                                20,
+                                mock(UserService.class))
+                        .call("{not-json");
+        String listOut =
+                new ListDocumentsToolCallback(mock(ListDocumentsTool.class), MAPPER)
+                        .call("{not-json");
+        String sectionOut =
+                new GetSectionToolCallback(mock(GetSectionTool.class), MAPPER).call("{not-json");
+        String verifyOut =
+                new VerifyCitationsToolCallback(mock(VerifyCitationsTool.class), MAPPER)
+                        .call("{not-json");
+        String askJsonOut = new AskClarifyingQuestionToolCallback(MAPPER).call("{not-json");
+        String askCastOut =
+                new AskClarifyingQuestionToolCallback(MAPPER).call("{\"question\":{\"nested\":1}}");
+
+        ToolCallback throwingParse = mock(ToolCallback.class);
+        when(throwingParse.getToolDefinition())
+                .thenReturn(
+                        ToolDefinition.builder()
+                                .name("get_toc")
+                                .description("d")
+                                .inputSchema("{\"type\":\"object\"}")
+                                .build());
+        when(throwingParse.call(any(), any()))
+                .thenThrow(
+                        new RuntimeException(
+                                new JsonParseException(
+                                        null, "Unexpected character ('x' in secret)")));
+        McpSchema.CallToolResult adaptedRes =
+                McpSyncToolAdapter.adapt(throwingParse)
+                        .callHandler()
+                        .apply(
+                                mock(McpSyncServerExchange.class),
+                                new McpSchema.CallToolRequest("get_toc", Map.of()));
+        String adapterOut = ((McpSchema.TextContent) adaptedRes.content().get(0)).text();
+
+        assertThat(adaptedRes.isError()).isTrue();
+        for (String out :
+                List.of(
+                        searchOut,
+                        listOut,
+                        sectionOut,
+                        verifyOut,
+                        askJsonOut,
+                        askCastOut,
+                        adapterOut)) {
+            assertThat(out)
+                    .isEqualTo(expected)
+                    .doesNotContain("Unexpected character")
+                    .doesNotContain("LinkedHashMap")
+                    .doesNotContain("cannot be cast");
+        }
     }
 
     private static ToolCallback stubCallback(String name, String response) {

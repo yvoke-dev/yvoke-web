@@ -190,23 +190,21 @@ public class JsonObjectsToolsIT {
     }
 
     /**
-     * Tool registration in {@code McpToolsConfig} cannot fail loudly: every branch is wrapped in a
-     * {@code try/catch} that logs and continues, and a name collision is dropped at DEBUG level
-     * ({@code registeredNames.add(name)} returning false). So a tool whose bean stops being
-     * discovered — a dropped {@code @Component}, a constructor that throws, a class moved out of
-     * {@code de.palsoftware.yvoke.mcp.tools} (the package the scanner is pointed at), or a second
-     * tool claiming an existing name — simply is not in the catalogue. The application starts
-     * normally, every other tool works, and the only symptom is an agent that never calls the
-     * missing capability: "this manual has no table of contents" rather than "get_toc is gone".
-     * That is indistinguishable from a corpus gap, which is how it would survive a release.
+     * {@code McpToolsConfig} fails fast on missing beans and duplicate tool names, but a tool whose
+     * bean stops being discovered — e.g. a dropped {@code @Component} or a class moved out of
+     * {@code de.palsoftware.yvoke.mcp.tools} (the package the scanner is pointed at) — would still
+     * vanish from the catalogue without a startup error. The application starts normally, every
+     * other tool works, and the only symptom is an agent that never calls the missing capability:
+     * "this document has no table of contents" rather than "get_toc is gone". That is
+     * indistinguishable from a corpus gap, which is how it would survive a release.
      *
      * <p>Nothing else asserts the catalogue's membership. {@code McpToolCatalogueParityTest}
-     * compares the two annotation catalogues on each class but never asks which classes are
-     * registered, and {@code McpServerEndpointsIT.testListToolsRpc} checks only {@code
-     * search_corpus} — one of the two callbacks added by hand BEFORE the scanning loop, so it
-     * passes even if the loop registers nothing at all. The exact-match assertion is deliberate in
-     * both directions: a duplicate would mean one registration silently lost the race, and an
-     * unexpected extra name means a tool reached the agents without reaching this list.
+     * enforces single-catalogue annotations on discovered classes without pinning the full roster,
+     * and {@code McpServerEndpointsIT.testListToolsRpc} checks only {@code search_corpus} — one of
+     * the five callbacks added by hand BEFORE the scanning loop, so it passes even if the loop
+     * registers nothing at all. The exact-match assertion is deliberate in both directions: a
+     * missing tool fails immediately, and an unexpected extra name means a tool reached the agents
+     * without reaching this list.
      *
      * <p>There are two lists, and this test pins both: {@code sharedToolCallbacks}, which the MCP
      * server and the in-app assistant share, and {@code clientOnlyToolCallbacks}, which only the
@@ -325,5 +323,27 @@ public class JsonObjectsToolsIT {
                 .contains("limit=1")
                 .contains("use offset=1")
                 .doesNotContain("No JSON objects found");
+    }
+
+    @Test
+    public void mistypedPostgresJsonPathReturnsActionableErrorAgainstRealPostgres() {
+        String syntaxErr =
+                queryTool.queryJsonObjects(
+                        COLLECTION_NAME,
+                        "$ ? (@.role = \"admin\")",
+                        null,
+                        "name,role",
+                        10,
+                        0,
+                        null,
+                        null);
+        assertThat(syntaxErr)
+                .startsWith("Error: Invalid PostgreSQL jsonPath expression")
+                .doesNotContain("ERROR: the 'query_json_objects' tool failed");
+
+        String nonDollar =
+                queryTool.queryJsonObjects(
+                        COLLECTION_NAME, "admin", null, "name,role", 10, 0, null, null);
+        assertThat(nonDollar).startsWith("Error:").contains("$");
     }
 }

@@ -346,22 +346,21 @@ public class McpServerEndpointsIT {
     /**
      * The MCP annotation scanner is switched OFF ({@code spring.ai.mcp.server.annotation-scanner
      * .enabled=false}), so the ONLY things that publish a tool to external MCP clients are the two
-     * beans hand-built in {@code McpToolsConfig}: {@code sharedToolCallbacks} and {@code
-     * clientOnlyToolCallbacks} — and every registration there is wrapped in a {@code try/catch}
-     * that logs the failure and carries on, with duplicate names dropped at DEBUG. A tool can
-     * therefore vanish from the protocol surface without any startup error: the desktop client and
-     * every external agent just stop being offered it, and the model, which only knows what {@code
-     * tools/list} told it, reports the missing capability as missing DATA ("that manual has no
-     * table of contents") instead of as a broken server.
+     * beans built in {@code McpToolsConfig}: {@code sharedToolCallbacks} and {@code
+     * clientOnlyToolCallbacks}, adapted into {@code SyncToolSpecification}s by {@code
+     * McpSyncToolAdapter}. Registration fails fast on missing beans or duplicate names, but a class
+     * that loses its {@code @Component} annotation or moves out of {@code
+     * de.palsoftware.yvoke.mcp.tools} would still disappear from the protocol surface with no
+     * startup error — the model, which only knows what {@code tools/list} advertised, would report
+     * the missing capability as missing DATA instead of as a broken server.
      *
      * <p>{@code testListToolsRpc} above cannot catch this. It asserts {@code search_corpus}, which
-     * is one of the three callbacks appended BY HAND before the classpath-scanning loop runs — so
-     * it stays green even if the scan registers nothing at all, i.e. if thirteen of the sixteen
-     * tools are gone. This test is the end-to-end counterpart of {@code
+     * is one of the five callbacks appended BY HAND before the classpath-scanning loop runs — so it
+     * stays green even if the scan registers nothing at all, i.e. if eleven of the sixteen tools
+     * are gone. This test is the end-to-end counterpart of {@code
      * JsonObjectsToolsIT.theTwoToolCataloguesAreSplitExactly}: that one proves the two beans hold
-     * the ten shared and six client-only callbacks, this one proves the MCP transport actually
-     * publishes all sixteen, which is the layer the annotation-scanner setting and the spring-ai
-     * wiring live in.
+     * the ten shared and six client-only callbacks, while this one proves the MCP transport
+     * actually publishes all sixteen with accurate {@code annotations} metadata.
      */
     @Test
     public void toolsListPublishesTheWholeToolCatalogue() throws Exception {
@@ -402,7 +401,27 @@ public class McpServerEndpointsIT {
             assertThat(toolsNode).hasSize(16);
 
             List<String> actualNames = new ArrayList<>();
-            toolsNode.forEach(toolNode -> actualNames.add(toolNode.path("name").asText()));
+            toolsNode.forEach(toolNode -> {
+                String toolName = toolNode.path("name").asText();
+                actualNames.add(toolName);
+                JsonNode annotations = toolNode.path("annotations");
+                assertThat(annotations.isObject())
+                        .as("tool '%s' must advertise MCP annotations", toolName)
+                        .isTrue();
+                boolean expectedReadOnly = !"submit_feedback".equals(toolName);
+                assertThat(annotations.path("readOnlyHint").asBoolean())
+                        .as("readOnlyHint for '%s'", toolName)
+                        .isEqualTo(expectedReadOnly);
+                assertThat(annotations.path("destructiveHint").asBoolean())
+                        .as("destructiveHint for '%s'", toolName)
+                        .isFalse();
+                assertThat(annotations.path("idempotentHint").asBoolean())
+                        .as("idempotentHint for '%s'", toolName)
+                        .isTrue();
+                assertThat(annotations.path("openWorldHint").asBoolean())
+                        .as("openWorldHint for '%s'", toolName)
+                        .isFalse();
+            });
 
             assertThat(actualNames)
                     .containsExactlyInAnyOrder(

@@ -226,6 +226,9 @@ public class SearchGraphEntitiesToolTest {
         assertTrue(
                 output.contains("showing first 200, more exist"),
                 "expected the clamped cap to be labelled, got:\n" + output);
+        assertFalse(
+                output.contains("raise limit"),
+                "at MAX_LIMIT the notice must not advise raising limit:\n" + output);
     }
 
     @Test

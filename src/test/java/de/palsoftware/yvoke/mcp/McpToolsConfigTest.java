@@ -29,7 +29,7 @@ class McpToolsConfigTest {
         when(ctx.getBean(SearchCorpusTool.class))
                 .thenThrow(new NoSuchBeanDefinitionException(SearchCorpusTool.class));
 
-        assertThatThrownBy(() -> config.sharedToolCallbacks(ctx, 50, clientOnly))
+        assertThatThrownBy(() -> config.sharedToolCallbacks(ctx, 10, 50, clientOnly))
                 .isInstanceOf(NoSuchBeanDefinitionException.class);
     }
 
@@ -54,7 +54,7 @@ class McpToolsConfigTest {
         when(ctx.getBean(ListDocumentsTool.class)).thenReturn(mock(ListDocumentsTool.class));
         when(ctx.getBean(VerifyCitationsTool.class)).thenReturn(mock(VerifyCitationsTool.class));
 
-        assertThatThrownBy(() -> config.sharedToolCallbacks(ctx, 50, clientOnly))
+        assertThatThrownBy(() -> config.sharedToolCallbacks(ctx, 10, 50, clientOnly))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Duplicate MCP tool name 'search_corpus'");
     }

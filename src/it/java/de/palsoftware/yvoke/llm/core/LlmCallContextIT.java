@@ -169,7 +169,7 @@ public class LlmCallContextIT {
 
         UserService mockUserService = mock(UserService.class);
         SearchCorpusToolCallback callback =
-                new SearchCorpusToolCallback(mockTool, objectMapper, 20, mockUserService);
+                new SearchCorpusToolCallback(mockTool, objectMapper, 10, 20, mockUserService);
 
         // The frame an orchestrated run is already in when the model asks for search_corpus.
         LlmCallContextHolder.set(
@@ -231,7 +231,7 @@ public class LlmCallContextIT {
         UserService mockUserService = mock(UserService.class);
         when(mockUserService.getCurrentUser()).thenReturn(Optional.of(testUser));
         SearchCorpusToolCallback callback =
-                new SearchCorpusToolCallback(mockTool, objectMapper, 20, mockUserService);
+                new SearchCorpusToolCallback(mockTool, objectMapper, 10, 20, mockUserService);
 
         UUID forgedUserId = UUID.randomUUID();
         String jsonArgs =

@@ -826,4 +826,117 @@ public class GetGraphNeighborsToolTest {
                 .getEntityRelationships(
                         anyString(), any(), any(), anyString(), any(), anyString(), anyInt());
     }
+
+    @Test
+    public void colonContainingEntityNameWithExplicitKindIsNotMangled() {
+        KgNeighborEdges.Edge e =
+                edge(
+                        "ns:Name",
+                        "references",
+                        "Target",
+                        "links target",
+                        KgNeighborEdges.Direction.OUTGOING,
+                        "Target",
+                        "config");
+        when(kgRepository.getEntityRelationships(
+                        eq("ns:Name"),
+                        eq("config"),
+                        eq("9.3"),
+                        eq("OIM - DB"),
+                        isNull(),
+                        eq("both"),
+                        anyInt()))
+                .thenReturn(new KgNeighborEdges(List.of("config"), List.of(e)));
+
+        String output =
+                getGraphNeighborsTool.getGraphNeighbors(
+                        "ns:Name", "OIM - DB", "9.3", null, "both", "config");
+
+        assertTrue(output.contains("Connections for 'ns:Name'"), output);
+        assertTrue(output.contains("Target"), output);
+        verify(kgRepository, never())
+                .getEntityRelationships(
+                        eq("Name"), any(), any(), anyString(), any(), anyString(), anyInt());
+    }
+
+    @Test
+    public void colonContainingEntityNameWithoutExplicitKindResolvesVerbatimWhenPresent() {
+        KgNeighborEdges.Edge e =
+                edge(
+                        "urn:oim:sync",
+                        "calls",
+                        "Worker",
+                        "invokes worker",
+                        KgNeighborEdges.Direction.OUTGOING,
+                        "Worker",
+                        "process");
+        when(kgRepository.findEntityKindsWithEdgeCounts(
+                        eq("urn:oim:sync"), eq("9.3"), eq("OIM - DB"), isNull(), eq("both")))
+                .thenReturn(List.of(new KgEntityKindEdgeCount("config", 1, "doc-1")));
+        when(kgRepository.getEntityRelationships(
+                        eq("urn:oim:sync"),
+                        isNull(),
+                        eq("9.3"),
+                        eq("OIM - DB"),
+                        isNull(),
+                        eq("both"),
+                        anyInt()))
+                .thenReturn(new KgNeighborEdges(List.of("config"), List.of(e)));
+
+        String output =
+                getGraphNeighborsTool.getGraphNeighbors(
+                        "urn:oim:sync", "OIM - DB", "9.3", null, "both", null);
+
+        assertTrue(output.contains("Connections for 'urn:oim:sync'"), output);
+        assertTrue(output.contains("Worker"), output);
+    }
+
+    @Test
+    public void
+            missingColonEntityWithExplicitKindDoesNotFallBackToStrippedNameWhenPrefixIsNotAKind() {
+        when(kgRepository.getEntityRelationships(
+                        eq("ns:Person"),
+                        eq("table"),
+                        eq("9.3"),
+                        eq("OIM - DB"),
+                        isNull(),
+                        eq("both"),
+                        anyInt()))
+                .thenReturn(new KgNeighborEdges(List.of(), List.of()));
+        when(kgRepository.listKinds(eq("OIM - DB"), eq("9.3")))
+                .thenReturn(List.of("table", "process"));
+
+        String output =
+                getGraphNeighborsTool.getGraphNeighbors(
+                        "ns:Person", "OIM - DB", "9.3", null, "both", "table");
+
+        assertEquals(
+                "(no relationships found for 'ns:Person' in collection 'OIM - DB' at tag '9.3')",
+                output);
+        verify(kgRepository, never())
+                .getEntityRelationships(
+                        eq("Person"), any(), any(), anyString(), any(), anyString(), anyInt());
+    }
+
+    @Test
+    public void unknownRelationTypeListsValidPredicatesInCollection() {
+        when(kgRepository.relationshipPredicateExists(eq("bogus_rel"), eq(List.of("OIM - DB"))))
+                .thenReturn(false);
+        when(kgRepository.listPredicates(eq("OIM - DB")))
+                .thenReturn(List.of("calls", "fk_to", "references_table"));
+
+        String output =
+                getGraphNeighborsTool.getGraphNeighbors(
+                        "ADSAccount", "OIM - DB", "9.3", "bogus_rel", "both", "table");
+
+        assertTrue(
+                output.contains(
+                        "Error: Relation type 'bogus_rel' does not exist in collection 'OIM - DB'."),
+                output);
+        assertTrue(
+                output.contains("calls")
+                        && output.contains("fk_to")
+                        && output.contains("references_table"),
+                "unknown relation_type error should list valid predicates: " + output);
+    }
 }

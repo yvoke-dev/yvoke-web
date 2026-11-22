@@ -80,9 +80,8 @@ public class AskClarifyingQuestionToolCallback implements ContextAwareToolCallba
             question = (String) args.get("question");
             options = (List<String>) args.get("options");
         } catch (JsonProcessingException | ClassCastException | IllegalArgumentException e) {
-            log.error(
-                    "Failed to parse arguments for ask_clarifying_question: {}", jsonArguments, e);
-            return "Error parsing arguments: " + e.getMessage();
+            log.warn("Failed to parse arguments for ask_clarifying_question: {}", e.getMessage());
+            return "Error parsing arguments: invalid JSON or argument types; check the tool schema.";
         }
 
         log.info(

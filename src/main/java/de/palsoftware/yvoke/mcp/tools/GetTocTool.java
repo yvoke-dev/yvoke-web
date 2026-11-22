@@ -8,7 +8,6 @@ import de.palsoftware.yvoke.document.core.model.TocNode;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.document.core.service.TocService;
 import de.palsoftware.yvoke.mcp.McpToolUtils;
-import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,10 +37,10 @@ public class GetTocTool {
             "Table of contents of a document with section summaries — top-down navigation. Only works "
                     + "for hierarchical document types (e.g. kind='hierarchical', kind='confluence'). "
                     + "Document IDs (full UUIDs) can be discovered using the 'list_documents' tool or from "
-                    + "'search_corpus' hits. Returns an indented markdown list where each entry shows the "
-                    + "section name, its size in chunks and characters, and a one-line summary. Pass "
-                    + "heading_path to see the two levels BELOW that section instead of the top of the "
-                    + "document — that is how you navigate into a large section without reading it.";
+                    + "'search_corpus' hits. Returns an indented markdown list (capped at 400 lines) where "
+                    + "each entry shows the section name, its size in chunks and characters, and a one-line "
+                    + "summary. Pass heading_path to see the two levels BELOW that section instead of the "
+                    + "top of the document — that is how you navigate into a large section without reading it.";
 
     private static final String PATH_PARAM =
             "Optional section path, e.g. \"Chapter > Section\". Returns the two levels below it. Omit "
@@ -83,12 +82,15 @@ public class GetTocTool {
                 return "Error: Document with ID '" + docId + "' not found.";
             }
             DocumentRow doc = docOpt.get();
-            if (doc.collectionId() != null) {
-                Optional<Collection> colOpt = collectionService.findById(doc.collectionId());
-                String area = colOpt.map(Collection::area).orElse(null);
-                if (!AreaAccessContext.canAccessEffectiveUserArea(area)) {
-                    return "Error: Document with ID '" + docId + "' not found.";
-                }
+            String area =
+                    doc.collectionId() != null
+                            ? collectionService
+                                    .findById(doc.collectionId())
+                                    .map(Collection::area)
+                                    .orElse(null)
+                            : null;
+            if (!McpToolUtils.isAreaAllowed(area, null)) {
+                return "Error: Document with ID '" + docId + "' not found.";
             }
             String docName = doc.title();
 
@@ -99,7 +101,7 @@ public class GetTocTool {
 
             List<TocNode> nodes = tocService.getToc(docId, scope);
             if (nodes.isEmpty()) {
-                return "(no sections found for this manual)";
+                return "(no sections found for this document)";
             }
 
             List<String> out = new ArrayList<>();
@@ -107,10 +109,12 @@ public class GetTocTool {
             out.add(
                     String.format(
                             Locale.US,
-                            "_(%s  ·  depth ≤ 2 below it  ·  %d entry%s  ·  counts are full-subtree sizes  ·  ↳ lines are section summaries)_",
-                            scope.isEmpty() ? "full manual" : "under: " + String.join(" > ", scope),
+                            "_(%s  ·  depth ≤ 2 below it  ·  %d entr%s  ·  counts are full-subtree sizes  ·  ↳ lines are section summaries)_",
+                            scope.isEmpty()
+                                    ? "full document"
+                                    : "under: " + String.join(" > ", scope),
                             nodes.size(),
-                            nodes.size() == 1 ? "" : "ies"));
+                            nodes.size() == 1 ? "y" : "ies"));
             out.add("");
 
             int lineCap = 400;

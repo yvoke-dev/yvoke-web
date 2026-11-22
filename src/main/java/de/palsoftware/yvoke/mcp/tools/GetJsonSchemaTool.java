@@ -39,12 +39,13 @@ public class GetJsonSchemaTool {
                     "Read the inferred or manual JSON schema for a specific collection of JSON objects. Use this to understand the structure, available fields, and data types before querying a collection with 'query_json_objects'. A JSON schema is scoped to a collection and optional tag. Returns a JSON Schema representation.")
     public String getJsonSchema(
             @ToolParam(
-                            description = "The collection name for which to get the schema.",
+                            description =
+                                    "The collection name for which to get the schema (if not given by a playbook, call 'list_areas' to discover authorized areas and their collections).",
                             required = true)
                     String collection,
             @ToolParam(
                             description =
-                                    "Which tag's schema to read. REQUIRED when the collection has tags — each tag has its own schema (e.g. DB-History's 'schema' and 'content' describe different row shapes), so there is no meaningful untagged answer; the error lists the valid values. Omit it only for a collection that has no tags.",
+                                    "Which tag's schema to read. REQUIRED when the collection has tags — each tag has its own schema (e.g. 'schema' and 'content' tags can describe different row shapes), so there is no meaningful untagged answer; the error lists the valid values. Omit it only for a collection that has no tags.",
                             required = false)
                     @Nullable
                     String tag) {

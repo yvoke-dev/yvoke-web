@@ -65,17 +65,38 @@ public final class McpSyncToolAdapter {
                                     || e.getCause() instanceof JsonProcessingException) {
                                 Throwable cause =
                                         e instanceof JsonProcessingException ? e : e.getCause();
-                                return "Error parsing arguments: " + cause.getMessage();
+                                return McpToolUtils.invalidArgumentsError(toolName, cause);
                             }
                             return McpToolUtils.toolError(toolName, e);
                         }
                     }
                 };
         McpServerFeatures.SyncToolSpecification base = toSyncToolSpecification(guarded);
+        McpSchema.Tool baseTool = base.tool();
+        McpSchema.Tool annotatedTool =
+                new McpSchema.Tool(
+                        baseTool.name(),
+                        baseTool.title(),
+                        baseTool.description(),
+                        baseTool.inputSchema(),
+                        baseTool.outputSchema(),
+                        annotationsFor(toolName),
+                        baseTool.meta(),
+                        baseTool.icons());
         return McpServerFeatures.SyncToolSpecification.builder()
-                .tool(base.tool())
+                .tool(annotatedTool)
                 .callHandler((exchange, request) ->
                         markErrorIfNeeded(base.callHandler().apply(exchange, request)))
+                .build();
+    }
+
+    static McpSchema.ToolAnnotations annotationsFor(String toolName) {
+        boolean readOnly = !"submit_feedback".equals(toolName);
+        return McpSchema.ToolAnnotations.builder()
+                .readOnlyHint(readOnly)
+                .destructiveHint(false)
+                .idempotentHint(true)
+                .openWorldHint(false)
                 .build();
     }
 

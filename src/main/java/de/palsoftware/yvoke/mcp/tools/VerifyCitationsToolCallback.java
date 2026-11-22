@@ -74,7 +74,7 @@ public class VerifyCitationsToolCallback implements ContextAwareToolCallback {
             }
             citations = extractCitations(args.get("citations"));
         } catch (JsonProcessingException | ClassCastException | IllegalArgumentException e) {
-            return "Error parsing arguments: " + e.getMessage();
+            return McpToolUtils.invalidArgumentsError("verify_citations", e);
         }
         try {
             return tool.verifyCitations(citations, context);

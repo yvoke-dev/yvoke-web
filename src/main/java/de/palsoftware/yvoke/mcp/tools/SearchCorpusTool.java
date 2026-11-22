@@ -157,13 +157,24 @@ public class SearchCorpusTool {
             // genuinely truncated page complete.
             int effectiveLimit =
                     Math.min((opts.limit() != null) ? opts.limit() : defaultLimit, maxLimit);
-            String truncation =
-                    (chunks.size() >= effectiveLimit)
-                            ? "\n\n_(showing "
+            String truncation = "";
+            if (chunks.size() >= effectiveLimit) {
+                if (effectiveLimit >= maxLimit) {
+                    truncation =
+                            "\n\n_(showing "
                                     + chunks.size()
-                                    + " chunks — the result is capped and more may match. Raise `limit` or narrow "
-                                    + "the query; for a whole section use `get_section`.)_"
-                            : "";
+                                    + " chunks — the result is capped at the maximum limit ("
+                                    + maxLimit
+                                    + ") and more may match. Narrow the query; for a whole section use `get_section`.)_";
+                } else {
+                    truncation =
+                            "\n\n_(showing "
+                                    + chunks.size()
+                                    + " chunks — the result is capped and more may match. Raise `limit` (up to "
+                                    + maxLimit
+                                    + ") or narrow the query; for a whole section use `get_section`.)_";
+                }
+            }
             return "Searched **"
                     + colLabel
                     + "**"

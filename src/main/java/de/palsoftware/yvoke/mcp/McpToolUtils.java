@@ -29,6 +29,14 @@ public class McpToolUtils {
      */
     public static final int MAX_CELL_CHARS = MarkdownTableFormatter.MAX_CELL_CHARS;
 
+    public static final String INVALID_ARGUMENTS_ERROR =
+            "Error parsing arguments: invalid JSON or argument types; check the tool schema.";
+
+    public static String invalidArgumentsError(String toolName, Throwable e) {
+        log.warn("Failed to parse arguments for MCP tool '{}': {}", toolName, e.getMessage());
+        return INVALID_ARGUMENTS_ERROR;
+    }
+
     public static String toolError(String toolName, Throwable e) {
         log.error("MCP tool '{}' failed", toolName, e);
         return "ERROR: the '" + toolName + "' tool failed to complete the request.";
@@ -96,12 +104,17 @@ public class McpToolUtils {
         }
         if (parsedTag != null) {
             if (matchedCol.tags() == null || !matchedCol.tags().contains(parsedTag)) {
+                String validSuffix =
+                        (matchedCol.tags() != null && !matchedCol.tags().isEmpty())
+                                ? " Valid tags: " + String.join(", ", matchedCol.tags()) + "."
+                                : "";
                 return new CollectionResolution.Refused(
                         "Error: Tag '"
                                 + parsedTag
                                 + "' does not exist in collection '"
                                 + col
-                                + "'.");
+                                + "'."
+                                + validSuffix);
             }
         }
         return new CollectionResolution.Allowed(matchedCol, parsedTag);

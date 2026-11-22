@@ -65,6 +65,7 @@ public class McpToolsConfig {
     @Bean
     public List<ToolCallback> sharedToolCallbacks(
             ApplicationContext applicationContext,
+            @Value("${app.retrieval.default-limit}") int defaultLimit,
             @Value("${app.retrieval.max-limit}") int maxLimit,
             @Qualifier("clientOnlyToolCallbacks") ToolCallbackProvider clientOnlyToolCallbacks) {
         List<ToolCallback> callbacksList = new ArrayList<>();
@@ -83,6 +84,7 @@ public class McpToolsConfig {
                         new SearchCorpusToolCallback(
                                 applicationContext.getBean(SearchCorpusTool.class),
                                 objectMapper,
+                                defaultLimit,
                                 maxLimit,
                                 userService),
                         new AskClarifyingQuestionToolCallback(objectMapper),

@@ -11,11 +11,15 @@ import de.palsoftware.yvoke.jsonobject.core.model.JsonObject;
 import de.palsoftware.yvoke.jsonobject.core.repository.JsonObjectRepository;
 import de.palsoftware.yvoke.jsonobject.core.service.JsonObjectService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.jdbc.BadSqlGrammarException;
+import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -696,5 +700,99 @@ public class QueryJsonObjectsToolTest {
         assertTrue(
                 redos.startsWith("Found 1 JSON objects"),
                 "ReDoS-shaped wildcard pattern must finish cleanly: " + redos);
+    }
+
+    @Test
+    public void nonJsonPathFilterIsRejectedConsistentlyAcrossRowUngroupedAndGroupedModes() {
+        String rowOut =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", "customer", "v1", "role", 10, 0, null, null);
+        assertTrue(rowOut.startsWith("Error:"), "row mode must reject non-$ filter: " + rowOut);
+        assertTrue(rowOut.contains("customer"), "row error must quote offending filter: " + rowOut);
+        assertTrue(rowOut.contains("$"), "row error must explain '$' jsonpath syntax: " + rowOut);
+
+        String countOut =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", "@.role == \"admin\"", "v1", null, null, null, true, null);
+        assertTrue(
+                countOut.startsWith("Error:"),
+                "ungrouped countOnly must also reject non-$ filter: " + countOut);
+        assertTrue(
+                countOut.contains("@.role == \"admin\""),
+                "ungrouped count error must quote offending filter: " + countOut);
+
+        String groupOut =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", "ADS", "v1", null, null, null, true, "role");
+        assertTrue(
+                groupOut.startsWith("Error:"),
+                "grouped count must reject non-$ filter: " + groupOut);
+        assertFalse(
+                groupOut.toLowerCase().contains("free-text filtering is supported"),
+                "error must not claim free-text filtering is supported: " + groupOut);
+
+        verifyNoInteractions(jsonObjectService);
+    }
+
+    @Test
+    public void postgresJsonPathSyntaxErrorReturnsActionableErrorWithoutLeakingJdbcDetails() {
+        SQLException pgSyntax =
+                new SQLException(
+                        "syntax error at or near \"=\" of jsonpath input (secret_schema)", "42601");
+        when(jsonObjectService.queryObjects(any(), any(), any(), anyInt(), anyInt()))
+                .thenThrow(
+                        new BadSqlGrammarException(
+                                "queryByJsonPath", "SELECT ... secret_table", pgSyntax));
+
+        String rowOut =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", "$ ? (@.role = \"admin\")", "v1", "role", 10, 0, null, null);
+
+        assertTrue(
+                rowOut.startsWith("Error: Invalid PostgreSQL jsonPath"),
+                "syntax error must return actionable Error:, got: " + rowOut);
+        assertFalse(
+                rowOut.contains("secret_schema") || rowOut.contains("secret_table"),
+                "must never leak raw SQL or schema names: " + rowOut);
+
+        SQLException pgJsonPathDataErr = new SQLException("jsonpath item method error", "2203A");
+        when(jsonObjectService.countSearchObjects(any(), any(), any()))
+                .thenThrow(
+                        new UncategorizedSQLException(
+                                "countByJsonPath", "SELECT ...", pgJsonPathDataErr));
+
+        String countOut =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", "$.bad()", "v1", null, null, null, true, null);
+        assertTrue(
+                countOut.startsWith("Error: Invalid PostgreSQL jsonPath"),
+                "2203* SQL/JSON error must also return actionable Error:, got: " + countOut);
+
+        // Unrelated DB/connection failure must still return generic toolError without leaking
+        // details
+        SQLException connErr = new SQLException("Connection to db-host:5432 refused", "08006");
+        doThrow(new DataAccessResourceFailureException("db down", connErr))
+                .when(jsonObjectService)
+                .queryObjects(any(), any(), any(), anyInt(), anyInt());
+
+        String connOut =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", "$.role", "v1", "role", 10, 0, null, null);
+        assertEquals(
+                "ERROR: the 'query_json_objects' tool failed to complete the request.", connOut);
+    }
+
+    @Test
+    public void wrongTagErrorListsValidTagsForAuthorizedCollection() {
+        String response =
+                queryJsonObjectsTool.queryJsonObjects(
+                        "JSON-Col-1", null, "invalid-tag", "role", null, null, null, null);
+        assertTrue(
+                response.contains(
+                        "Error: Tag 'invalid-tag' does not exist in collection 'JSON-Col-1'."),
+                response);
+        assertTrue(
+                response.contains("v1") && response.contains("v2"),
+                "wrong tag error should list valid tags for an authorized collection: " + response);
     }
 }

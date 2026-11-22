@@ -739,6 +739,33 @@ public class KgGraphReadRepository {
         return count.isPresent();
     }
 
+    public static final int MAX_LISTED_PREDICATES = 50;
+
+    public List<String> listPredicates(String collection) {
+        if (collection == null || collection.isBlank()) {
+            return List.of();
+        }
+        UUID collectionId = findCollectionId(collection);
+        if (collectionId == null) {
+            return List.of();
+        }
+        return jdbcClient
+                .sql(
+                        """
+                        SELECT DISTINCT r.predicate
+                        FROM relationships r
+                        WHERE r.collection_id = :collectionId
+                          AND r.predicate IS NOT NULL
+                          AND r.predicate <> ''
+                        ORDER BY r.predicate ASC
+                        LIMIT :limit
+                        """)
+                .param("collectionId", collectionId)
+                .param("limit", MAX_LISTED_PREDICATES)
+                .query(String.class)
+                .list();
+    }
+
     // --- RowMapper factories ---
 
     KgEntityMapper entityRowMapper(boolean includeSimilarity) {

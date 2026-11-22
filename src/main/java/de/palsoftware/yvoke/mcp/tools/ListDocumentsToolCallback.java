@@ -37,11 +37,11 @@ public class ListDocumentsToolCallback implements ContextAwareToolCallback {
                           "properties": {
                             "collection": {
                               "type": "string",
-                              "description": "The collection to list."
+                              "description": "The collection to list (if not given by a playbook, call 'list_areas' to discover authorized areas and their collections)."
                             },
                             "kind": {
                               "type": "string",
-                              "description": "Filter by document kind (e.g. 'manual', 'table', 'procedure'). When nothing is specified all kinds are considered."
+                              "description": "Filter by document kind (e.g. 'hierarchical', 'confluence', 'standard', 'table', 'process'). When nothing is specified all kinds are considered."
                             },
                             "tag": {
                               "type": "string",
@@ -49,7 +49,7 @@ public class ListDocumentsToolCallback implements ContextAwareToolCallback {
                             },
                             "limit": {
                               "type": "integer",
-                              "description": "Max documents to return. When nothing is specified 100 is used."
+                              "description": "Max documents to return (1–500). When nothing is specified 100 is used."
                             },
                             "offset": {
                               "type": "integer",
@@ -98,7 +98,7 @@ public class ListDocumentsToolCallback implements ContextAwareToolCallback {
             offset = (args.get("offset") instanceof Number n) ? n.intValue() : null;
             query = asString(args.get("query"));
         } catch (JsonProcessingException | ClassCastException | IllegalArgumentException e) {
-            return "Error parsing arguments: " + e.getMessage();
+            return McpToolUtils.invalidArgumentsError("list_documents", e);
         }
         try {
             return tool.listDocuments(collection, kind, tag, limit, offset, query, context);

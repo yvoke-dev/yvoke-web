@@ -102,7 +102,7 @@ public class GetSectionToolCallback implements ContextAwareToolCallback {
         } catch (JsonProcessingException | ClassCastException | IllegalArgumentException e) {
             // A parse failure is the model's to correct, so it comes back as a tool result rather
             // than an exception — the model can fix its own arguments (CLAUDE.md § 6).
-            return "Error parsing arguments: " + e.getMessage();
+            return McpToolUtils.invalidArgumentsError("get_section", e);
         }
         try {
             return tool.getSection(documentId, headingPath, chunkId, context);
