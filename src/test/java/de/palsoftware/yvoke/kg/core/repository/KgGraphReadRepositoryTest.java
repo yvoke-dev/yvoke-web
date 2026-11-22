@@ -181,7 +181,7 @@ public class KgGraphReadRepositoryTest {
         assertThat(sql).doesNotContain("DROP TABLE");
         assertThat(sql).contains("(r.subject_id = e.id OR r.object_id = e.id)");
         // The predicate is bound, not concatenated.
-        assertThat(sql).contains("lower(r.predicate) = lower(:predicate)");
+        assertThat(sql).contains("lower(btrim(r.predicate)) = lower(:predicate)");
         ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
         verify(statementSpec).params(paramsCaptor.capture());
         assertThat(paramsCaptor.getValue())

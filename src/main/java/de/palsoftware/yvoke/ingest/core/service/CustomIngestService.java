@@ -553,7 +553,7 @@ public class CustomIngestService {
             Map<String, Object> metadata =
                     (Map<String, Object>) rel.getOrDefault("metadata", new HashMap<>());
 
-            if (source == null || target == null || pred == null) {
+            if (source == null || target == null || pred == null || pred.isBlank()) {
                 malformed.add(source + " -[" + pred + "]-> " + target);
                 continue;
             }
@@ -565,7 +565,7 @@ public class CustomIngestService {
                 relSpecs.add(
                         new KgWriteRepository.RelationshipUpsert(
                                 subj.name(),
-                                pred,
+                                pred.strip(),
                                 obj.name(),
                                 subj.id(),
                                 obj.id(),
