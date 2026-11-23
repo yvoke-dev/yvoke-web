@@ -464,6 +464,7 @@ public class ApplicationYamlInvariantsTest {
                 .containsExactly(
                         "gemini-3.8-flash",
                         "gemini-3.5-flash-lite",
+                        "gemini-4-hydrogen",
                         "gpt-5.4-mini",
                         "DeepSeek-V4-Flash",
                         "gpt-5.6-luna",
@@ -610,6 +611,7 @@ public class ApplicationYamlInvariantsTest {
         assertThat(yamlLabels.labelFor("gemini-3.8-flash")).isEqualTo("Gemini - 3.8 Flash");
         assertThat(yamlLabels.labelFor("gemini-3.5-flash-lite"))
                 .isEqualTo("Gemini - 3.5 Flash Lite");
+        assertThat(yamlLabels.labelFor("gemini-4-hydrogen")).isEqualTo("Gemini - 4 Hydrogen");
         assertThat(yamlLabels.labelFor("gpt-5.4-mini")).isEqualTo("Azure - GPT 5.4 Mini");
         assertThat(yamlLabels.labelFor("DeepSeek-V4-Flash")).isEqualTo("Azure - DeepSeek V4 Flash");
         assertThat(yamlLabels.labelFor("gpt-5.6-luna")).isEqualTo("Azure - GPT 5.6 Luna");
