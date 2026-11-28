@@ -29,6 +29,14 @@ public class AreaRepository {
             default_profile, created_at, updated_at\
             """;
 
+    /**
+     * Active ingestion prompt types. {@code area} cannot depend on {@code rag.prompt} without a
+     * domain cycle; {@code AreaMembersIT.theSystemPromptMembersMatchSystemPromptTypeEnum} pins
+     * parity with {@code SystemPromptType.values()}.
+     */
+    private static final String ACTIVE_PROMPT_TYPE_FILTER =
+            "upper(btrim(type)) IN ('KG', 'SUMMARIZE')";
+
     private final JdbcClient jdbcClient;
 
     public AreaRepository(JdbcClient jdbcClient) {
@@ -68,7 +76,10 @@ public class AreaRepository {
      */
     public Map<String, AreaMembers> findAllMembers() {
         Map<String, List<String>> prompts =
-                namesByArea("SELECT area, name FROM system_prompts ORDER BY name");
+                namesByArea(
+                        "SELECT area, name FROM system_prompts WHERE "
+                                + ACTIVE_PROMPT_TYPE_FILTER
+                                + " ORDER BY name");
         Map<String, List<String>> collections =
                 namesByArea("SELECT area, name FROM collections ORDER BY name");
         Map<String, List<String>> playbooks =
@@ -145,6 +156,22 @@ public class AreaRepository {
                         "UPDATE areas SET name = :newName, updated_at = CURRENT_TIMESTAMP WHERE name = :oldName")
                 .param("oldName", oldName)
                 .param("newName", newName)
+                .update();
+    }
+
+    /**
+     * Removes retired non-ingestion rows (such as {@code CHAT}) owned by {@code area}. Called
+     * inside {@link AreaService#deleteArea(String)}'s transaction so deleting an otherwise-empty
+     * area is not blocked by hidden legacy rows, while failing on any real member rolls this delete
+     * back cleanly.
+     */
+    public void deleteRetiredSystemPrompts(String area) {
+        jdbcClient
+                .sql(
+                        "DELETE FROM system_prompts WHERE area = :area AND (type IS NULL OR NOT ("
+                                + ACTIVE_PROMPT_TYPE_FILTER
+                                + "))")
+                .param("area", area)
                 .update();
     }
 

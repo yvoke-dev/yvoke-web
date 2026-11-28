@@ -17,7 +17,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
+import de.palsoftware.yvoke.shared.web.SidebarBadgeTestSupport;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -304,5 +306,41 @@ public class ChatControllerIT {
         // Cleanup
         setSecurityContext(userAOid, "user-a-test@local", "User A");
         chatConversationService.deleteConversation(convId);
+    }
+
+    @Test
+    public void chatSidebarRoleBadgeReflectsAllFourRoleTiers() throws Exception {
+        Map<String, String> claimToExpectedBadge =
+                Map.of(
+                        "Admin", "Superadmin",
+                        "OIM.Admin", "Area Admin",
+                        "User", "Global User",
+                        "OIM.User", "Area User");
+
+        for (Map.Entry<String, String> entry : claimToExpectedBadge.entrySet()) {
+            String claim = entry.getKey();
+            String expected = entry.getValue();
+            var login =
+                    oidcLogin()
+                            .idToken(token ->
+                                    token.claim("oid", "role-badge-oid-" + claim)
+                                            .claim("name", "Role User " + claim)
+                                            .claim("email", "role-" + claim + "@local"))
+                            .authorities(
+                                    AreaAccessContext.mapRoleClaimsToAuthorities(
+                                            List.of(claim), "Admin", "User"));
+
+            String html =
+                    mockMvc.perform(get("/chat").with(login))
+                            .andExpect(status().isOk())
+                            .andReturn()
+                            .getResponse()
+                            .getContentAsString();
+
+            String rendered = SidebarBadgeTestSupport.extractRoleBadgeText(html);
+            assertThat(rendered)
+                    .as("sidebar role badge for Entra claim %s", claim)
+                    .isEqualTo(expected);
+        }
     }
 }

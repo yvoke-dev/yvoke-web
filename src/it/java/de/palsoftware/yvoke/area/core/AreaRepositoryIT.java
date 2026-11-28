@@ -30,6 +30,7 @@ class AreaRepositoryIT {
 
     @AfterEach
     void cleanUp() {
+        jdbcClient.sql("DELETE FROM system_prompts WHERE name LIKE 'it-area-%'").update();
         jdbcClient.sql("DELETE FROM playbooks WHERE name LIKE 'it-area-%'").update();
         jdbcClient.sql("DROP TRIGGER IF EXISTS it_area_refuse_title ON areas").update();
         jdbcClient.sql("DROP FUNCTION IF EXISTS it_area_refuse_title()").update();
@@ -200,5 +201,93 @@ class AreaRepositoryIT {
                 .extracting(Area::title)
                 .isEqualTo("Old");
         assertThat(repository.findByName("IT_AREA_NEW")).isEmpty();
+    }
+
+    @Test
+    void findAllMembersExcludesRetiredChatSystemPrompts() {
+        repository.upsert(new Area("IT_AREA_P", "Prompts", null, false, null, null, null, null));
+        jdbcClient
+                .sql(
+                        """
+                        INSERT INTO system_prompts (name, type, system_prompt, description, area)
+                        VALUES ('it-area-kg', 'KG', 'kg body', 'kg', 'IT_AREA_P'),
+                               ('it-area-chat', 'CHAT', 'chat body', 'retired', 'IT_AREA_P')
+                        """)
+                .update();
+
+        AreaMembers members = repository.findAllMembers().get("IT_AREA_P");
+        assertThat(members).isNotNull();
+        assertThat(members.systemPrompts())
+                .containsExactly("it-area-kg")
+                .doesNotContain("it-area-chat");
+    }
+
+    @Test
+    void deleteAreaSucceedsWhenOnlyRetiredChatPromptsRemain() {
+        repository.upsert(
+                new Area("IT_AREA_CHAT_ONLY", "Legacy", null, false, null, null, null, null));
+        jdbcClient
+                .sql(
+                        """
+                        INSERT INTO system_prompts (name, type, system_prompt, description, area)
+                        VALUES ('it-area-only-chat', 'CHAT', 'legacy body', 'retired', 'IT_AREA_CHAT_ONLY')
+                        """)
+                .update();
+
+        assertThat(
+                        repository
+                                .findAllMembers()
+                                .getOrDefault("IT_AREA_CHAT_ONLY", AreaMembers.NONE)
+                                .systemPrompts())
+                .isEmpty();
+
+        assertThat(areaService.deleteArea("IT_AREA_CHAT_ONLY")).isEqualTo("IT_AREA_CHAT_ONLY");
+        assertThat(repository.findByName("IT_AREA_CHAT_ONLY")).isEmpty();
+        assertThat(
+                        jdbcClient
+                                .sql(
+                                        "SELECT count(*) FROM system_prompts WHERE name = 'it-area-only-chat'")
+                                .query(Integer.class)
+                                .single())
+                .isZero();
+    }
+
+    @Test
+    void deleteAreaRollsBackRetiredChatPromptCleanupWhenRealMemberBlocksDelete() {
+        repository.upsert(new Area("IT_AREA_MIXED", "Mixed", null, false, null, null, null, null));
+        jdbcClient
+                .sql(
+                        """
+                        INSERT INTO system_prompts (name, type, system_prompt, description, area)
+                        VALUES ('it-area-mixed-chat', 'CHAT', 'legacy body', 'retired', 'IT_AREA_MIXED')
+                        """)
+                .update();
+        jdbcClient
+                .sql(
+                        """
+                        INSERT INTO playbooks (name, title, template_text, area, system_prompt)
+                        VALUES ('it-area-mixed-pb', 'Mixed PB', 'text', 'IT_AREA_MIXED', 'it-area-mixed-chat')
+                        """)
+                .update();
+
+        assertThatThrownBy(() -> areaService.deleteArea("IT_AREA_MIXED"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageStartingWith("Area 'IT_AREA_MIXED' still has");
+
+        assertThat(repository.findByName("IT_AREA_MIXED")).isPresent();
+        assertThat(
+                        jdbcClient
+                                .sql(
+                                        "SELECT count(*) FROM system_prompts WHERE name = 'it-area-mixed-chat'")
+                                .query(Integer.class)
+                                .single())
+                .isEqualTo(1);
+        assertThat(
+                        jdbcClient
+                                .sql(
+                                        "SELECT system_prompt FROM playbooks WHERE name = 'it-area-mixed-pb'")
+                                .query(String.class)
+                                .single())
+                .isEqualTo("it-area-mixed-chat");
     }
 }

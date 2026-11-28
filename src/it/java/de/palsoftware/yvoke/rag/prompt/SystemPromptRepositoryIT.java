@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.rag.prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -132,10 +133,15 @@ public class SystemPromptRepositoryIT {
     }
 
     @Test
-    public void retiredChatRowsRemainIgnoredByTypedQueriesDuringNonDestructiveRollout() {
+    public void retiredChatRowsRemainIgnoredByAllQueriesDuringNonDestructiveRollout() {
         // V17 intentionally stays non-destructive for rolling-deploy/rollback safety from 1.3.0,
-        // so legacy CHAT rows can still coexist in DB while typed repository queries return only
-        // SUMMARIZE and KG prompts.
+        // so legacy CHAT rows can still coexist in DB. Every read path — findAll, findByName, and
+        // findByType — must ignore them instead of throwing IllegalArgumentException in
+        // SystemPromptType.fromString.
+        jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description) "
+                        + "VALUES (?, ' kg ', 'body', 'padded type')",
+                PADDED);
         jdbcTemplate.update(
                 "INSERT INTO system_prompts (name, type, system_prompt, description) "
                         + "VALUES ('IT-LEGACY-CHAT', 'CHAT', 'body', 'x') ON CONFLICT (name) DO NOTHING");
@@ -145,7 +151,45 @@ public class SystemPromptRepositoryIT {
                     .doesNotContain("IT-LEGACY-CHAT");
             assertThat(repository.findByType(SystemPromptType.KG))
                     .extracting(SystemPrompt::name)
+                    .contains(PADDED)
                     .doesNotContain("IT-LEGACY-CHAT");
+            assertThat(repository.findAll())
+                    .extracting(SystemPrompt::name)
+                    .contains(PADDED)
+                    .doesNotContain("IT-LEGACY-CHAT");
+            assertThat(repository.findByName("IT-LEGACY-CHAT")).isEmpty();
+            assertThat(repository.findByName(PADDED))
+                    .get()
+                    .extracting(SystemPrompt::type)
+                    .isEqualTo(SystemPromptType.KG);
+        } finally {
+            jdbcTemplate.update("DELETE FROM system_prompts WHERE name = 'IT-LEGACY-CHAT'");
+        }
+    }
+
+    @Test
+    public void upsertRefusesToOverwriteRetiredChatRow() {
+        jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description, area) "
+                        + "VALUES ('IT-LEGACY-CHAT', 'CHAT', 'legacy chat body', 'retired', 'OIM') "
+                        + "ON CONFLICT (name) DO NOTHING");
+        try {
+            assertThatThrownBy(() ->
+                            repository.upsert(
+                                    "IT-LEGACY-CHAT",
+                                    SystemPromptType.KG,
+                                    "hijacked body",
+                                    "hijacked",
+                                    "OIM"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("retired");
+
+            var row =
+                    jdbcTemplate.queryForMap(
+                            "SELECT type, system_prompt, area FROM system_prompts WHERE name = 'IT-LEGACY-CHAT'");
+            assertThat(row.get("type")).isEqualTo("CHAT");
+            assertThat(row.get("system_prompt")).isEqualTo("legacy chat body");
+            assertThat(row.get("area")).isEqualTo("OIM");
         } finally {
             jdbcTemplate.update("DELETE FROM system_prompts WHERE name = 'IT-LEGACY-CHAT'");
         }

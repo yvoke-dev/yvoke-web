@@ -528,4 +528,45 @@ class AreaAccessContextTest {
                 .extracting(Item::id)
                 .containsExactly("valid-oim", "valid-oim-spaces");
     }
+
+    @Test
+    void roleBadgeLabel_coversAllTiersWildcardSuperadminAndUnauthenticated() {
+        assertThat(AreaAccessContext.roleBadgeLabel(null)).isEmpty();
+
+        UsernamePasswordAuthenticationToken unauthenticated =
+                UsernamePasswordAuthenticationToken.unauthenticated("anon", "n/a");
+        assertThat(AreaAccessContext.roleBadgeLabel(unauthenticated)).isEmpty();
+
+        assertThat(AreaAccessContext.roleBadgeLabel(authWith("ROLE_ANONYMOUS"))).isEmpty();
+
+        // Both ROLE_ADMIN and wildcard AREA_ADMIN_* (matching isSuperAdmin) map to Superadmin
+        assertThat(AreaAccessContext.roleBadgeLabel(authWith(AreaAccessContext.ROLE_ADMIN)))
+                .contains("Superadmin");
+        assertThat(AreaAccessContext.roleBadgeLabel(authWith(AreaAccessContext.AREA_ADMIN_ALL)))
+                .contains("Superadmin");
+
+        // Area Admin takes precedence over Global User when both claims are combined
+        assertThat(
+                        AreaAccessContext.roleBadgeLabel(
+                                authWith(
+                                        AreaAccessContext.ROLE_AREA_ADMIN,
+                                        AreaAccessContext.ROLE_USER,
+                                        AreaAccessContext.AREA_USER_ALL,
+                                        AreaAccessContext.AREA_ADMIN_PREFIX + "OIM")))
+                .contains("Area Admin");
+
+        // Global User vs Area User
+        assertThat(
+                        AreaAccessContext.roleBadgeLabel(
+                                authWith(
+                                        AreaAccessContext.ROLE_USER,
+                                        AreaAccessContext.AREA_USER_ALL)))
+                .contains("Global User");
+        assertThat(
+                        AreaAccessContext.roleBadgeLabel(
+                                authWith(
+                                        AreaAccessContext.ROLE_USER,
+                                        AreaAccessContext.AREA_USER_PREFIX + "OIM")))
+                .contains("Area User");
+    }
 }

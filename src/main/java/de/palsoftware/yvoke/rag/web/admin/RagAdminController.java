@@ -8,6 +8,7 @@ import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookMarkdownParser;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.rag.prompt.StoredPromptIdentity;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
@@ -456,16 +457,8 @@ public class RagAdminController {
                     HttpStatus.FORBIDDEN, "Not authorized for area: " + area);
         }
 
-        Optional<SystemPrompt> existing = systemPromptService.getPrompt(name);
-        if (existing.isPresent()) {
-            if (!AreaAccessContext.canAdministerArea(existing.get().area())) {
-                throw new ResponseStatusException(
-                        HttpStatus.FORBIDDEN, "Existing prompt belongs to another area: " + name);
-            }
-            if (!existing.get().area().equalsIgnoreCase(area)) {
-                redirectAttributes.addFlashAttribute("error", "Cannot change prompt area.");
-                return "redirect:/admin/prompts";
-            }
+        if (!validateExistingPromptForWrite(name, area, redirectAttributes)) {
+            return "redirect:/admin/prompts";
         }
 
         systemPromptService.savePrompt(name, type, systemPrompt, description, area);
@@ -537,17 +530,8 @@ public class RagAdminController {
                     HttpStatus.FORBIDDEN, "Not authorized for area: " + targetArea);
         }
 
-        Optional<SystemPrompt> existing = systemPromptService.getPrompt(promptName);
-        if (existing.isPresent()) {
-            if (!AreaAccessContext.canAdministerArea(existing.get().area())) {
-                throw new ResponseStatusException(
-                        HttpStatus.FORBIDDEN,
-                        "Existing prompt belongs to another area: " + promptName);
-            }
-            if (!existing.get().area().equalsIgnoreCase(targetArea)) {
-                redirectAttributes.addFlashAttribute("error", "Cannot change prompt area.");
-                return "redirect:/admin/prompts";
-            }
+        if (!validateExistingPromptForWrite(promptName, targetArea, redirectAttributes)) {
+            return "redirect:/admin/prompts";
         }
 
         SystemPrompt imported =
@@ -563,6 +547,38 @@ public class RagAdminController {
         redirectAttributes.addFlashAttribute(
                 "success", "System prompt '" + imported.name() + "' imported successfully.");
         return "redirect:/admin/prompts";
+    }
+
+    /**
+     * Guards prompt save/import against cross-area key hijacking, overwriting retired legacy rows
+     * (such as {@code CHAT} kept by V17 for rollback safety), and changing an existing prompt's
+     * area. Returns {@code false} when a flash error was recorded and the caller should redirect.
+     */
+    private boolean validateExistingPromptForWrite(
+            String promptName, String targetArea, RedirectAttributes redirectAttributes) {
+        Optional<StoredPromptIdentity> existing =
+                systemPromptService.findStoredIdentity(promptName);
+        if (existing.isEmpty()) {
+            return true;
+        }
+        StoredPromptIdentity stored = existing.get();
+        if (!AreaAccessContext.canAdministerArea(stored.area())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Existing prompt belongs to another area: " + promptName);
+        }
+        if (!stored.ingestionType()) {
+            redirectAttributes.addFlashAttribute(
+                    "error",
+                    "System prompt '"
+                            + stored.name()
+                            + "' is reserved by a retired prompt and cannot be overwritten.");
+            return false;
+        }
+        if (stored.area() != null && !stored.area().equalsIgnoreCase(targetArea)) {
+            redirectAttributes.addFlashAttribute("error", "Cannot change prompt area.");
+            return false;
+        }
+        return true;
     }
 
     public record KgPromptOption(String name, String description) {}

@@ -1,8 +1,19 @@
 package de.palsoftware.yvoke.rag.prompt;
 
+import java.util.Arrays;
+import java.util.List;
+
 public enum SystemPromptType {
     KG,
     SUMMARIZE;
+
+    private static final List<String> ALLOWED_DB_VALUES =
+            Arrays.stream(values()).map(SystemPromptType::dbValue).toList();
+
+    /** Canonical uppercase database values for all active ingestion prompt types. */
+    public static List<String> allowedDbValues() {
+        return ALLOWED_DB_VALUES;
+    }
 
     public static SystemPromptType fromString(String type) {
         if (type == null) {

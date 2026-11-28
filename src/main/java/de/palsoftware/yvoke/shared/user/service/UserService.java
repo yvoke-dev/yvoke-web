@@ -1,5 +1,6 @@
 package de.palsoftware.yvoke.shared.user.service;
 
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.model.User;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.util.Objects;
@@ -163,5 +164,15 @@ public class UserService {
             return userDetails.getUsername();
         }
         return auth.getName();
+    }
+
+    /**
+     * Human-readable label for the current user's highest logical role tier, derived through {@link
+     * AreaAccessContext#roleBadgeLabel(Authentication)} so sidebar layouts share one rule.
+     */
+    public String getCurrentUserRoleLabel() {
+        return AreaAccessContext.roleBadgeLabel(
+                        SecurityContextHolder.getContext().getAuthentication())
+                .orElse("");
     }
 }

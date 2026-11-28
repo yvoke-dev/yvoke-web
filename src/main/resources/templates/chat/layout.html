@@ -256,13 +256,11 @@
             
             <!-- User Profile & Sign Out -->
             <div class="user-profile-footer">
-                <div class="user-info">
+                <div class="user-info" th:with="roleLabel=${@userService.getCurrentUserRoleLabel()}">
                     <span class="user-name" th:text="${@userService.getCurrentUserDisplayName()}">User Name</span>
-                    <span class="user-role-badge">
-                        <span sec:authorize="hasRole('ADMIN')">Admin</span>
-                        <span sec:authorize="!hasRole('ADMIN') and hasRole('AREA_ADMIN')">Area Admin</span>
-                        <span sec:authorize="!hasRole('ADMIN') and !hasRole('AREA_ADMIN') and hasRole('USER')">User</span>
-                    </span>
+                    <span class="user-role-badge"
+                          th:if="${!#strings.isEmpty(roleLabel)}"
+                          th:text="${roleLabel}">Role</span>
                     <!-- Which build is running. Shown to every signed-in user, so a report about an
                          answer can name the build that produced it. Not on the login page: that is
                          pre-authentication and would disclose the build to the whole internet. -->

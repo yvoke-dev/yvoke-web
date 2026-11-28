@@ -23,6 +23,7 @@ import de.palsoftware.yvoke.collection.core.service.CollectionService;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
+import de.palsoftware.yvoke.rag.prompt.StoredPromptIdentity;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
@@ -759,18 +760,8 @@ class RagAdminControllerTest {
                                 "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        when(systemPromptService.getPrompt("existing-oim-p"))
-                .thenReturn(
-                        Optional.of(
-                                new SystemPrompt(
-                                        "existing-oim-p",
-                                        SystemPromptType.KG,
-                                        "text",
-                                        "desc",
-                                        Instant.now(),
-                                        Instant.now(),
-                                        false,
-                                        "OIM")));
+        when(systemPromptService.findStoredIdentity("existing-oim-p"))
+                .thenReturn(Optional.of(new StoredPromptIdentity("existing-oim-p", "OIM", true)));
 
         mvc.perform(
                         post("/admin/prompts")
@@ -787,18 +778,8 @@ class RagAdminControllerTest {
                 .setAuthentication(new TestingAuthenticationToken("admin", "pass", "ROLE_ADMIN"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        when(systemPromptService.getPrompt("p"))
-                .thenReturn(
-                        Optional.of(
-                                new SystemPrompt(
-                                        "p",
-                                        SystemPromptType.KG,
-                                        "text",
-                                        "desc",
-                                        Instant.now(),
-                                        Instant.now(),
-                                        false,
-                                        "OIM")));
+        when(systemPromptService.findStoredIdentity("p"))
+                .thenReturn(Optional.of(new StoredPromptIdentity("p", "OIM", true)));
 
         mvc.perform(
                         post("/admin/prompts")
@@ -885,18 +866,8 @@ class RagAdminControllerTest {
                                 "areaAdmin", "pass", "ROLE_AREA_ADMIN", "AREA_ADMIN_FINANCE"));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        when(systemPromptService.getPrompt("existing-oim-p"))
-                .thenReturn(
-                        Optional.of(
-                                new SystemPrompt(
-                                        "existing-oim-p",
-                                        SystemPromptType.KG,
-                                        "text",
-                                        "desc",
-                                        Instant.now(),
-                                        Instant.now(),
-                                        false,
-                                        "OIM")));
+        when(systemPromptService.findStoredIdentity("existing-oim-p"))
+                .thenReturn(Optional.of(new StoredPromptIdentity("existing-oim-p", "OIM", true)));
 
         String md = "---\nname: existing-oim-p\ntype: KG\narea: Finance\n---\nBody";
         MockMultipartFile file =

@@ -12,6 +12,7 @@ import de.palsoftware.yvoke.rag.prompt.PlaybookService;
 import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptRepository;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -234,5 +235,35 @@ class AreaMembersIT {
                 .containsExactlyInAnyOrderElementsOf(offered)
                 .isNotEmpty();
         assertThat(offered).hasSizeBetween(1, roles.length - 1);
+    }
+
+    /**
+     * {@code AreaRepository} cannot depend on {@code rag.prompt} without a domain cycle, so its
+     * ingestion-type SQL filter must stay in lockstep with {@link SystemPromptType#values()}.
+     */
+    @Test
+    void theSystemPromptMembersMatchSystemPromptTypeEnum() {
+        for (SystemPromptType type : SystemPromptType.values()) {
+            systemPromptRepository.upsert(
+                    "it-members-enum-" + type.name().toLowerCase(), type, "body", null, OTHER);
+        }
+        jdbcClient
+                .sql(
+                        """
+                        INSERT INTO system_prompts (name, type, system_prompt, description, area)
+                        VALUES ('it-members-retired-chat', 'CHAT', 'legacy', null, :area)\
+                        """)
+                .param("area", OTHER)
+                .update();
+
+        List<String> expected =
+                Arrays.stream(SystemPromptType.values())
+                        .map(t -> "it-members-enum-" + t.name().toLowerCase())
+                        .sorted()
+                        .toList();
+
+        assertThat(areaRepository.findAllMembers().get(OTHER).systemPrompts())
+                .containsExactlyElementsOf(expected)
+                .doesNotContain("it-members-retired-chat");
     }
 }

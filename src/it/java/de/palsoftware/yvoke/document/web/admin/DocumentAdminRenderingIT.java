@@ -11,6 +11,8 @@ import de.palsoftware.yvoke.document.core.model.ChunkInsert;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.SidebarBadgeTestSupport;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -495,5 +497,56 @@ public class DocumentAdminRenderingIT {
         mockMvc.perform(get("/admin/chunks/" + chunkId).with(admin()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(Matchers.containsString("First chunk body text.")));
+    }
+
+    @Test
+    public void adminPromptsPageRenders200WhenLegacyChatRowsCoexist() throws Exception {
+        jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description) "
+                        + "VALUES ('IT-ADMIN-LEGACY-CHAT', 'CHAT', 'legacy', 'retired') "
+                        + "ON CONFLICT (name) DO NOTHING");
+        try {
+            mockMvc.perform(get("/admin/prompts").with(admin()))
+                    .andExpect(status().isOk())
+                    .andExpect(
+                            content()
+                                    .string(
+                                            Matchers.not(
+                                                    Matchers.containsString(
+                                                            "IT-ADMIN-LEGACY-CHAT"))));
+        } finally {
+            jdbcTemplate.update("DELETE FROM system_prompts WHERE name = 'IT-ADMIN-LEGACY-CHAT'");
+        }
+    }
+
+    @Test
+    public void adminSidebarRoleBadgeDistinguishesSuperadminAndAreaAdmin() throws Exception {
+        var superadminLogin =
+                oidcLogin()
+                        .authorities(
+                                AreaAccessContext.mapRoleClaimsToAuthorities(
+                                        List.of("Admin"), "Admin", "User"));
+        String superadminBody =
+                mockMvc.perform(get("/admin/documents").with(superadminLogin))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        assertThat(SidebarBadgeTestSupport.extractRoleBadgeText(superadminBody))
+                .isEqualTo("Superadmin");
+
+        var areaAdminLogin =
+                oidcLogin()
+                        .authorities(
+                                AreaAccessContext.mapRoleClaimsToAuthorities(
+                                        List.of("OIM.Admin"), "Admin", "User"));
+        String areaAdminBody =
+                mockMvc.perform(get("/admin/documents").with(areaAdminLogin))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        assertThat(SidebarBadgeTestSupport.extractRoleBadgeText(areaAdminBody))
+                .isEqualTo("Area Admin");
     }
 }
