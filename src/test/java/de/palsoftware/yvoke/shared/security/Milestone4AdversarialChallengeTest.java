@@ -40,7 +40,7 @@ import de.palsoftware.yvoke.ingest.web.admin.ConfluenceInstanceForm;
 import de.palsoftware.yvoke.rag.core.service.RagService;
 import de.palsoftware.yvoke.rag.prompt.Playbook;
 import de.palsoftware.yvoke.rag.prompt.PlaybookService;
-import de.palsoftware.yvoke.rag.prompt.SystemPrompt;
+import de.palsoftware.yvoke.rag.prompt.StoredPromptIdentity;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptService;
 import de.palsoftware.yvoke.rag.prompt.SystemPromptType;
 import de.palsoftware.yvoke.rag.retrieval.HybridSearch;
@@ -683,17 +683,9 @@ class Milestone4AdversarialChallengeTest {
                             areaService,
                             mock(AdminAuditLogger.class));
 
-            SystemPrompt existingB =
-                    new SystemPrompt(
-                            "cross-prompt",
-                            SystemPromptType.KG,
-                            "prompt",
-                            "desc",
-                            Instant.now(),
-                            Instant.now(),
-                            false,
-                            "AreaB");
-            when(promptService.getPrompt("cross-prompt")).thenReturn(Optional.of(existingB));
+            when(promptService.findStoredIdentity("cross-prompt"))
+                    .thenReturn(
+                            Optional.of(new StoredPromptIdentity("cross-prompt", "AreaB", true)));
 
             assertThatThrownBy(() ->
                             ragController.createOrUpdatePrompt(
@@ -738,17 +730,9 @@ class Milestone4AdversarialChallengeTest {
                             areaService,
                             mock(AdminAuditLogger.class));
 
-            SystemPrompt existingB =
-                    new SystemPrompt(
-                            "cross-prompt",
-                            SystemPromptType.KG,
-                            "prompt",
-                            "desc",
-                            Instant.now(),
-                            Instant.now(),
-                            false,
-                            "AreaB");
-            when(promptService.getPrompt("cross-prompt")).thenReturn(Optional.of(existingB));
+            when(promptService.findStoredIdentity("cross-prompt"))
+                    .thenReturn(
+                            Optional.of(new StoredPromptIdentity("cross-prompt", "AreaB", true)));
 
             String markdown = "---\nname: cross-prompt\ntype: KG\narea: AreaA\n---\nPrompt body";
             MockMultipartFile file =

@@ -153,6 +153,30 @@ public final class AreaAccessContext {
         return hasAllUserAreas(getAuthentication());
     }
 
+    /**
+     * Human-readable label for the caller's highest logical role tier (matching {@code spec/06} and
+     * the login page): {@code Superadmin}, {@code Area Admin}, {@code Global User}, or {@code Area
+     * User}. Returns empty when unauthenticated or holding no recognized role.
+     */
+    public static Optional<String> roleBadgeLabel(Authentication auth) {
+        if (auth == null || !auth.isAuthenticated()) {
+            return Optional.empty();
+        }
+        if (isSuperAdmin(auth)) {
+            return Optional.of("Superadmin");
+        }
+        if (hasAuthority(auth, ROLE_AREA_ADMIN)) {
+            return Optional.of("Area Admin");
+        }
+        if (hasAllUserAreas(auth)) {
+            return Optional.of("Global User");
+        }
+        if (hasAuthority(auth, ROLE_USER)) {
+            return Optional.of("Area User");
+        }
+        return Optional.empty();
+    }
+
     public static boolean canAccessUserArea(Authentication auth, String area) {
         if (auth == null) {
             return false;

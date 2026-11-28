@@ -13,7 +13,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -513,5 +515,122 @@ public class RagAdminWriteIT {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/admin/prompts/kg-options").with(plainUser()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void areaAdminCannotOverwriteAnotherAreasRetiredChatPromptViaPostOrImport()
+            throws Exception {
+        String otherArea = "IT_WRITE_AREA_B";
+        String retiredName = PROMPT + "-retired-cross";
+        jdbcTemplate.update(
+                "INSERT INTO areas (name, title) VALUES (?, ?) ON CONFLICT (name) DO NOTHING",
+                otherArea,
+                "Area B");
+        jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description, area) "
+                        + "VALUES (?, 'CHAT', 'area A chat instructions', 'retired', 'OIM')",
+                retiredName);
+        var areaBAdmin =
+                oidcLogin()
+                        .idToken(token -> token.claim("oid", "it-rag-area-b-admin"))
+                        .authorities(
+                                AreaAccessContext.mapRoleClaimsToAuthorities(
+                                        List.of(otherArea + ".Admin"), "Admin", "User"));
+        try {
+            mockMvc.perform(
+                            post("/admin/prompts")
+                                    .with(csrf())
+                                    .with(areaBAdmin)
+                                    .param("name", retiredName)
+                                    .param("type", "KG")
+                                    .param("area", otherArea)
+                                    .param("systemPrompt", "malicious instructions"))
+                    .andExpect(status().isForbidden());
+
+            String md =
+                    "---\nname: "
+                            + retiredName
+                            + "\ntype: KG\narea: "
+                            + otherArea
+                            + "\n---\nmalicious import";
+            MockMultipartFile file =
+                    new MockMultipartFile(
+                            "file",
+                            retiredName + ".md",
+                            "text/markdown",
+                            md.getBytes(StandardCharsets.UTF_8));
+            mockMvc.perform(
+                            multipart("/admin/prompts/import")
+                                    .file(file)
+                                    .with(csrf())
+                                    .with(areaBAdmin)
+                                    .param("area", otherArea))
+                    .andExpect(status().isForbidden());
+
+            var row =
+                    jdbcTemplate.queryForMap(
+                            "SELECT type, system_prompt, area FROM system_prompts WHERE name = ?",
+                            retiredName);
+            assertThat(row.get("type")).isEqualTo("CHAT");
+            assertThat(row.get("system_prompt")).isEqualTo("area A chat instructions");
+            assertThat(row.get("area")).isEqualTo("OIM");
+        } finally {
+            jdbcTemplate.update("DELETE FROM system_prompts WHERE name = ?", retiredName);
+            jdbcTemplate.update("DELETE FROM areas WHERE name = ?", otherArea);
+        }
+    }
+
+    @Test
+    public void adminCannotSilentlyOverwriteRetiredChatPromptViaPostOrImport() throws Exception {
+        String retiredName = PROMPT + "-retired-same";
+        jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description, area) "
+                        + "VALUES (?, 'CHAT', 'original chat body', 'retired', 'OIM')",
+                retiredName);
+        try {
+            mockMvc.perform(
+                            post("/admin/prompts")
+                                    .with(csrf())
+                                    .with(admin())
+                                    .param("name", retiredName)
+                                    .param("type", "KG")
+                                    .param("area", "OIM")
+                                    .param("systemPrompt", "replacement kg body"))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/admin/prompts"))
+                    .andExpect(flash().attributeExists("error"))
+                    .andExpect(flash().attributeCount(1));
+
+            String md =
+                    "---\nname: "
+                            + retiredName
+                            + "\ntype: KG\narea: OIM\n---\nreplacement import body";
+            MockMultipartFile file =
+                    new MockMultipartFile(
+                            "file",
+                            retiredName + ".md",
+                            "text/markdown",
+                            md.getBytes(StandardCharsets.UTF_8));
+            mockMvc.perform(
+                            multipart("/admin/prompts/import")
+                                    .file(file)
+                                    .with(csrf())
+                                    .with(admin())
+                                    .param("area", "OIM"))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/admin/prompts"))
+                    .andExpect(flash().attributeExists("error"))
+                    .andExpect(flash().attributeCount(1));
+
+            var row =
+                    jdbcTemplate.queryForMap(
+                            "SELECT type, system_prompt, area FROM system_prompts WHERE name = ?",
+                            retiredName);
+            assertThat(row.get("type")).isEqualTo("CHAT");
+            assertThat(row.get("system_prompt")).isEqualTo("original chat body");
+            assertThat(row.get("area")).isEqualTo("OIM");
+        } finally {
+            jdbcTemplate.update("DELETE FROM system_prompts WHERE name = ?", retiredName);
+        }
     }
 }

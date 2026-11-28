@@ -14,10 +14,10 @@ public class SystemPromptRepository {
 
     /**
      * V17 stays non-destructive during the expand phase, so retired {@code CHAT} rows can coexist
-     * in {@code system_prompts}. Every read path filters to ingestion prompt types so enum mapping
-     * never fails on legacy rows.
+     * in {@code system_prompts}. Read paths bind {@link SystemPromptType#allowedDbValues()} so enum
+     * mapping never fails on legacy rows and adding a new enum constant stays single-sourced.
      */
-    private static final String INGESTION_TYPE_FILTER = "upper(btrim(type)) IN ('KG', 'SUMMARIZE')";
+    private static final String ALLOWED_TYPES_PREDICATE = "upper(btrim(type)) IN (:allowedTypes)";
 
     private final JdbcClient jdbcClient;
 
@@ -30,8 +30,9 @@ public class SystemPromptRepository {
                 .sql(
                         "SELECT name, type, system_prompt, description, created_at, updated_at, area "
                                 + "FROM system_prompts WHERE "
-                                + INGESTION_TYPE_FILTER
+                                + ALLOWED_TYPES_PREDICATE
                                 + " ORDER BY name ASC")
+                .param("allowedTypes", SystemPromptType.allowedDbValues())
                 .query((rs, rowNum) -> mapRow(rs))
                 .list();
     }
@@ -55,9 +56,33 @@ public class SystemPromptRepository {
                 .sql(
                         "SELECT name, type, system_prompt, description, created_at, updated_at, area "
                                 + "FROM system_prompts WHERE name = :name AND "
-                                + INGESTION_TYPE_FILTER)
+                                + ALLOWED_TYPES_PREDICATE)
                 .param("name", name)
+                .param("allowedTypes", SystemPromptType.allowedDbValues())
                 .query((rs, rowNum) -> mapRow(rs))
+                .optional();
+    }
+
+    /**
+     * Unfiltered lookup of a stored prompt's name, area, and whether its type is an active
+     * ingestion type. Returns legacy {@code CHAT} rows as {@code ingestionType = false} so write
+     * guards enforce cross-area ownership and refuse silent overwrites.
+     */
+    public Optional<StoredPromptIdentity> findStoredIdentity(String name) {
+        return jdbcClient
+                .sql(
+                        """
+                        SELECT name, area, upper(btrim(type)) IN (:allowedTypes) AS ingestion_type
+                        FROM system_prompts
+                        WHERE name = :name
+                        """)
+                .param("name", name)
+                .param("allowedTypes", SystemPromptType.allowedDbValues())
+                .query((rs, rowNum) ->
+                        new StoredPromptIdentity(
+                                rs.getString("name"),
+                                rs.getString("area"),
+                                rs.getBoolean("ingestion_type")))
                 .optional();
     }
 
@@ -81,24 +106,33 @@ public class SystemPromptRepository {
             String systemPrompt,
             String description,
             String area) {
-        jdbcClient
-                .sql(
-                        """
-                        INSERT INTO system_prompts (name, type, system_prompt, description, area)
-                        VALUES (:name, :type, :systemPrompt, :description, :area)
-                        ON CONFLICT (name) DO UPDATE SET
-                            type = EXCLUDED.type,
-                            system_prompt = EXCLUDED.system_prompt,
-                            description = EXCLUDED.description,
-                            area = EXCLUDED.area,
-                            updated_at = CURRENT_TIMESTAMP
-                        """)
-                .param("name", name)
-                .param("type", type.dbValue())
-                .param("systemPrompt", systemPrompt)
-                .param("description", description)
-                .param("area", area)
-                .update();
+        int updated =
+                jdbcClient
+                        .sql(
+                                """
+                                INSERT INTO system_prompts (name, type, system_prompt, description, area)
+                                VALUES (:name, :type, :systemPrompt, :description, :area)
+                                ON CONFLICT (name) DO UPDATE SET
+                                    type = EXCLUDED.type,
+                                    system_prompt = EXCLUDED.system_prompt,
+                                    description = EXCLUDED.description,
+                                    area = EXCLUDED.area,
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE upper(btrim(system_prompts.type)) IN (:allowedTypes)
+                                """)
+                        .param("name", name)
+                        .param("type", type.dbValue())
+                        .param("systemPrompt", systemPrompt)
+                        .param("description", description)
+                        .param("area", area)
+                        .param("allowedTypes", SystemPromptType.allowedDbValues())
+                        .update();
+        if (updated == 0) {
+            throw new IllegalArgumentException(
+                    "System prompt '"
+                            + name
+                            + "' is reserved by a retired prompt and cannot be overwritten.");
+        }
     }
 
     public void delete(String name) {

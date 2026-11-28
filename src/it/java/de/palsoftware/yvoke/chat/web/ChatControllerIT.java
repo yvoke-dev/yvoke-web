@@ -19,11 +19,10 @@ import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
+import de.palsoftware.yvoke.shared.web.SidebarBadgeTestSupport;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -313,7 +312,7 @@ public class ChatControllerIT {
     public void chatSidebarRoleBadgeReflectsAllFourRoleTiers() throws Exception {
         Map<String, String> claimToExpectedBadge =
                 Map.of(
-                        "Admin", "Global Admin",
+                        "Admin", "Superadmin",
                         "OIM.Admin", "Area Admin",
                         "User", "Global User",
                         "OIM.User", "Area User");
@@ -338,15 +337,7 @@ public class ChatControllerIT {
                             .getResponse()
                             .getContentAsString();
 
-            Matcher matcher =
-                    Pattern.compile(
-                                    "<span class=\"user-role-badge\">(.*?)</span>\\s*<!--",
-                                    Pattern.DOTALL)
-                            .matcher(html);
-            assertThat(matcher.find())
-                    .as("user-role-badge must be rendered for claim %s", claim)
-                    .isTrue();
-            String rendered = matcher.group(1).replaceAll("<[^>]+>", "").trim();
+            String rendered = SidebarBadgeTestSupport.extractRoleBadgeText(html);
             assertThat(rendered)
                     .as("sidebar role badge for Entra claim %s", claim)
                     .isEqualTo(expected);

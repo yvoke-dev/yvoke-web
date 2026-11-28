@@ -60,11 +60,11 @@ public class SystemPromptService {
      * later as content an agent read out of a {@code get_toc}. A prompt a job was told to use and
      * cannot find is a configuration error, so it is raised as one, at the point the name is known.
      *
-     * <p>The TYPE is checked as well as the name. Prompts share one flat namespace, so nothing
-     * stops a CHAT prompt being selected where a SUMMARIZE one is meant — that would "resolve" and
-     * then quietly instruct the summarizer to answer questions and cite sources. The message lists
-     * the valid names rather than just rejecting, because the caller is an operator who picked from
-     * a list that has since changed.
+     * <p>The TYPE is checked as well as the name. Ingestion prompts share one flat namespace, so
+     * nothing stops a KG prompt being selected where a SUMMARIZE one is meant — that would
+     * "resolve" and then quietly instruct the summarizer to extract graph triples instead of
+     * section summaries. The message lists the valid names rather than just rejecting, because the
+     * caller is an operator who picked from a list that has since changed.
      */
     public SystemPrompt requirePrompt(String name, SystemPromptType expectedType) {
         if (name == null || name.isBlank()) {
@@ -120,6 +120,17 @@ public class SystemPromptService {
             return cache.get(trimmed, () -> systemPromptRepository.findByName(trimmed));
         }
         return systemPromptRepository.findByName(trimmed);
+    }
+
+    /**
+     * Unfiltered lookup of an existing row's ownership and type classification, bypassing the
+     * active-prompt cache so write guards always see retired legacy rows (such as {@code CHAT}).
+     */
+    public Optional<StoredPromptIdentity> findStoredIdentity(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        return systemPromptRepository.findStoredIdentity(name.trim());
     }
 
     @CacheEvict(cacheNames = CacheConfig.SYSTEM_PROMPTS, allEntries = true)

@@ -184,6 +184,7 @@ public class AreaService implements AvailableAreasProvider {
     public String deleteArea(String name) {
         String stored = requireArea(name);
         try {
+            areaRepository.deleteRetiredSystemPrompts(stored);
             areaRepository.delete(stored);
         } catch (DataIntegrityViolationException e) {
             throw new IllegalArgumentException(

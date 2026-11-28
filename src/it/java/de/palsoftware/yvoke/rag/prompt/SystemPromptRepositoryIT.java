@@ -1,6 +1,7 @@
 package de.palsoftware.yvoke.rag.prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -161,6 +162,34 @@ public class SystemPromptRepositoryIT {
                     .get()
                     .extracting(SystemPrompt::type)
                     .isEqualTo(SystemPromptType.KG);
+        } finally {
+            jdbcTemplate.update("DELETE FROM system_prompts WHERE name = 'IT-LEGACY-CHAT'");
+        }
+    }
+
+    @Test
+    public void upsertRefusesToOverwriteRetiredChatRow() {
+        jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description, area) "
+                        + "VALUES ('IT-LEGACY-CHAT', 'CHAT', 'legacy chat body', 'retired', 'OIM') "
+                        + "ON CONFLICT (name) DO NOTHING");
+        try {
+            assertThatThrownBy(() ->
+                            repository.upsert(
+                                    "IT-LEGACY-CHAT",
+                                    SystemPromptType.KG,
+                                    "hijacked body",
+                                    "hijacked",
+                                    "OIM"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("retired");
+
+            var row =
+                    jdbcTemplate.queryForMap(
+                            "SELECT type, system_prompt, area FROM system_prompts WHERE name = 'IT-LEGACY-CHAT'");
+            assertThat(row.get("type")).isEqualTo("CHAT");
+            assertThat(row.get("system_prompt")).isEqualTo("legacy chat body");
+            assertThat(row.get("area")).isEqualTo("OIM");
         } finally {
             jdbcTemplate.update("DELETE FROM system_prompts WHERE name = 'IT-LEGACY-CHAT'");
         }

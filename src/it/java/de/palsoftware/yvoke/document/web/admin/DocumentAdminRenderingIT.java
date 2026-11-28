@@ -12,11 +12,10 @@ import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
 import de.palsoftware.yvoke.shared.security.AreaAccessContext;
+import de.palsoftware.yvoke.shared.web.SidebarBadgeTestSupport;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -521,19 +520,20 @@ public class DocumentAdminRenderingIT {
     }
 
     @Test
-    public void adminSidebarRoleBadgeDistinguishesGlobalAdminAndAreaAdmin() throws Exception {
-        var globalAdminLogin =
+    public void adminSidebarRoleBadgeDistinguishesSuperadminAndAreaAdmin() throws Exception {
+        var superadminLogin =
                 oidcLogin()
                         .authorities(
                                 AreaAccessContext.mapRoleClaimsToAuthorities(
                                         List.of("Admin"), "Admin", "User"));
-        String globalAdminBody =
-                mockMvc.perform(get("/admin/documents").with(globalAdminLogin))
+        String superadminBody =
+                mockMvc.perform(get("/admin/documents").with(superadminLogin))
                         .andExpect(status().isOk())
                         .andReturn()
                         .getResponse()
                         .getContentAsString();
-        assertThat(extractRoleBadgeText(globalAdminBody)).isEqualTo("Global Admin");
+        assertThat(SidebarBadgeTestSupport.extractRoleBadgeText(superadminBody))
+                .isEqualTo("Superadmin");
 
         var areaAdminLogin =
                 oidcLogin()
@@ -546,16 +546,7 @@ public class DocumentAdminRenderingIT {
                         .andReturn()
                         .getResponse()
                         .getContentAsString();
-        assertThat(extractRoleBadgeText(areaAdminBody)).isEqualTo("Area Admin");
-    }
-
-    private static String extractRoleBadgeText(String html) {
-        Matcher matcher =
-                Pattern.compile(
-                                "<span class=\"user-role-badge\">(.*?)</span>\\s*<!--",
-                                Pattern.DOTALL)
-                        .matcher(html);
-        assertThat(matcher.find()).as("user-role-badge block must be present").isTrue();
-        return matcher.group(1).replaceAll("<[^>]+>", "").trim();
+        assertThat(SidebarBadgeTestSupport.extractRoleBadgeText(areaAdminBody))
+                .isEqualTo("Area Admin");
     }
 }
