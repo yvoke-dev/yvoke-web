@@ -17,10 +17,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import de.palsoftware.yvoke.chat.core.model.Conversation;
 import de.palsoftware.yvoke.chat.core.repository.ConversationRepository;
 import de.palsoftware.yvoke.chat.core.service.ChatConversationService;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import de.palsoftware.yvoke.shared.user.repository.UserRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -304,5 +307,49 @@ public class ChatControllerIT {
         // Cleanup
         setSecurityContext(userAOid, "user-a-test@local", "User A");
         chatConversationService.deleteConversation(convId);
+    }
+
+    @Test
+    public void chatSidebarRoleBadgeReflectsAllFourRoleTiers() throws Exception {
+        Map<String, String> claimToExpectedBadge =
+                Map.of(
+                        "Admin", "Global Admin",
+                        "OIM.Admin", "Area Admin",
+                        "User", "Global User",
+                        "OIM.User", "Area User");
+
+        for (Map.Entry<String, String> entry : claimToExpectedBadge.entrySet()) {
+            String claim = entry.getKey();
+            String expected = entry.getValue();
+            var login =
+                    oidcLogin()
+                            .idToken(token ->
+                                    token.claim("oid", "role-badge-oid-" + claim)
+                                            .claim("name", "Role User " + claim)
+                                            .claim("email", "role-" + claim + "@local"))
+                            .authorities(
+                                    AreaAccessContext.mapRoleClaimsToAuthorities(
+                                            List.of(claim), "Admin", "User"));
+
+            String html =
+                    mockMvc.perform(get("/chat").with(login))
+                            .andExpect(status().isOk())
+                            .andReturn()
+                            .getResponse()
+                            .getContentAsString();
+
+            Matcher matcher =
+                    Pattern.compile(
+                                    "<span class=\"user-role-badge\">(.*?)</span>\\s*<!--",
+                                    Pattern.DOTALL)
+                            .matcher(html);
+            assertThat(matcher.find())
+                    .as("user-role-badge must be rendered for claim %s", claim)
+                    .isTrue();
+            String rendered = matcher.group(1).replaceAll("<[^>]+>", "").trim();
+            assertThat(rendered)
+                    .as("sidebar role badge for Entra claim %s", claim)
+                    .isEqualTo(expected);
+        }
     }
 }

@@ -205,9 +205,10 @@
                 <div class="user-info">
                     <span class="user-name" th:text="${@userService.getCurrentUserDisplayName()}">User Name</span>
                     <span class="user-role-badge">
-                        <span sec:authorize="hasRole('ADMIN')">Admin</span>
+                        <span sec:authorize="hasRole('ADMIN')">Global Admin</span>
                         <span sec:authorize="!hasRole('ADMIN') and hasRole('AREA_ADMIN')">Area Admin</span>
-                        <span sec:authorize="!hasRole('ADMIN') and !hasRole('AREA_ADMIN') and hasRole('USER')">User</span>
+                        <span sec:authorize="!hasRole('ADMIN') and !hasRole('AREA_ADMIN') and hasAuthority('AREA_USER_*')">Global User</span>
+                        <span sec:authorize="!hasRole('ADMIN') and !hasRole('AREA_ADMIN') and !hasAuthority('AREA_USER_*') and hasRole('USER')">Area User</span>
                     </span>
                     <!-- Which build is running. Admin console only: the audience is the operator
                          and the support person. A non-release build renders a long git-describe

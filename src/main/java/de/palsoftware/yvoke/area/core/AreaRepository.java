@@ -68,7 +68,12 @@ public class AreaRepository {
      */
     public Map<String, AreaMembers> findAllMembers() {
         Map<String, List<String>> prompts =
-                namesByArea("SELECT area, name FROM system_prompts ORDER BY name");
+                namesByArea(
+                        """
+                        SELECT area, name FROM system_prompts
+                        WHERE upper(btrim(type)) IN ('KG', 'SUMMARIZE')
+                        ORDER BY name\
+                        """);
         Map<String, List<String>> collections =
                 namesByArea("SELECT area, name FROM collections ORDER BY name");
         Map<String, List<String>> playbooks =

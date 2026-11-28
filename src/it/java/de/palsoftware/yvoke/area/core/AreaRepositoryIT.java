@@ -30,6 +30,7 @@ class AreaRepositoryIT {
 
     @AfterEach
     void cleanUp() {
+        jdbcClient.sql("DELETE FROM system_prompts WHERE name LIKE 'it-area-%'").update();
         jdbcClient.sql("DELETE FROM playbooks WHERE name LIKE 'it-area-%'").update();
         jdbcClient.sql("DROP TRIGGER IF EXISTS it_area_refuse_title ON areas").update();
         jdbcClient.sql("DROP FUNCTION IF EXISTS it_area_refuse_title()").update();
@@ -200,5 +201,24 @@ class AreaRepositoryIT {
                 .extracting(Area::title)
                 .isEqualTo("Old");
         assertThat(repository.findByName("IT_AREA_NEW")).isEmpty();
+    }
+
+    @Test
+    void findAllMembersExcludesRetiredChatSystemPrompts() {
+        repository.upsert(new Area("IT_AREA_P", "Prompts", null, false, null, null, null, null));
+        jdbcClient
+                .sql(
+                        """
+                        INSERT INTO system_prompts (name, type, system_prompt, description, area)
+                        VALUES ('it-area-kg', 'KG', 'kg body', 'kg', 'IT_AREA_P'),
+                               ('it-area-chat', 'CHAT', 'chat body', 'retired', 'IT_AREA_P')
+                        """)
+                .update();
+
+        AreaMembers members = repository.findAllMembers().get("IT_AREA_P");
+        assertThat(members).isNotNull();
+        assertThat(members.systemPrompts())
+                .containsExactly("it-area-kg")
+                .doesNotContain("it-area-chat");
     }
 }

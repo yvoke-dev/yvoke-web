@@ -11,9 +11,12 @@ import de.palsoftware.yvoke.document.core.model.ChunkInsert;
 import de.palsoftware.yvoke.document.core.model.ChunkRow;
 import de.palsoftware.yvoke.document.core.repository.ChunkRepository;
 import de.palsoftware.yvoke.document.core.repository.DocumentRepository;
+import de.palsoftware.yvoke.shared.security.AreaAccessContext;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -495,5 +498,64 @@ public class DocumentAdminRenderingIT {
         mockMvc.perform(get("/admin/chunks/" + chunkId).with(admin()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(Matchers.containsString("First chunk body text.")));
+    }
+
+    @Test
+    public void adminPromptsPageRenders200WhenLegacyChatRowsCoexist() throws Exception {
+        jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description) "
+                        + "VALUES ('IT-ADMIN-LEGACY-CHAT', 'CHAT', 'legacy', 'retired') "
+                        + "ON CONFLICT (name) DO NOTHING");
+        try {
+            mockMvc.perform(get("/admin/prompts").with(admin()))
+                    .andExpect(status().isOk())
+                    .andExpect(
+                            content()
+                                    .string(
+                                            Matchers.not(
+                                                    Matchers.containsString(
+                                                            "IT-ADMIN-LEGACY-CHAT"))));
+        } finally {
+            jdbcTemplate.update("DELETE FROM system_prompts WHERE name = 'IT-ADMIN-LEGACY-CHAT'");
+        }
+    }
+
+    @Test
+    public void adminSidebarRoleBadgeDistinguishesGlobalAdminAndAreaAdmin() throws Exception {
+        var globalAdminLogin =
+                oidcLogin()
+                        .authorities(
+                                AreaAccessContext.mapRoleClaimsToAuthorities(
+                                        List.of("Admin"), "Admin", "User"));
+        String globalAdminBody =
+                mockMvc.perform(get("/admin/documents").with(globalAdminLogin))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        assertThat(extractRoleBadgeText(globalAdminBody)).isEqualTo("Global Admin");
+
+        var areaAdminLogin =
+                oidcLogin()
+                        .authorities(
+                                AreaAccessContext.mapRoleClaimsToAuthorities(
+                                        List.of("OIM.Admin"), "Admin", "User"));
+        String areaAdminBody =
+                mockMvc.perform(get("/admin/documents").with(areaAdminLogin))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        assertThat(extractRoleBadgeText(areaAdminBody)).isEqualTo("Area Admin");
+    }
+
+    private static String extractRoleBadgeText(String html) {
+        Matcher matcher =
+                Pattern.compile(
+                                "<span class=\"user-role-badge\">(.*?)</span>\\s*<!--",
+                                Pattern.DOTALL)
+                        .matcher(html);
+        assertThat(matcher.find()).as("user-role-badge block must be present").isTrue();
+        return matcher.group(1).replaceAll("<[^>]+>", "").trim();
     }
 }

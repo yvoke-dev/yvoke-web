@@ -132,10 +132,15 @@ public class SystemPromptRepositoryIT {
     }
 
     @Test
-    public void retiredChatRowsRemainIgnoredByTypedQueriesDuringNonDestructiveRollout() {
+    public void retiredChatRowsRemainIgnoredByAllQueriesDuringNonDestructiveRollout() {
         // V17 intentionally stays non-destructive for rolling-deploy/rollback safety from 1.3.0,
-        // so legacy CHAT rows can still coexist in DB while typed repository queries return only
-        // SUMMARIZE and KG prompts.
+        // so legacy CHAT rows can still coexist in DB. Every read path — findAll, findByName, and
+        // findByType — must ignore them instead of throwing IllegalArgumentException in
+        // SystemPromptType.fromString.
+        jdbcTemplate.update(
+                "INSERT INTO system_prompts (name, type, system_prompt, description) "
+                        + "VALUES (?, ' kg ', 'body', 'padded type')",
+                PADDED);
         jdbcTemplate.update(
                 "INSERT INTO system_prompts (name, type, system_prompt, description) "
                         + "VALUES ('IT-LEGACY-CHAT', 'CHAT', 'body', 'x') ON CONFLICT (name) DO NOTHING");
@@ -145,7 +150,17 @@ public class SystemPromptRepositoryIT {
                     .doesNotContain("IT-LEGACY-CHAT");
             assertThat(repository.findByType(SystemPromptType.KG))
                     .extracting(SystemPrompt::name)
+                    .contains(PADDED)
                     .doesNotContain("IT-LEGACY-CHAT");
+            assertThat(repository.findAll())
+                    .extracting(SystemPrompt::name)
+                    .contains(PADDED)
+                    .doesNotContain("IT-LEGACY-CHAT");
+            assertThat(repository.findByName("IT-LEGACY-CHAT")).isEmpty();
+            assertThat(repository.findByName(PADDED))
+                    .get()
+                    .extracting(SystemPrompt::type)
+                    .isEqualTo(SystemPromptType.KG);
         } finally {
             jdbcTemplate.update("DELETE FROM system_prompts WHERE name = 'IT-LEGACY-CHAT'");
         }
